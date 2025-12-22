@@ -1,36 +1,35 @@
 import { TrendingUp } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { user, loading, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
-          credentials: 'include',
-        });
+  // Show loader while checking auth state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-text-secondary">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
-        if (response.ok) {
-          navigate('/dashboard');
-        }
-      } catch (error) {
-        console.log('Not authenticated');
-      }
-    };
-
-    checkAuth();
-  }, [navigate]);
+  // Redirect to dashboard only when loading is done AND user exists
+  if (!loading && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -40,30 +39,17 @@ export default function Login() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (response.ok) {
-        const user = await response.json();
-        toast.success('Logged in successfully!');
-        navigate('/dashboard', { state: { user }, replace: true });
-      } else {
-        toast.error('Login failed');
-      }
+      await login(email, password);
+      toast.success('Logged in successfully!');
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('Login error:', error);
       toast.error('Login failed');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -103,7 +89,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-black/20 border-white/10"
-                  disabled={loading}
+                  disabled={submitting}
                 />
               </div>
 
@@ -116,17 +102,17 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-black/20 border-white/10"
-                  disabled={loading}
+                  disabled={submitting}
                 />
               </div>
 
               <Button
                 data-testid="login-btn"
                 type="submit"
-                disabled={loading}
+                disabled={submitting}
                 className="w-full bg-primary hover:bg-primary/90 text-black font-bold py-6 shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all"
               >
-                {loading ? 'Logging in...' : 'Login'}
+                {submitting ? 'Logging in...' : 'Login'}
               </Button>
             </form>
 

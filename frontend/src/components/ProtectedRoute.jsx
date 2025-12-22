@@ -1,38 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function ProtectedRoute({ children }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [isAuthenticated, setIsAuthenticated] = useState(location.state?.user ? true : null);
-  const [user, setUser] = useState(location.state?.user || null);
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    if (location.state?.user) return;
-
-    const checkAuth = async () => {
-      try {
-        const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
-          credentials: 'include',
-        });
-
-        if (!response.ok) throw new Error('Not authenticated');
-
-        const userData = await response.json();
-        setUser(userData);
-        setIsAuthenticated(true);
-      } catch (error) {
-        setIsAuthenticated(false);
-        navigate('/login');
-      }
-    };
-
-    checkAuth();
-  }, [navigate, location.state]);
-
-  if (isAuthenticated === null) {
+  // Show loader while checking auth state
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -43,9 +17,11 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  if (isAuthenticated === true) {
-    return React.cloneElement(children, { user });
+  // Redirect to login only when loading is done AND user is null
+  if (!loading && !user) {
+    return <Navigate to="/login" replace />;
   }
 
-  return null;
+  // User is authenticated, render children
+  return React.cloneElement(children, { user });
 }

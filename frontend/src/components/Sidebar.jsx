@@ -11,9 +11,8 @@ import {
   Users,
 } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -28,13 +27,11 @@ const navItems = [
 
 export default function Sidebar({ user }) {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleLogout = async () => {
     try {
-      await fetch(`${BACKEND_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      await logout();
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
