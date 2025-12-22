@@ -1,0 +1,401 @@
+/* Enhanced Design System */
+
+/* Card Enhancements */
+.stat-card {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.stat-card:hover::before {
+  opacity: 1;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 8px 24px -4px rgba(0, 0, 0, 0.6);
+}
+
+/* Profit/Loss Glow Enhancement */
+.profit-card {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, transparent 100%);
+  border: 1px solid rgba(16, 185, 129, 0.2) !important;
+}
+
+.profit-card:hover {
+  box-shadow:
+    0 0 30px -8px rgba(16, 185, 129, 0.4),
+    0 8px 24px -4px rgba(0, 0, 0, 0.6);
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.loss-card {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.03) 0%, transparent 100%);
+  border: 1px solid rgba(239, 68, 68, 0.2) !important;
+}
+
+.loss-card:hover {
+  box-shadow:
+    0 0 30px -8px rgba(239, 68, 68, 0.4),
+    0 8px 24px -4px rgba(0, 0, 0, 0.6);
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Table Enhancements */
+.enhanced-table tbody tr {
+  border-bottom: 1px solid rgba(39, 39, 42, 0.5);
+  transition: all 0.2s ease;
+}
+
+.enhanced-table tbody tr:hover {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border-bottom-color: rgba(16, 185, 129, 0.3);
+}
+
+.enhanced-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.enhanced-table thead th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Chart Container Enhancement */
+.chart-container {
+  position: relative;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(24, 24, 27, 0.8) 0%, rgba(24, 24, 27, 0.95) 100%);
+  backdrop-filter: blur(10px);
+}
+
+.chart-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0.5rem;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Button Enhancements */
+.btn-primary-enhanced {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-primary-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.1);
+  transform: translate(-50%, -50%);
+  transition:
+    width 0.6s,
+    height 0.6s;
+}
+
+.btn-primary-enhanced:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.btn-primary-enhanced:active {
+  transform: scale(0.98);
+}
+
+/* Calendar Day Enhancement */
+.calendar-day {
+  position: relative;
+  overflow: hidden;
+}
+
+.calendar-day::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.calendar-day:hover::after {
+  opacity: 0.5;
+}
+
+/* Sidebar Enhancement */
+.sidebar-nav-item {
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: #10b981;
+  border-radius: 0 3px 3px 0;
+  transition: height 0.3s ease;
+}
+
+.sidebar-nav-item.active::before {
+  height: 60%;
+}
+
+.sidebar-nav-item:hover {
+  padding-left: 1rem;
+}
+
+/* Number Animation */
+@keyframes countUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stat-number {
+  animation: countUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Pulse Glow Effect */
+@keyframes pulseGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px -5px rgba(16, 185, 129, 0.5);
+  }
+}
+
+.profit-highlight {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+/* Form Input Enhancement */
+.input-enhanced {
+  transition: all 0.3s ease;
+}
+
+.input-enhanced:focus {
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.1),
+    0 0 20px -5px rgba(16, 185, 129, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Badge Enhancement */
+.badge-enhanced {
+  position: relative;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  border: 1px solid currentColor;
+  border-opacity: 0.3;
+  transition: all 0.2s ease;
+}
+
+.badge-enhanced:hover {
+  transform: scale(1.05);
+  border-opacity: 0.6;
+}
+
+/* Loading Skeleton Enhancement */
+@keyframes shimmerEnhanced {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton-enhanced {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmerEnhanced 2s infinite;
+}
+
+/* Tooltip Enhancement */
+.tooltip-enhanced {
+  background: rgba(24, 24, 27, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 20px -5px rgba(16, 185, 129, 0.2);
+}
+
+/* Scrollbar Enhancement */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(24, 24, 27, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.3);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.5);
+}
+
+/* Selection Enhancement */
+::selection {
+  background: rgba(16, 185, 129, 0.3);
+  color: #fafafa;
+}
+
+/* Focus Visible Enhancement */
+:focus-visible {
+  outline: 2px solid rgba(16, 185, 129, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Glass Panel Effect */
+.glass-panel {
+  background: rgba(24, 24, 27, 0.6);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  z-index: 1;
+}
+
+/* Enhanced Table Styles */
+.enhanced-table {
+  position: relative;
+  z-index: 1;
+}
+
+.enhanced-table thead {
+  position: sticky;
+  top: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Divider Enhancement */
+.divider-glow {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3), transparent);
+}
+
+/* Icon Rotation on Hover */
+.icon-rotate:hover {
+  transform: rotate(180deg);
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Smooth Appear Animation */
+@keyframes smoothAppear {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.smooth-appear {
+  animation: smoothAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Stagger Animation for Lists */
+.stagger-item {
+  animation: smoothAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+.stagger-item:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.stagger-item:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.stagger-item:nth-child(3) {
+  animation-delay: 0.15s;
+}
+.stagger-item:nth-child(4) {
+  animation-delay: 0.2s;
+}
+.stagger-item:nth-child(5) {
+  animation-delay: 0.25s;
+}
+.stagger-item:nth-child(6) {
+  animation-delay: 0.3s;
+}
+.stagger-item:nth-child(7) {
+  animation-delay: 0.35s;
+}
+.stagger-item:nth-child(8) {
+  animation-delay: 0.4s;
+}
