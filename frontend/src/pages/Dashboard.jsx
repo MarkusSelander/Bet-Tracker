@@ -46,13 +46,13 @@ export default function Dashboard() {
           fetch(`${BACKEND_URL}/api/bets/recent?limit=10`, { credentials: 'include' }),
         ]);
 
-        const statsData = await statsRes.json();
-        const chartDataRes = await chartRes.json();
-        const recentBetsData = await recentBetsRes.json();
+        const statsData = statsRes.ok ? await statsRes.json() : null;
+        const chartDataRes = chartRes.ok ? await chartRes.json() : null;
+        const recentBetsData = recentBetsRes.ok ? await recentBetsRes.json() : null;
 
         setStats(statsData);
-        setChartData(chartDataRes);
-        setRecentBets(recentBetsData);
+        setChartData(Array.isArray(chartDataRes) ? chartDataRes : []);
+        setRecentBets(Array.isArray(recentBetsData) ? recentBetsData : []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Failed to load dashboard data');
