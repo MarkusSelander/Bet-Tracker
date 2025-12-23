@@ -20,7 +20,9 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       try {
         if (!BACKEND_URL) {
-          throw new Error('REACT_APP_BACKEND_URL is not defined');
+          console.error('REACT_APP_BACKEND_URL is not defined');
+          setLoading(false);
+          return;
         }
 
         const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
@@ -28,59 +30,88 @@ export const AuthProvider = ({ children }) => {
         });
 
         if (!response.ok) {
-          // Clear user state on auth failure (401, 403, etc.)
-          setUser(null);
+          // Only clear user on explicit auth failure (401, 403)
+          if (response.status === 401 || response.status === 403) {
+            setUser(null);
+          }
+          // Don't clear user on network errors or server errors (5xx)
           return;
         }
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Non-JSON response from /me');
+          console.error('Non-JSON response from /me');
+          return;
         }
 
         const userData = await response.json();
         setUser(userData);
       } catch (error) {
         console.error('Auth check failed:', error);
-        setUser(null);
+        // Don't clear user on network errors - they might be temporary
       } finally {
-        setLoading(false);
+        // Only set loading to false on initial load
+        if (loading) {
+          setLoading(false);
+        }
       }
     };
 
     checkAuth();
 
-    // Periodically re-validate session (every 5 minutes) to prevent unexpected logouts
-    const interval = setInterval(checkAuth, 5 * 60 * 1000);
+    // Periodically re-validate session (every 5 minutes)
+    // This won't kick users out on network errors
+    const interval = setInterval(
+      () => {
+        if (user) {
+          // Only recheck if user is logged in
+          checkAuth();
+        }
+      },
+      5 * 60 * 1000
+    );
 
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]); // Only re-run when user changes
 
   const register = async (email, password, name) => {
     if (!BACKEND_URL) {
       throw new Error('REACT_APP_BACKEND_URL is not defined');
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password, name }),
-    });
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, name }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Registration failed');
+      if (!response.ok) {
+        let errorMessage = 'Registrering feilet';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          // If response is not JSON, use status text
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Ugyldig svar fra serveren');
+      }
+
+      const userData = await response.json();
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      console.error('Registration error details:', error);
+      throw error;
     }
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Invalid registration response');
-    }
-
-    const userData = await response.json();
-    setUser(userData);
-    return userData;
   };
 
   const login = async (email, password) => {
@@ -88,26 +119,37 @@ export const AuthProvider = ({ children }) => {
       throw new Error('REACT_APP_BACKEND_URL is not defined');
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Login failed');
+      if (!response.ok) {
+        let errorMessage = 'Innlogging feilet';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch {
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Ugyldig svar fra serveren');
+      }
+
+      const userData = await response.json();
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      console.error('Login error details:', error);
+      throw error;
     }
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Invalid login response');
-    }
-
-    const userData = await response.json();
-    setUser(userData);
-    return userData;
   };
 
   const logout = async () => {
