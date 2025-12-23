@@ -156,7 +156,15 @@ export default function BetsPage() {
           body: JSON.stringify(formData),
         });
 
-        if (!response.ok) throw new Error('Failed to update bet');
+        if (!response.ok) {
+          if (response.status === 401) {
+            toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+            window.location.href = '/login';
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || 'Failed to update bet');
+        }
         toast.success('Bet updated successfully');
       } else {
         const response = await fetch(`${BACKEND_URL}/api/bets`, {
@@ -170,7 +178,15 @@ export default function BetsPage() {
           }),
         });
 
-        if (!response.ok) throw new Error('Failed to create bet');
+        if (!response.ok) {
+          if (response.status === 401) {
+            toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+            window.location.href = '/login';
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || 'Failed to create bet');
+        }
         toast.success('Bet added successfully');
       }
 
@@ -179,7 +195,7 @@ export default function BetsPage() {
       fetchData();
     } catch (error) {
       console.error('Error saving bet:', error);
-      toast.error('Failed to save bet');
+      toast.error(error.message || 'Failed to save bet');
     }
   };
 

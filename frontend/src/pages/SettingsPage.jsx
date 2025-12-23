@@ -79,7 +79,15 @@ export default function SettingsPage() {
           body: JSON.stringify({ csv_data: csvData }),
         });
 
-        if (!response.ok) throw new Error('Failed to import bets');
+        if (!response.ok) {
+          if (response.status === 401) {
+            toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+            window.location.href = '/login';
+            return;
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || 'Failed to import bets');
+        }
 
         const result = await response.json();
         toast.success(`Successfully imported ${result.imported} bets`);
