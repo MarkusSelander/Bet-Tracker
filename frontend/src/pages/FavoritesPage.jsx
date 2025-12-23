@@ -36,7 +36,7 @@ const FavoritesPage = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setFavoriteTeams(data);
+        setFavoriteTeams(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error('Error fetching favorites:', error);
@@ -52,7 +52,16 @@ const FavoritesPage = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setUpcomingMatches(data);
+        // Ensure upcomingMatches is an object with array values
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          const validatedData = {};
+          Object.entries(data).forEach(([key, value]) => {
+            validatedData[key] = Array.isArray(value) ? value : [];
+          });
+          setUpcomingMatches(validatedData);
+        } else {
+          setUpcomingMatches({});
+        }
       }
     } catch (error) {
       console.error('Error fetching matches:', error);

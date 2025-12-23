@@ -23,8 +23,8 @@ export default function TipstersPage() {
       const response = await fetch(`${BACKEND_URL}/api/tipsters`, {
         credentials: 'include',
       });
-      const data = await response.json();
-      setTipsters(data);
+      const data = response.ok ? await response.json() : null;
+      setTipsters(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching tipsters:', error);
       toast.error('Failed to load tipsters');

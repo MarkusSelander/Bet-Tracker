@@ -78,19 +78,19 @@ export default function AnalyticsPage() {
           }),
         ]);
 
-        const statsData = await statsRes.json();
-        const chartDataRes = await chartRes.json();
-        const bookieData = await bookieRes.json();
-        const tipsterData = await tipsterRes.json();
-        const sportData = await sportRes.json();
-        const oddsData = await oddsRes.json();
+        const statsData = statsRes.ok ? await statsRes.json() : null;
+        const chartDataRes = chartRes.ok ? await chartRes.json() : null;
+        const bookieData = bookieRes.ok ? await bookieRes.json() : null;
+        const tipsterData = tipsterRes.ok ? await tipsterRes.json() : null;
+        const sportData = sportRes.ok ? await sportRes.json() : null;
+        const oddsData = oddsRes.ok ? await oddsRes.json() : null;
 
         setStats(statsData);
-        setChartData(chartDataRes);
-        setBookieStats(bookieData);
-        setTipsterStats(tipsterData);
-        setSportStats(sportData);
-        setOddsRangeStats(oddsData);
+        setChartData(Array.isArray(chartDataRes) ? chartDataRes : []);
+        setBookieStats(Array.isArray(bookieData) ? bookieData : []);
+        setTipsterStats(Array.isArray(tipsterData) ? tipsterData : []);
+        setSportStats(Array.isArray(sportData) ? sportData : []);
+        setOddsRangeStats(Array.isArray(oddsData) ? oddsData : []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Failed to load analytics data');

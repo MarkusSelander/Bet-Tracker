@@ -42,12 +42,14 @@ export default function CalendarPage() {
         credentials: 'include',
       });
 
-      const data = await response.json();
+      const data = response.ok ? await response.json() : null;
       // Convert array to object keyed by date
       const dataObj = {};
-      data.forEach((item) => {
-        dataObj[item.date] = item;
-      });
+      if (Array.isArray(data)) {
+        data.forEach((item) => {
+          dataObj[item.date] = item;
+        });
+      }
       setCalendarData(dataObj);
     } catch (error) {
       console.error('Error fetching calendar data:', error);

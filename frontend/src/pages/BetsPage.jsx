@@ -71,13 +71,13 @@ export default function BetsPage() {
         fetch(`${BACKEND_URL}/api/tipsters`, { credentials: 'include' }),
       ]);
 
-      const betsData = await betsRes.json();
-      const bookmakersData = await bookmakersRes.json();
-      const tipstersData = await tipstersRes.json();
+      const betsData = betsRes.ok ? await betsRes.json() : null;
+      const bookmakersData = bookmakersRes.ok ? await bookmakersRes.json() : null;
+      const tipstersData = tipstersRes.ok ? await tipstersRes.json() : null;
 
-      setBets(betsData);
-      setBookmakers(bookmakersData);
-      setTipsters(tipstersData);
+      setBets(Array.isArray(betsData) ? betsData : []);
+      setBookmakers(Array.isArray(bookmakersData) ? bookmakersData : []);
+      setTipsters(Array.isArray(tipstersData) ? tipstersData : []);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load bets');

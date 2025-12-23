@@ -23,8 +23,8 @@ export default function BookmakersPage() {
       const response = await fetch(`${BACKEND_URL}/api/bookmakers`, {
         credentials: 'include',
       });
-      const data = await response.json();
-      setBookmakers(data);
+      const data = response.ok ? await response.json() : null;
+      setBookmakers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching bookmakers:', error);
       toast.error('Failed to load bookmakers');
