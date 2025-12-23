@@ -16,20 +16,29 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check auth status ONCE on mount
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        if (!BACKEND_URL) {
+          throw new Error('REACT_APP_BACKEND_URL is not defined');
+        }
+
         const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
           credentials: 'include',
         });
 
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-        } else {
+        if (!response.ok) {
           setUser(null);
+          return;
         }
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Non-JSON response from /me');
+        }
+
+        const userData = await response.json();
+        setUser(userData);
       } catch (error) {
         console.error('Auth check failed:', error);
         setUser(null);
@@ -39,20 +48,27 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuth();
-  }, []); // Empty dependency array - only run once on mount
+  }, []);
 
   const login = async (email, password) => {
+    if (!BACKEND_URL) {
+      throw new Error('REACT_APP_BACKEND_URL is not defined');
+    }
+
     const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
       throw new Error('Login failed');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Invalid login response');
     }
 
     const userData = await response.json();
@@ -62,10 +78,12 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await fetch(`${BACKEND_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
+      if (BACKEND_URL) {
+        await fetch(`${BACKEND_URL}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      }
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -73,12 +91,5 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const value = {
-    user,
-    loading,
-    login,
-    logout,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
 };
