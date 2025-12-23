@@ -11,6 +11,7 @@ import CalendarPage from './pages/CalendarPage';
 import Dashboard from './pages/Dashboard';
 import FavoritesPage from './pages/FavoritesPage';
 import Login from './pages/Login';
+import Register from './pages/Register';
 import SettingsPage from './pages/SettingsPage';
 import TipstersPage from './pages/TipstersPage';
 
@@ -21,6 +22,7 @@ function App() {
         <Toaster position="top-right" />
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route
             element={
               <ProtectedRoute>

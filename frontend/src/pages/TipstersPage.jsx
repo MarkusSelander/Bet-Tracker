@@ -50,7 +50,12 @@ export default function TipstersPage() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        if (response.status === 401) {
+          toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+          window.location.href = '/login';
+          return;
+        }
+        const error = await response.json().catch(() => ({}));
         throw new Error(error.detail || 'Failed to add tipster');
       }
 
@@ -73,7 +78,14 @@ export default function TipstersPage() {
         credentials: 'include',
       });
 
-      if (!response.ok) throw new Error('Failed to delete tipster');
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+          window.location.href = '/login';
+          return;
+        }
+        throw new Error('Failed to delete tipster');
+      }
 
       toast.success('Tipster deleted successfully');
       fetchTipsters();

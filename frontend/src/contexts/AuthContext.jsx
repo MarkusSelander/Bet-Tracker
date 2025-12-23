@@ -28,6 +28,7 @@ export const AuthProvider = ({ children }) => {
         });
 
         if (!response.ok) {
+          // Clear user state on auth failure (401, 403, etc.)
           setUser(null);
           return;
         }
@@ -48,7 +49,39 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuth();
+
+    // Periodically re-validate session (every 5 minutes) to prevent unexpected logouts
+    const interval = setInterval(checkAuth, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  const register = async (email, password, name) => {
+    if (!BACKEND_URL) {
+      throw new Error('REACT_APP_BACKEND_URL is not defined');
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password, name }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Registration failed');
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Invalid registration response');
+    }
+
+    const userData = await response.json();
+    setUser(userData);
+    return userData;
+  };
 
   const login = async (email, password) => {
     if (!BACKEND_URL) {
@@ -63,7 +96,8 @@ export const AuthProvider = ({ children }) => {
     });
 
     if (!response.ok) {
-      throw new Error('Login failed');
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Login failed');
     }
 
     const contentType = response.headers.get('content-type');
@@ -91,5 +125,5 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, login, logout, register }}>{children}</AuthContext.Provider>;
 };

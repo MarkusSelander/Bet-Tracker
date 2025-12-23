@@ -7,11 +7,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import bcrypt
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -456,6 +457,17 @@ class User(BaseModel):
     created_at: datetime
 
 
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    name: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
 class UserSession(BaseModel):
     model_config = ConfigDict(extra="ignore")
     user_id: str
@@ -545,6 +557,15 @@ class FavoriteTeamCreate(BaseModel):
 # Auth Helper
 
 
+def is_production() -> bool:
+    """Check if we're running in production (HTTPS environment)"""
+    return (
+        os.environ.get('ENVIRONMENT') == 'production' or
+        os.environ.get('VERCEL') == '1' or
+        'render.com' in os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
+    )
+
+
 async def get_current_user(request: Request) -> str:
     session_token = request.cookies.get("session_token")
     if not session_token:
@@ -565,6 +586,8 @@ async def get_current_user(request: Request) -> str:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
+        # Clean up expired session
+        await db.user_sessions.delete_one({"session_token": session_token})
         raise HTTPException(status_code=401, detail="Session expired")
 
     return session_doc["user_id"]
@@ -572,32 +595,36 @@ async def get_current_user(request: Request) -> str:
 # Auth Routes
 
 
-@api_router.post("/auth/login")
-async def login(request: Request, response: Response):
-    body = await request.json()
-    email = body.get("email")
-    password = body.get("password")
+@api_router.post("/auth/register")
+async def register(request: Request, response: Response, user_data: UserRegister):
+    # Check if user already exists
+    existing_user = await db.users.find_one({"email": user_data.email}, {"_id": 0})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
 
-    if not email or not password:
+    # Validate password strength
+    if len(user_data.password) < 8:
         raise HTTPException(
-            status_code=400, detail="Email and password required")
+            status_code=400, detail="Password must be at least 8 characters long")
 
-    # Check if user exists
-    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+    # Hash password
+    password_hash = bcrypt.hashpw(user_data.password.encode(
+        'utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    if not existing_user:
-        # Auto-create user on first login (demo mode)
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": email.split("@")[0].title(),
-            "picture": None,
-            "currency": "USD",
-            "created_at": datetime.now(timezone.utc)
-        })
-    else:
-        user_id = existing_user["user_id"]
+    # Create user
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    name = user_data.name if user_data.name else user_data.email.split(
+        "@")[0].title()
+
+    await db.users.insert_one({
+        "user_id": user_id,
+        "email": user_data.email,
+        "name": name,
+        "password_hash": password_hash,
+        "picture": None,
+        "currency": "USD",
+        "created_at": datetime.now(timezone.utc)
+    })
 
     # Create session
     session_token = f"session_{uuid.uuid4().hex}"
@@ -614,20 +641,66 @@ async def login(request: Request, response: Response):
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
-        samesite="lax",
+        secure=is_production(),
+        samesite="none" if is_production() else "lax",
         max_age=7 * 24 * 60 * 60,
         path="/"
     )
 
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return user_doc
+
+
+@api_router.post("/auth/login")
+async def login(request: Request, response: Response, user_data: UserLogin):
+    # Find user
+    user_doc = await db.users.find_one({"email": user_data.email}, {"_id": 0})
+    if not user_doc:
+        raise HTTPException(
+            status_code=401, detail="Invalid email or password")
+
+    # Check if user has password_hash (old demo users might not have one)
+    if "password_hash" not in user_doc:
+        raise HTTPException(
+            status_code=401, detail="Account needs to be reset. Please register again.")
+
+    # Verify password
+    if not bcrypt.checkpw(user_data.password.encode('utf-8'), user_doc["password_hash"].encode('utf-8')):
+        raise HTTPException(
+            status_code=401, detail="Invalid email or password")
+
+    user_id = user_doc["user_id"]
+
+    # Create session
+    session_token = f"session_{uuid.uuid4().hex}"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+    await db.user_sessions.insert_one({
+        "user_id": user_id,
+        "session_token": session_token,
+        "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc)
+    })
+
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=is_production(),
+        samesite="none" if is_production() else "lax",
+        max_age=7 * 24 * 60 * 60,
+        path="/"
+    )
+
+    # Return user without password_hash
+    user_doc.pop("password_hash", None)
     return user_doc
 
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     user_id = await get_current_user(request)
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
     return user_doc
@@ -638,7 +711,13 @@ async def logout(request: Request, response: Response):
     session_token = request.cookies.get("session_token")
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
-    response.delete_cookie("session_token", path="/")
+
+    response.delete_cookie(
+        "session_token",
+        path="/",
+        secure=is_production(),
+        samesite="none" if is_production() else "lax"
+    )
     return {"message": "Logged out"}
 
 
@@ -1517,10 +1596,20 @@ async def search_teams(request: Request, query: str, sport: Optional[str] = None
             return []
 
 
+# CORS configuration
+cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+if cors_origins_env:
+    # Split by comma and strip whitespace
+    cors_origins = [origin.strip()
+                    for origin in cors_origins_env.split(',') if origin.strip()]
+else:
+    # Default to allowing all origins (only for development)
+    cors_origins = ['*']
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

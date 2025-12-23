@@ -7,11 +7,13 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function Login() {
+export default function Register() {
   const navigate = useNavigate();
-  const { user, loading, login } = useAuth();
+  const { user, loading, register } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Show loader while checking auth state
@@ -31,23 +33,33 @@ export default function Login() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const handleLogin = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      toast.error('Vennligst fyll ut email og passord');
+    if (!email || !password || !confirmPassword) {
+      toast.error('Vennligst fyll ut alle felt');
+      return;
+    }
+
+    if (password.length < 8) {
+      toast.error('Passordet må være minst 8 tegn');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error('Passordene stemmer ikke overens');
       return;
     }
 
     setSubmitting(true);
 
     try {
-      await login(email, password);
-      toast.success('Logget inn!');
+      await register(email, password, name || undefined);
+      toast.success('Konto opprettet!');
       navigate('/dashboard', { replace: true });
     } catch (error) {
-      console.error('Login error:', error);
-      toast.error(error.message || 'Innlogging feilet');
+      console.error('Registration error:', error);
+      toast.error(error.message || 'Registrering feilet');
     } finally {
       setSubmitting(false);
     }
@@ -75,51 +87,80 @@ export default function Login() {
             </div>
 
             <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
-            <p className="text-text-secondary text-center mb-8">
-              Track your bets, analyze performance, maximize profits
-            </p>
+            <p className="text-text-secondary text-center mb-8">Opprett en konto for å komme i gang</p>
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Navn (valgfritt)</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Ditt navn"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="bg-black/20 border-white/10"
+                  disabled={submitting}
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder="din@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-black/20 border-white/10"
                   disabled={submitting}
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Passord</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Enter any password"
+                  placeholder="Minst 8 tegn"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-black/20 border-white/10"
                   disabled={submitting}
+                  required
+                  minLength={8}
+                />
+                <p className="text-xs text-text-muted">Passordet må være minst 8 tegn langt</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Bekreft passord</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  placeholder="Gjenta passordet"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="bg-black/20 border-white/10"
+                  disabled={submitting}
+                  required
                 />
               </div>
 
               <Button
-                data-testid="login-btn"
+                data-testid="register-btn"
                 type="submit"
                 disabled={submitting}
                 className="w-full bg-primary hover:bg-primary/90 text-black font-bold py-6 shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all"
               >
-                {submitting ? 'Logger inn...' : 'Logg inn'}
+                {submitting ? 'Oppretter konto...' : 'Opprett konto'}
               </Button>
             </form>
 
             <p className="text-xs text-text-muted text-center mt-6">
-              Har du ikke en konto?{' '}
-              <Link to="/register" className="text-primary hover:underline font-medium">
-                Registrer deg
+              Har du allerede en konto?{' '}
+              <Link to="/login" className="text-primary hover:underline font-medium">
+                Logg inn
               </Link>
             </p>
           </div>
@@ -128,3 +169,4 @@ export default function Login() {
     </div>
   );
 }
+

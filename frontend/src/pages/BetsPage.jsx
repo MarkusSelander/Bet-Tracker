@@ -226,7 +226,15 @@ export default function BetsPage() {
         credentials: 'include',
       });
 
-      if (!response.ok) throw new Error('Failed to delete bet');
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
+          window.location.href = '/login';
+          return;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to delete bet');
+      }
       toast.success('Bet deleted successfully');
       fetchData();
     } catch (error) {
