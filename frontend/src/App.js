@@ -9,7 +9,6 @@ import BetsPage from './pages/BetsPage';
 import BookmakersPage from './pages/BookmakersPage';
 import CalendarPage from './pages/CalendarPage';
 import Dashboard from './pages/Dashboard';
-import FavoritesPage from './pages/FavoritesPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import SettingsPage from './pages/SettingsPage';
@@ -37,7 +36,6 @@ function App() {
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/teams" element={<TeamsPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="/tipsters" element={<TipstersPage />} />
             <Route path="/bookmakers" element={<BookmakersPage />} />
             <Route path="/settings" element={<SettingsPage />} />

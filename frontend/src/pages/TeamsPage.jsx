@@ -219,7 +219,7 @@ export default function TeamsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold mb-1">Teams & Fixtures</h1>
+        <h1 className="mb-1 text-2xl font-bold">Teams & Fixtures</h1>
         <p className="text-xs text-text-secondary">Search for teams, add favorites, and view upcoming matches</p>
       </div>
 
@@ -227,7 +227,7 @@ export default function TeamsPage() {
       <Card className="p-6">
         <div className="space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+            <Search className="absolute w-4 h-4 -translate-y-1/2 left-3 top-1/2 text-text-secondary" />
             <Input
               type="text"
               placeholder="Search for teams (e.g., Manchester United, Lakers)..."
@@ -238,33 +238,33 @@ export default function TeamsPage() {
           </div>
 
           {/* Search Results */}
-          {loadingSearch && <div className="text-center py-8 text-text-secondary">Searching...</div>}
+          {loadingSearch && <div className="py-8 text-center text-text-secondary">Searching...</div>}
 
           {!loadingSearch && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
-            <div className="text-center py-8 text-text-secondary">No teams found for &ldquo;{searchQuery}&rdquo;</div>
+            <div className="py-8 text-center text-text-secondary">No teams found for &ldquo;{searchQuery}&rdquo;</div>
           )}
 
           {!loadingSearch && searchResults.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-medium text-text-secondary">Search Results ({searchResults.length})</h3>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 overflow-y-auto max-h-96">
                 {searchResults.map((team) => (
                   <div
                     key={team.team_id}
                     className="flex items-center justify-between p-3 bg-[#18181B] border border-[#27272A] rounded-lg hover:border-[#3F3F46] transition-colors"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center flex-1 min-w-0 gap-3">
                       {team.team_badge && (
                         <img
                           src={team.team_badge}
                           alt={team.team_name}
-                          className="w-10 h-10 object-contain flex-shrink-0"
+                          className="flex-shrink-0 object-contain w-10 h-10"
                           onError={(e) => {
                             e.target.style.display = 'none';
                           }}
                         />
                       )}
-                      <div className="min-w-0 flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{team.team_name}</div>
                         <div className="text-xs text-text-secondary">
                           {team.league || team.sport}
@@ -291,37 +291,37 @@ export default function TeamsPage() {
 
       {/* Favorites Section */}
       <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Heart className="h-5 w-5" />
+        <h2 className="flex items-center gap-2 mb-4 text-lg font-semibold">
+          <Heart className="w-5 h-5" />
           Favorite Teams
         </h2>
 
-        {loadingFavorites && <div className="text-center py-8 text-text-secondary">Loading favorites...</div>}
+        {loadingFavorites && <div className="py-8 text-center text-text-secondary">Loading favorites...</div>}
 
         {!loadingFavorites && favorites.length === 0 && (
-          <div className="text-center py-8 text-text-secondary">No favorite teams yet. Search and add teams above!</div>
+          <div className="py-8 text-center text-text-secondary">No favorite teams yet. Search and add teams above!</div>
         )}
 
         {!loadingFavorites && favorites.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {favorites.map((team) => (
               <div
                 key={team.team_id}
                 className="p-4 bg-[#18181B] border border-[#27272A] rounded-lg hover:border-[#3F3F46] transition-colors"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex items-center flex-1 min-w-0 gap-3">
                     {team.team_badge && (
                       <img
                         src={team.team_badge}
                         alt={team.team_name}
-                        className="w-12 h-12 object-contain flex-shrink-0"
+                        className="flex-shrink-0 object-contain w-12 h-12"
                         onError={(e) => {
                           e.target.style.display = 'none';
                         }}
                       />
                     )}
-                    <div className="min-w-0 flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{team.team_name}</div>
                       <div className="text-xs text-text-secondary">{team.league || team.sport}</div>
                     </div>
@@ -332,7 +332,7 @@ export default function TeamsPage() {
                     onClick={() => removeFromFavorites(team.team_id, team.team_name)}
                     className="flex-shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
@@ -344,15 +344,15 @@ export default function TeamsPage() {
       {/* Fixtures Section */}
       {favorites.length > 0 && (
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
+          <h2 className="flex items-center gap-2 mb-4 text-lg font-semibold">
+            <Calendar className="w-5 h-5" />
             Upcoming Fixtures
           </h2>
 
-          {loadingFixtures && <div className="text-center py-8 text-text-secondary">Loading fixtures...</div>}
+          {loadingFixtures && <div className="py-8 text-center text-text-secondary">Loading fixtures...</div>}
 
           {!loadingFixtures && Object.keys(fixtures).length === 0 && (
-            <div className="text-center py-8 text-text-secondary">
+            <div className="py-8 text-center text-text-secondary">
               No upcoming fixtures found for your favorite teams
             </div>
           )}
@@ -363,19 +363,19 @@ export default function TeamsPage() {
                 .sort(([dateA], [dateB]) => new Date(dateA) - new Date(dateB))
                 .map(([date, dateFixtures]) => (
                   <div key={date}>
-                    <h3 className="text-sm font-medium text-text-secondary mb-3">{formatFixtureDate(date)}</h3>
+                    <h3 className="mb-3 text-sm font-medium text-text-secondary">{formatFixtureDate(date)}</h3>
                     <div className="space-y-2">
                       {Array.isArray(dateFixtures) &&
                         dateFixtures.map((fixture) => (
                           <div key={fixture.fixture_id} className="p-4 bg-[#18181B] border border-[#27272A] rounded-lg">
                             <div className="flex items-center justify-between gap-4">
                               {/* Home Team */}
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <div className="flex items-center flex-1 min-w-0 gap-2">
                                 {fixture.home_team_badge && (
                                   <img
                                     src={fixture.home_team_badge}
                                     alt={fixture.home_team_name}
-                                    className="w-8 h-8 object-contain flex-shrink-0"
+                                    className="flex-shrink-0 object-contain w-8 h-8"
                                     onError={(e) => {
                                       e.target.style.display = 'none';
                                     }}
@@ -385,16 +385,16 @@ export default function TeamsPage() {
                               </div>
 
                               {/* VS */}
-                              <div className="text-xs text-text-secondary flex-shrink-0">VS</div>
+                              <div className="flex-shrink-0 text-xs text-text-secondary">VS</div>
 
                               {/* Away Team */}
-                              <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
+                              <div className="flex items-center justify-end flex-1 min-w-0 gap-2">
                                 <span className="font-medium truncate">{fixture.away_team_name}</span>
                                 {fixture.away_team_badge && (
                                   <img
                                     src={fixture.away_team_badge}
                                     alt={fixture.away_team_name}
-                                    className="w-8 h-8 object-contain flex-shrink-0"
+                                    className="flex-shrink-0 object-contain w-8 h-8"
                                     onError={(e) => {
                                       e.target.style.display = 'none';
                                     }}

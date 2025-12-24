@@ -21,7 +21,6 @@ const navItems = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/teams', icon: Shield, label: 'Teams & Fixtures' },
-  { to: '/favorites', icon: Star, label: 'Favorites' },
   { to: '/tipsters', icon: Users, label: 'Tipsters' },
   { to: '/bookmakers', icon: Briefcase, label: 'Bookmakers' },
   { to: '/settings', icon: Settings, label: 'Settings' },
