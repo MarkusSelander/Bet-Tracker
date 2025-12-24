@@ -8,6 +8,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import BetsPage from './pages/BetsPage';
 import BookmakersPage from './pages/BookmakersPage';
 import CalendarPage from './pages/CalendarPage';
+import CoolbetImportPage from './pages/CoolbetImportPage';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -39,6 +40,7 @@ function App() {
             <Route path="/tipsters" element={<TipstersPage />} />
             <Route path="/bookmakers" element={<BookmakersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/import/coolbet" element={<CoolbetImportPage />} />
           </Route>
         </Routes>
       </AuthProvider>

@@ -523,6 +523,36 @@ class BetUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+# Models for Coolbet bookmarklet import
+class CoolbetImportedBet(BaseModel):
+    """Represents a single bet extracted from Coolbet via bookmarklet"""
+    externalId: str  # Unique identifier from Coolbet (e.g., "coolbet-1430")
+    event: str  # Event/game name (e.g., "Minnesota Timberwolves - New York Knicks")
+    stake: float  # Bet amount
+    odds: float  # Decimal odds
+    result: str  # "won", "lost", or "pending"
+    placedAt: str  # ISO timestamp when bet was placed
+    selection: Optional[str] = None  # What was bet on (e.g., "Total Points Over/Under 230 - Over")
+    betType: Optional[str] = None  # Type of bet (e.g., "single", "combo")
+    sport: Optional[str] = None  # Sport name from SVG data-name (e.g., "basketball")
+    league: Optional[str] = None  # League name (e.g., "NBA")
+    market: Optional[str] = None  # Market type (e.g., "Total Points Over/Under 230")
+    outcome: Optional[str] = None  # Outcome/pick (e.g., "Over")
+
+
+class CoolbetImportRequest(BaseModel):
+    """Request payload for importing Coolbet bets via bookmarklet"""
+    source: str  # Must be "coolbet"
+    bets: List[CoolbetImportedBet]
+
+
+class CoolbetImportResponse(BaseModel):
+    """Response after importing Coolbet bets"""
+    imported: int  # Number of bets successfully imported
+    skipped: int  # Number of duplicates skipped
+    total: int  # Total bets received
+
+
 class Bookmaker(BaseModel):
     model_config = ConfigDict(extra="ignore")
     bookmaker_id: str
@@ -1454,6 +1484,163 @@ async def import_bets(request: Request):
             continue
 
     return {"imported": imported_count}
+
+
+@api_router.post("/bets/import/coolbet", response_model=CoolbetImportResponse)
+async def import_coolbet_bets(request: Request, import_data: CoolbetImportRequest):
+    """
+    Import bets from Coolbet via bookmarklet.
+
+    This endpoint accepts bet data extracted from Coolbet's bet history page
+    by a browser bookmarklet. It validates, normalizes, and stores the bets
+    while preventing duplicates.
+
+    Authentication: Requires valid session token (cookie or Authorization header)
+
+    Returns:
+        CoolbetImportResponse with counts of imported, skipped, and total bets
+    """
+    user_id = await get_current_user(request)
+
+    # Validate source
+    if import_data.source.lower() != "coolbet":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid source. Expected 'coolbet'"
+        )
+
+    if not import_data.bets:
+        raise HTTPException(
+            status_code=400,
+            detail="No bets provided"
+        )
+
+    imported_count = 0
+    skipped_count = 0
+    total_count = len(import_data.bets)
+
+    # Create a compound index for efficient duplicate detection (if not exists)
+    try:
+        await db.imported_bets.create_index(
+            [("user_id", 1), ("external_id", 1), ("source", 1)],
+            unique=True,
+            name="user_external_source_unique"
+        )
+    except Exception:
+        pass  # Index may already exist
+
+    for bet in import_data.bets:
+        try:
+            # Validate result status
+            result_lower = bet.result.lower()
+            if result_lower not in ["won", "lost", "pending"]:
+                logging.warning(
+                    f"Invalid result status '{bet.result}' for bet {bet.externalId}, "
+                    f"defaulting to 'pending'"
+                )
+                result_lower = "pending"
+
+            # Parse timestamp
+            try:
+                placed_at = datetime.fromisoformat(
+                    bet.placedAt.replace('Z', '+00:00'))
+            except Exception as e:
+                logging.error(f"Invalid timestamp '{bet.placedAt}': {e}")
+                # Default to current time if parsing fails
+                placed_at = datetime.now(timezone.utc)
+
+            # Ensure timezone aware
+            if placed_at.tzinfo is None:
+                placed_at = placed_at.replace(tzinfo=timezone.utc)
+
+            # Auto-detect sport from event name if not provided
+            # Prefer the sport from bookmarklet (from SVG icon) if available
+            if bet.sport and bet.sport != 'unknown':
+                detected_sport = bet.sport
+            else:
+                detected_sport = await detect_sport_from_game_async(bet.event)
+
+            # Calculate result value based on status
+            if result_lower == "won":
+                result_value = bet.stake * (bet.odds - 1)  # Profit
+            elif result_lower == "lost":
+                result_value = -bet.stake  # Loss
+            else:
+                result_value = 0.0  # Pending
+
+            # Prepare bet document for imported_bets collection
+            imported_bet_doc = {
+                "user_id": user_id,
+                "source": "coolbet",
+                "external_id": bet.externalId,
+                "event": bet.event,
+                "selection": bet.selection or bet.event,
+                "stake": bet.stake,
+                "odds": bet.odds,
+                "result": result_lower,
+                "bet_type": bet.betType or "single",
+                "sport": detected_sport,
+                "league": bet.league,
+                "market": bet.market,
+                "outcome": bet.outcome,
+                "placed_at": placed_at,
+                "imported_at": datetime.now(timezone.utc)
+            }
+
+            # Try to insert into imported_bets (will fail if duplicate)
+            try:
+                await db.imported_bets.insert_one(imported_bet_doc)
+
+                # Also insert into main bets collection for analytics
+                bet_id = f"bet_{uuid.uuid4().hex[:12]}"
+                bet_doc = {
+                    "bet_id": bet_id,
+                    "user_id": user_id,
+                    "date": placed_at.strftime("%Y-%m-%d"),
+                    "time": placed_at.strftime("%H:%M:%S"),
+                    "game": bet.event,
+                    "bet": bet.selection or bet.event,
+                    "stake": bet.stake,
+                    "odds": bet.odds,
+                    "status": result_lower,
+                    "result": result_value,
+                    "bookie": "Coolbet",
+                    "tipster": None,
+                    "sport": detected_sport,
+                    "notes": f"Imported from Coolbet (ID: {bet.externalId})",
+                    "created_at": datetime.now(timezone.utc)
+                }
+
+                await db.bets.insert_one(bet_doc)
+                imported_count += 1
+
+            except Exception as e:
+                # Check if it's a duplicate key error
+                if "duplicate" in str(e).lower() or "E11000" in str(e):
+                    skipped_count += 1
+                    logging.info(
+                        f"Skipping duplicate bet: user={user_id}, "
+                        f"externalId={bet.externalId}"
+                    )
+                else:
+                    # Re-raise unexpected errors
+                    raise
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logging.error(
+                f"Error importing Coolbet bet {bet.externalId}: {e}",
+                exc_info=True
+            )
+            skipped_count += 1
+            continue
+
+    return CoolbetImportResponse(
+        imported=imported_count,
+        skipped=skipped_count,
+        total=total_count
+    )
 
 
 @api_router.get("/bets/export")

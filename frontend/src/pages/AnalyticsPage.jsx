@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Cell,
   Legend,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,

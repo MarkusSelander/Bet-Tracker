@@ -274,7 +274,7 @@ export default function BetsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-16 h-16 border-4 rounded-full border-primary border-t-transparent animate-spin"></div>
       </div>
     );
   }
@@ -283,7 +283,7 @@ export default function BetsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold mb-2" data-testid="bets-title">
+          <h1 className="mb-2 text-4xl font-bold" data-testid="bets-title">
             Bets
           </h1>
           <p className="text-text-secondary">Manage your betting history</p>
@@ -307,22 +307,22 @@ export default function BetsPage() {
           </DialogTrigger>
           <DialogContent className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A]/50 text-white max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
             <DialogHeader className="border-b border-[#27272A] pb-4 mb-6">
-              <DialogTitle className="text-2xl font-bold flex items-center">
-                <span className="w-1 h-6 bg-gradient-to-b from-primary to-accent rounded-full mr-3"></span>
+              <DialogTitle className="flex items-center text-2xl font-bold">
+                <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-primary to-accent"></span>
                 {editingBet ? 'Edit Bet' : 'Add New Bet'}
               </DialogTitle>
-              <p className="text-text-secondary text-sm mt-2">
+              <p className="mt-2 text-sm text-text-secondary">
                 {editingBet ? 'Update your bet details below' : 'Fill in the details to track your bet'}
               </p>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Match Information Section */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
-                  <span className="w-2 h-2 bg-primary rounded-full mr-2"></span>
+                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
+                  <span className="w-2 h-2 mr-2 rounded-full bg-primary"></span>
                   Match Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="game" className="text-xs font-medium text-text-secondary">
                       Match / Event *
@@ -349,7 +349,7 @@ export default function BetsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="space-y-2">
                     <Label htmlFor="date" className="text-xs font-medium text-text-secondary">
                       Date *
@@ -400,8 +400,8 @@ export default function BetsPage() {
 
               {/* Bet Details Section */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
-                  <span className="w-2 h-2 bg-accent rounded-full mr-2"></span>
+                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
+                  <span className="w-2 h-2 mr-2 rounded-full bg-accent"></span>
                   Bet Details
                 </h3>
                 <div className="space-y-2">
@@ -417,7 +417,7 @@ export default function BetsPage() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="stake" className="text-xs font-medium text-text-secondary">
                       Stake Amount *
@@ -433,7 +433,7 @@ export default function BetsPage() {
                         className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono pl-3 pr-12"
                         required
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">
+                      <span className="absolute text-sm -translate-y-1/2 right-3 top-1/2 text-text-secondary">
                         {currency === 'NOK' ? 'kr' : currency === 'UNITS' ? 'U' : '$'}
                       </span>
                     </div>
@@ -458,11 +458,11 @@ export default function BetsPage() {
 
               {/* Additional Information Section */}
               <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
+                  <span className="w-2 h-2 mr-2 bg-blue-500 rounded-full"></span>
                   Additional Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="bookie" className="text-xs font-medium text-text-secondary">
                       Bookmaker
@@ -574,9 +574,9 @@ export default function BetsPage() {
         </div>
 
         {datePreset === 'custom' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <Label htmlFor="dateFrom" className="text-sm text-text-secondary mb-2 block">
+              <Label htmlFor="dateFrom" className="block mb-2 text-sm text-text-secondary">
                 From Date
               </Label>
               <Input
@@ -588,7 +588,7 @@ export default function BetsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="dateTo" className="text-sm text-text-secondary mb-2 block">
+              <Label htmlFor="dateTo" className="block mb-2 text-sm text-text-secondary">
                 To Date
               </Label>
               <Input
@@ -604,7 +604,7 @@ export default function BetsPage() {
 
         <div className="flex items-center space-x-4">
           <span className="text-sm text-text-secondary">Filter by:</span>
-          <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-4">
             <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
               <SelectTrigger className="bg-black/20 border-white/10">
                 <SelectValue placeholder="Filter by Status" />
@@ -703,7 +703,7 @@ export default function BetsPage() {
             <tbody>
               {filteredBets.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="text-center py-12 text-text-muted">
+                  <td colSpan="10" className="py-12 text-center text-text-muted">
                     No bets found
                   </td>
                 </tr>
@@ -725,7 +725,7 @@ export default function BetsPage() {
                     </td>
                     <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap">{bet.sport || '-'}</td>
                     <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap">{bet.bookie || '-'}</td>
-                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
                       <span
                         className={`badge-enhanced px-1.5 py-0.5 rounded text-[9px] font-medium ${
                           bet.status === 'won'
@@ -748,19 +748,19 @@ export default function BetsPage() {
                       {bet.result >= 0 ? '+' : ''}
                       {formatCurrency(bet.result, currency)}
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex items-center justify-center space-x-2">
                         <button
                           data-testid={`edit-bet-${bet.bet_id}`}
                           onClick={() => handleEdit(bet)}
-                          className="p-2 hover:bg-white/10 rounded transition-colors"
+                          className="p-2 transition-colors rounded hover:bg-white/10"
                         >
                           <Pencil className="w-4 h-4 text-accent" />
                         </button>
                         <button
                           data-testid={`delete-bet-${bet.bet_id}`}
                           onClick={() => handleDelete(bet.bet_id)}
-                          className="p-2 hover:bg-white/10 rounded transition-colors"
+                          className="p-2 transition-colors rounded hover:bg-white/10"
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </button>

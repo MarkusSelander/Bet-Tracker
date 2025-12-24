@@ -2,6 +2,7 @@ import {
   BarChart3,
   Briefcase,
   Calendar,
+  Download,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/teams', icon: Shield, label: 'Teams & Fixtures' },
   { to: '/tipsters', icon: Users, label: 'Tipsters' },
   { to: '/bookmakers', icon: Briefcase, label: 'Bookmakers' },
+  { to: '/import/coolbet', icon: Download, label: 'Import Coolbet' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
