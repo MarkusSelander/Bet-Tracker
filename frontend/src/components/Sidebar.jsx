@@ -7,7 +7,6 @@ import {
   LogOut,
   Settings,
   Shield,
-  Star,
   TrendingUp,
   Users,
 } from 'lucide-react';

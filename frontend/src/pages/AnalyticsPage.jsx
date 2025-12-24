@@ -1,13 +1,14 @@
-import { FileDown } from 'lucide-react';
+import { Calendar, FileDown, TrendingDown, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -17,7 +18,9 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
+import { Calendar as CalendarComponent } from '../components/ui/calendar';
 import { Label } from '../components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { exportAnalyticsToPDF } from '../utils/pdfExport';
 
@@ -29,6 +32,11 @@ const formatCurrency = (value, currency) => {
   return `$${value.toFixed(2)}`;
 };
 
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
+};
+
 export default function AnalyticsPage() {
   const { user } = useOutletContext();
   const [stats, setStats] = useState(null);
@@ -38,42 +46,79 @@ export default function AnalyticsPage() {
   const [sportStats, setSportStats] = useState([]);
   const [oddsRangeStats, setOddsRangeStats] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('90');
+
+  // Period selection
+  const [periodType, setPeriodType] = useState('preset'); // 'preset' or 'custom'
+  const [presetPeriod, setPresetPeriod] = useState('30');
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+
   const [selectedSport, setSelectedSport] = useState('all');
-  const [chartType, setChartType] = useState('line'); // 'line' or 'bar'
-  const [customDateFrom, setCustomDateFrom] = useState('');
-  const [customDateTo, setCustomDateTo] = useState('');
   const currency = user?.currency || 'USD';
 
   // Get available sports from sportStats
-  const availableSports = sportStats.map((s) => s.sport).filter(Boolean);
+  const availableSports = sportStats.map((s) => s.name).filter(Boolean);
+
+  // Preset period options
+  const presetPeriods = [
+    { value: '7', label: 'Last 7 days' },
+    { value: '30', label: 'Last 30 days' },
+    { value: '90', label: 'Last 90 days' },
+    { value: '180', label: 'Last 6 months' },
+    { value: '365', label: 'This year' },
+    { value: '-1', label: 'All time' },
+  ];
+
+  // Get current period label
+  const getCurrentPeriodLabel = () => {
+    if (periodType === 'preset') {
+      const period = presetPeriods.find((p) => p.value === presetPeriod);
+      return period?.label || 'Last 30 days';
+    }
+    if (customStartDate && customEndDate) {
+      return `${customStartDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: 'numeric' })} - ${customEndDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    }
+    return 'Select dates';
+  };
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Determine days parameter
-        let daysParam = dateRange === 'custom' ? 365 : dateRange;
+        setLoading(true);
 
-        // Build sport filter
-        const sportParam = selectedSport !== 'all' ? `&sport=${selectedSport}` : '';
+        // Build query parameters
+        const params = new URLSearchParams();
+
+        if (periodType === 'preset') {
+          params.append('days', presetPeriod);
+        } else if (customStartDate && customEndDate) {
+          params.append('start_date', customStartDate.toISOString().split('T')[0]);
+          params.append('end_date', customEndDate.toISOString().split('T')[0]);
+        }
+
+        if (selectedSport !== 'all') {
+          params.append('sport', selectedSport);
+        }
+
+        const queryString = params.toString();
 
         const [statsRes, chartRes, bookieRes, tipsterRes, sportRes, oddsRes] = await Promise.all([
-          fetch(`${BACKEND_URL}/api/analytics/stats?sport=${selectedSport}`, {
+          fetch(`${BACKEND_URL}/api/analytics/stats?${queryString}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/chart?days=${daysParam}${sportParam}`, {
+          fetch(`${BACKEND_URL}/api/analytics/chart?${queryString}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/bookmakers`, {
+          fetch(`${BACKEND_URL}/api/analytics/bookmakers?${queryString}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/tipsters`, {
+          fetch(`${BACKEND_URL}/api/analytics/tipsters?${queryString}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/sports`, {
+          fetch(`${BACKEND_URL}/api/analytics/sports?${queryString}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/odds-range`, {
+          fetch(`${BACKEND_URL}/api/analytics/odds-range?${queryString}`, {
             credentials: 'include',
           }),
         ]);
@@ -100,12 +145,12 @@ export default function AnalyticsPage() {
     };
 
     fetchData();
-  }, [dateRange, selectedSport]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [presetPeriod, periodType, customStartDate, customEndDate, selectedSport]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-16 h-16 border-4 rounded-full border-primary border-t-transparent animate-spin"></div>
       </div>
     );
   }
@@ -118,56 +163,127 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold mb-2" data-testid="analytics-title">
-            Analytics
-          </h1>
-          <p className="text-text-secondary">Detailed insights into your betting performance</p>
+    <div className="pb-8 space-y-8">
+      {/* Header with gradient */}
+      <div className="relative p-8 overflow-hidden border rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-transparent border-primary/30">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiLz48L3N2Zz4=')] opacity-30"></div>
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h1 className="mb-3 text-5xl font-bold text-transparent bg-gradient-to-r from-white to-white/60 bg-clip-text">
+              Analytics Dashboard
+            </h1>
+            <p className="text-lg text-text-secondary">Advanced insights for {getCurrentPeriodLabel()}</p>
+          </div>
+          <Button
+            onClick={async () => {
+              try {
+                await exportAnalyticsToPDF(stats, bookieStats, tipsterStats, currency);
+                toast.success('Analytics PDF exported successfully');
+              } catch (error) {
+                console.error('PDF export error:', error);
+                toast.error('Failed to export PDF');
+              }
+            }}
+            className="font-bold text-black transition-all duration-300 shadow-lg bg-primary hover:bg-primary/90 shadow-primary/30 hover:shadow-primary/50"
+          >
+            <FileDown className="w-4 h-4 mr-2" />
+            Export PDF
+          </Button>
         </div>
-        <Button
-          onClick={async () => {
-            try {
-              await exportAnalyticsToPDF(stats, bookieStats, tipsterStats, currency);
-              toast.success('Analytics PDF exported successfully');
-            } catch (error) {
-              console.error('PDF export error:', error);
-              toast.error('Failed to export PDF');
-            }
-          }}
-          className="btn-primary-enhanced bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-          data-testid="export-analytics-pdf-btn"
-        >
-          <FileDown className="w-4 h-4 mr-2" />
-          Export PDF
-        </Button>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#18181B] border border-[#27272A] rounded-lg p-4">
-        {/* Date Range Filter */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Date Range</Label>
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-              <SelectItem value="365">Last year</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
-            </SelectContent>
-          </Select>
+      {/* Enhanced Filters Section */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Period Type Selector */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-5 shadow-xl">
+          <Label className="block mb-3 text-sm font-semibold text-white">Period Type</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setPeriodType('preset')}
+              className={`py-2.5 px-4 rounded-lg font-medium transition-all duration-200 ${
+                periodType === 'preset'
+                  ? 'bg-primary text-black shadow-lg shadow-primary/30'
+                  : 'bg-[#27272A] text-text-secondary hover:bg-[#3A3A3F]'
+              }`}
+            >
+              Preset
+            </button>
+            <button
+              onClick={() => setPeriodType('custom')}
+              className={`py-2.5 px-4 rounded-lg font-medium transition-all duration-200 ${
+                periodType === 'custom'
+                  ? 'bg-primary text-black shadow-lg shadow-primary/30'
+                  : 'bg-[#27272A] text-text-secondary hover:bg-[#3A3A3F]'
+              }`}
+            >
+              Custom
+            </button>
+          </div>
         </div>
 
+        {/* Period Selector */}
+        {periodType === 'preset' ? (
+          <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-5 shadow-xl">
+            <Label className="block mb-3 text-sm font-semibold text-white">Select Period</Label>
+            <Select value={presetPeriod} onValueChange={setPresetPeriod}>
+              <SelectTrigger className="bg-[#27272A] border-[#3A3A3F] hover:bg-[#3A3A3F] transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {presetPeriods.map((period) => (
+                  <SelectItem key={period.value} value={period.value}>
+                    {period.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-5 shadow-xl">
+            <Label className="block mb-3 text-sm font-semibold text-white">Custom Date Range</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-left font-normal bg-[#27272A] border-[#3A3A3F] hover:bg-[#3A3A3F]"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  {customStartDate && customEndDate
+                    ? `${customStartDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })} - ${customEndDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}`
+                    : 'Select dates'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="p-4 space-y-4">
+                  <div>
+                    <Label className="block mb-2 text-xs text-text-secondary">Start Date</Label>
+                    <CalendarComponent
+                      mode="single"
+                      selected={customStartDate}
+                      onSelect={setCustomStartDate}
+                      disabled={(date) => date > new Date() || (customEndDate && date > customEndDate)}
+                    />
+                  </div>
+                  <div>
+                    <Label className="block mb-2 text-xs text-text-secondary">End Date</Label>
+                    <CalendarComponent
+                      mode="single"
+                      selected={customEndDate}
+                      onSelect={setCustomEndDate}
+                      disabled={(date) => date > new Date() || (customStartDate && date < customStartDate)}
+                    />
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
+
         {/* Sport Filter */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Sport</Label>
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-5 shadow-xl">
+          <Label className="block mb-3 text-sm font-semibold text-white">Sport Filter</Label>
           <Select value={selectedSport} onValueChange={setSelectedSport}>
-            <SelectTrigger>
+            <SelectTrigger className="bg-[#27272A] border-[#3A3A3F] hover:bg-[#3A3A3F] transition-colors">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -180,444 +296,457 @@ export default function AnalyticsPage() {
             </SelectContent>
           </Select>
         </div>
+      </div>
 
-        {/* Chart Type Toggle */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Chart Type</Label>
-          <Select value={chartType} onValueChange={setChartType}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="line">Line Chart</SelectItem>
-              <SelectItem value="bar">Bar Chart</SelectItem>
-            </SelectContent>
-          </Select>
+      {/* Key Performance Metrics */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Total Profit/Loss */}
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+          <div className="relative">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-text-secondary">Period Result</p>
+              {stats?.total_profit_loss >= 0 ? (
+                <TrendingUp className="w-5 h-5 text-primary" />
+              ) : (
+                <TrendingDown className="w-5 h-5 text-destructive" />
+              )}
+            </div>
+            <p
+              className={`text-4xl font-bold font-mono mb-1 ${
+                stats?.total_profit_loss >= 0 ? 'text-primary' : 'text-destructive'
+              }`}
+            >
+              {stats?.total_profit_loss >= 0 ? '+' : ''}
+              {formatCurrency(stats?.total_profit_loss || 0, currency)}
+            </p>
+            <p className="text-xs text-text-muted">
+              ROI: {stats?.roi >= 0 ? '+' : ''}
+              {(stats?.roi || 0).toFixed(2)}%
+            </p>
+          </div>
         </div>
 
-        {/* Quick Stats Display */}
-        <div className="flex flex-col justify-center">
-          <p className="text-xs text-text-secondary">Showing</p>
-          <p className="text-lg font-bold text-primary">{stats?.total_bets || 0} bets</p>
+        {/* Win Rate */}
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+          <div className="relative">
+            <p className="mb-3 text-sm font-medium text-text-secondary">Win Rate</p>
+            <div className="flex items-baseline gap-2 mb-2">
+              <p className="font-mono text-4xl font-bold text-primary">{(stats?.win_rate || 0).toFixed(1)}%</p>
+            </div>
+            <div className="w-full bg-[#27272A] rounded-full h-2.5 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-primary to-primary/80 h-2.5 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(stats?.win_rate || 0, 100)}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Bets */}
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-accent/5 blur-3xl"></div>
+          <div className="relative">
+            <p className="mb-3 text-sm font-medium text-text-secondary">Total Bets</p>
+            <p className="mb-1 font-mono text-4xl font-bold">{stats?.total_bets || 0}</p>
+            <div className="flex gap-2 text-xs">
+              <span className="text-primary">{stats?.won_count || 0}W</span>
+              <span className="text-destructive">{stats?.lost_count || 0}L</span>
+              <span className="text-text-muted">{stats?.push_count || 0}P</span>
+              <span className="text-accent">{stats?.pending_count || 0} Pending</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Current Streak */}
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+          <div className="relative">
+            <p className="mb-3 text-sm font-medium text-text-secondary">Current Streak</p>
+            <p
+              className={`text-4xl font-bold font-mono mb-1 ${
+                stats?.current_streak_type === 'won'
+                  ? 'text-primary'
+                  : stats?.current_streak_type === 'lost'
+                    ? 'text-destructive'
+                    : 'text-white'
+              }`}
+            >
+              {stats?.current_streak || 0}
+              {stats?.current_streak_type ? (stats.current_streak_type === 'won' ? 'W' : 'L') : ''}
+            </p>
+            <p className="text-xs text-text-muted">
+              Best: {stats?.best_win_streak || 0}W · Worst: {stats?.worst_loss_streak || 0}L
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Average Stake</p>
-          <p className="text-3xl font-bold font-mono">
-            {formatCurrency((stats?.total_stake || 0) / (stats?.total_bets || 1), currency)}
-          </p>
-        </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Win Rate</p>
-          <p className="text-3xl font-bold font-mono text-primary">{(stats?.win_rate || 0).toFixed(1)}%</p>
-        </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Current Streak</p>
-          <p
-            className={`text-3xl font-bold font-mono ${
-              stats?.current_streak_type === 'won'
-                ? 'text-primary'
-                : stats?.current_streak_type === 'lost'
-                  ? 'text-destructive'
-                  : 'text-white'
-            }`}
-          >
-            {stats?.current_streak || 0}{' '}
-            {stats?.current_streak_type ? (stats.current_streak_type === 'won' ? 'W' : 'L') : '-'}
-          </p>
-        </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Best Streak</p>
-          <p className="text-3xl font-bold font-mono text-primary">{stats?.best_win_streak || 0}W</p>
-          <p className="text-xs text-text-muted mt-1">Worst: {stats?.worst_loss_streak || 0}L</p>
-        </div>
-      </div>
-
-      {/* Cumulative P/L Chart */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6">
-          Cumulative Profit/Loss
-          {dateRange === '7' && ' (Last 7 days)'}
-          {dateRange === '30' && ' (Last 30 days)'}
-          {dateRange === '90' && ' (Last 90 days)'}
-          {dateRange === '365' && ' (Last year)'}
-          {dateRange === 'all' && ' (All time)'}
-        </h2>
-        <ResponsiveContainer width="100%" height={400}>
-          {chartType === 'line' ? (
-            <LineChart data={chartData}>
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main Chart - Takes 2 columns */}
+        <div className="lg:col-span-2 bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
+            <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-primary to-accent"></span>
+            Cumulative Performance
+          </h2>
+          <ResponsiveContainer width="100%" height={350}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="colorPL" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-              <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+              <XAxis
+                dataKey="date"
+                stroke="#A1A1AA"
+                style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                tickFormatter={formatDate}
+              />
               <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#18181B',
                   border: '1px solid #10B981',
-                  borderRadius: '8px',
+                  borderRadius: '12px',
                   fontFamily: 'JetBrains Mono',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
                 }}
-                formatter={(value) => formatCurrency(value, currency)}
+                formatter={(value) => [formatCurrency(value, currency), 'P/L']}
+                labelFormatter={(label) => `Date: ${label}`}
               />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="cumulative_pl"
                 stroke="#10B981"
                 strokeWidth={3}
-                dot={false}
+                fill="url(#colorPL)"
                 name="Cumulative P/L"
               />
-            </LineChart>
-          ) : (
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-              <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Outcome Distribution */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="mb-6 text-xl font-bold">Distribution</h2>
+          <ResponsiveContainer width="100%" height={350}>
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value">
+                {pieData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#18181B',
                   border: '1px solid #10B981',
-                  borderRadius: '8px',
+                  borderRadius: '12px',
                   fontFamily: 'JetBrains Mono',
                 }}
-                formatter={(value) => formatCurrency(value, currency)}
               />
-              <Bar dataKey="cumulative_pl" name="Cumulative P/L">
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
-                ))}
-              </Bar>
-            </BarChart>
-          )}
-        </ResponsiveContainer>
+              <Legend
+                verticalAlign="bottom"
+                height={36}
+                iconType="circle"
+                formatter={(value, entry) => (
+                  <span className="text-sm">
+                    {value}: {entry.payload.value}
+                  </span>
+                )}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {/* Daily P/L Bar Chart */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6">Daily Profit/Loss</h2>
+      {/* Daily Performance */}
+      <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+        <h2 className="flex items-center mb-6 text-xl font-bold">
+          <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-accent to-primary"></span>
+          Daily Performance
+        </h2>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData.slice(-30)}>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-            <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+            <XAxis
+              dataKey="date"
+              stroke="#A1A1AA"
+              style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+              tickFormatter={formatDate}
+            />
             <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
             <Tooltip
               contentStyle={{
                 backgroundColor: '#18181B',
                 border: '1px solid #10B981',
-                borderRadius: '8px',
+                borderRadius: '12px',
                 fontFamily: 'JetBrains Mono',
               }}
-              formatter={(value) => formatCurrency(value, currency)}
+              formatter={(value) => [formatCurrency(value, currency), 'Daily P/L']}
             />
-            <Bar dataKey="daily_pl" fill="#10B981" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="daily_pl" radius={[8, 8, 0, 0]}>
+              {chartData.slice(-30).map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.daily_pl >= 0 ? '#10B981' : '#EF4444'} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Outcome Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <h2 className="text-xl font-bold mb-6">Outcome Distribution</h2>
-          <div className="flex items-center justify-center">
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {/* eslint-disable-next-line react/no-array-index-key */}
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <h2 className="text-xl font-bold mb-6">Statistics Breakdown</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Total Bets</span>
-              <span className="font-mono font-bold">{stats?.total_bets || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Won Bets</span>
-              <span className="font-mono font-bold text-primary">{stats?.won_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Lost Bets</span>
-              <span className="font-mono font-bold text-destructive">{stats?.lost_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Push Bets</span>
-              <span className="font-mono font-bold text-text-muted">{stats?.push_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Pending Bets</span>
-              <span className="font-mono font-bold text-accent">{stats?.pending_count || 0}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Sport Performance */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-          Performance by Sport
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Sport</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Bets</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Win Rate</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Stake</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Result</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sportStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    No sport data available
-                  </td>
+      {/* Performance Tables */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Sport Performance */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
+            <span className="w-1 h-6 mr-3 rounded-full bg-primary"></span>
+            Performance by Sport
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#27272A]">
+                  <th className="px-4 py-4 text-sm font-semibold text-left text-text-secondary">Sport</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Bets</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Win Rate</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Stake</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Result</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">ROI</th>
                 </tr>
-              ) : (
-                // eslint-disable-next-line react/no-array-index-key
-                sportStats.map((sport, index) => (
-                  <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
-                    <td className="py-3 px-4 text-sm font-medium">{sport.name}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{sport.bets}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">
-                      <span className={sport.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                        {sport.win_rate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(sport.stake, currency)}</td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        sport.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {sport.profit_loss >= 0 ? '+' : ''}
-                      {formatCurrency(sport.profit_loss, currency)}
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        sport.roi >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {sport.roi >= 0 ? '+' : ''}
-                      {sport.roi.toFixed(2)}%
+              </thead>
+              <tbody>
+                {sportStats.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-text-muted">
+                      No sport data for selected period
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Odds Range Analysis */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-accent rounded-full mr-3"></span>
-          Performance by Odds Range
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Odds Range</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Bets</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Win Rate</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Stake</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Result</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {oddsRangeStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    No odds range data available
-                  </td>
-                </tr>
-              ) : (
-                // eslint-disable-next-line react/no-array-index-key
-                oddsRangeStats.map((range, index) => (
-                  <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
-                    <td className="py-3 px-4 text-sm font-medium">{range.name}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{range.bets}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">
-                      <span className={range.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                        {range.win_rate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(range.stake, currency)}</td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        range.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {range.profit_loss >= 0 ? '+' : ''}
-                      {formatCurrency(range.profit_loss, currency)}
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        range.roi >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {range.roi >= 0 ? '+' : ''}
-                      {range.roi.toFixed(2)}%
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Bookie Performance */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-accent rounded-full mr-3"></span>
-          Bookie Performance
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Bookie</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Bets</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Win Rate</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Stake</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Result</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookieStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    No bookie data available
-                  </td>
-                </tr>
-              ) : (
-                bookieStats
-                  .sort((a, b) => b.profit_loss - a.profit_loss)
-                  // eslint-disable-next-line react/no-array-index-key
-                  .map((bm, index) => (
-                    <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
-                      <td className="py-3 px-4 text-sm font-medium">{bm.name}</td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">{bm.bets}</td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">
-                        <span className={bm.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                          {bm.win_rate.toFixed(1)}%
+                ) : (
+                  sportStats.map((sport, index) => (
+                    <tr key={index} className="border-b border-[#27272A]/50 hover:bg-white/5 transition-colors">
+                      <td className="px-4 py-4 text-sm font-medium">{sport.name}</td>
+                      <td className="px-4 py-4 font-mono text-sm text-right">{sport.bets}</td>
+                      <td className="px-4 py-4 font-mono text-sm text-right">
+                        <span className={sport.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
+                          {sport.win_rate.toFixed(1)}%
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(bm.stake, currency)}</td>
-                      <td
-                        className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                          bm.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                        }`}
-                      >
-                        {bm.profit_loss >= 0 ? '+' : ''}
-                        {formatCurrency(bm.profit_loss, currency)}
+                      <td className="px-4 py-4 font-mono text-sm text-right">
+                        {formatCurrency(sport.stake, currency)}
                       </td>
                       <td
-                        className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                          bm.roi >= 0 ? 'text-primary' : 'text-destructive'
+                        className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                          sport.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
                         }`}
                       >
-                        {bm.roi >= 0 ? '+' : ''}
-                        {bm.roi.toFixed(2)}%
+                        {sport.profit_loss >= 0 ? '+' : ''}
+                        {formatCurrency(sport.profit_loss, currency)}
+                      </td>
+                      <td
+                        className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                          sport.roi >= 0 ? 'text-primary' : 'text-destructive'
+                        }`}
+                      >
+                        {sport.roi >= 0 ? '+' : ''}
+                        {sport.roi.toFixed(2)}%
                       </td>
                     </tr>
                   ))
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      {/* Tipster Performance */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-          Tipster Performance
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Tipster</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Bets</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Win Rate</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Total Stake</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Result</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tipsterStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    No tipster data available
-                  </td>
+        {/* Bookmaker Performance */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
+            <span className="w-1 h-6 mr-3 rounded-full bg-accent"></span>
+            Bookmaker Performance
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#27272A]">
+                  <th className="px-4 py-4 text-sm font-semibold text-left text-text-secondary">Bookmaker</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Bets</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Win Rate</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Stake</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Result</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">ROI</th>
                 </tr>
-              ) : (
-                tipsterStats
-                  .sort((a, b) => b.profit_loss - a.profit_loss)
-                  // eslint-disable-next-line react/no-array-index-key
-                  .map((tip, index) => (
-                    <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
-                      <td className="py-3 px-4 text-sm font-medium">{tip.name}</td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">{tip.bets}</td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">
-                        <span className={tip.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                          {tip.win_rate.toFixed(1)}%
+              </thead>
+              <tbody>
+                {bookieStats.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-text-muted">
+                      No bookmaker data for selected period
+                    </td>
+                  </tr>
+                ) : (
+                  bookieStats
+                    .sort((a, b) => b.profit_loss - a.profit_loss)
+                    .map((bm, index) => (
+                      <tr key={index} className="border-b border-[#27272A]/50 hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-4 text-sm font-medium">{bm.name}</td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">{bm.bets}</td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">
+                          <span className={bm.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
+                            {bm.win_rate.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">{formatCurrency(bm.stake, currency)}</td>
+                        <td
+                          className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                            bm.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
+                          }`}
+                        >
+                          {bm.profit_loss >= 0 ? '+' : ''}
+                          {formatCurrency(bm.profit_loss, currency)}
+                        </td>
+                        <td
+                          className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                            bm.roi >= 0 ? 'text-primary' : 'text-destructive'
+                          }`}
+                        >
+                          {bm.roi >= 0 ? '+' : ''}
+                          {bm.roi.toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Tipster Performance */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
+            <span className="w-1 h-6 mr-3 rounded-full bg-primary"></span>
+            Tipster Performance
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#27272A]">
+                  <th className="px-4 py-4 text-sm font-semibold text-left text-text-secondary">Tipster</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Bets</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Win Rate</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Stake</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Result</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tipsterStats.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-text-muted">
+                      No tipster data for selected period
+                    </td>
+                  </tr>
+                ) : (
+                  tipsterStats
+                    .sort((a, b) => b.profit_loss - a.profit_loss)
+                    .map((tip, index) => (
+                      <tr key={index} className="border-b border-[#27272A]/50 hover:bg-white/5 transition-colors">
+                        <td className="px-4 py-4 text-sm font-medium">{tip.name}</td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">{tip.bets}</td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">
+                          <span className={tip.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
+                            {tip.win_rate.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 font-mono text-sm text-right">
+                          {formatCurrency(tip.stake, currency)}
+                        </td>
+                        <td
+                          className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                            tip.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
+                          }`}
+                        >
+                          {tip.profit_loss >= 0 ? '+' : ''}
+                          {formatCurrency(tip.profit_loss, currency)}
+                        </td>
+                        <td
+                          className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                            tip.roi >= 0 ? 'text-primary' : 'text-destructive'
+                          }`}
+                        >
+                          {tip.roi >= 0 ? '+' : ''}
+                          {tip.roi.toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Odds Range Performance */}
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
+            <span className="w-1 h-6 mr-3 rounded-full bg-accent"></span>
+            Performance by Odds Range
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#27272A]">
+                  <th className="px-4 py-4 text-sm font-semibold text-left text-text-secondary">Range</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Bets</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Win Rate</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Stake</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">Result</th>
+                  <th className="px-4 py-4 text-sm font-semibold text-right text-text-secondary">ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {oddsRangeStats.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-12 text-center text-text-muted">
+                      No odds range data for selected period
+                    </td>
+                  </tr>
+                ) : (
+                  oddsRangeStats.map((range, index) => (
+                    <tr key={index} className="border-b border-[#27272A]/50 hover:bg-white/5 transition-colors">
+                      <td className="px-4 py-4 text-sm font-medium">{range.name}</td>
+                      <td className="px-4 py-4 font-mono text-sm text-right">{range.bets}</td>
+                      <td className="px-4 py-4 font-mono text-sm text-right">
+                        <span className={range.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
+                          {range.win_rate.toFixed(1)}%
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(tip.stake, currency)}</td>
-                      <td
-                        className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                          tip.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                        }`}
-                      >
-                        {tip.profit_loss >= 0 ? '+' : ''}
-                        {formatCurrency(tip.profit_loss, currency)}
+                      <td className="px-4 py-4 font-mono text-sm text-right">
+                        {formatCurrency(range.stake, currency)}
                       </td>
                       <td
-                        className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                          tip.roi >= 0 ? 'text-primary' : 'text-destructive'
+                        className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                          range.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
                         }`}
                       >
-                        {tip.roi >= 0 ? '+' : ''}
-                        {tip.roi.toFixed(2)}%
+                        {range.profit_loss >= 0 ? '+' : ''}
+                        {formatCurrency(range.profit_loss, currency)}
+                      </td>
+                      <td
+                        className={`py-4 px-4 text-sm font-mono font-bold text-right ${
+                          range.roi >= 0 ? 'text-primary' : 'text-destructive'
+                        }`}
+                      >
+                        {range.roi >= 0 ? '+' : ''}
+                        {range.roi.toFixed(2)}%
                       </td>
                     </tr>
                   ))
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

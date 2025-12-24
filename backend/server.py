@@ -858,10 +858,31 @@ async def delete_bet(request: Request, bet_id: str):
 
 
 @api_router.get("/analytics/stats")
-async def get_stats(request: Request):
+async def get_stats(
+    request: Request,
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    sport: str = None
+):
     user_id = await get_current_user(request)
 
-    all_bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
+    # Build query with filters
+    query = {"user_id": user_id}
+
+    # Date filtering
+    if days and days != -1:  # -1 = all time
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+
+    # Sport filtering
+    if sport and sport != "all":
+        query["sport"] = sport
+
+    all_bets = await db.bets.find(query, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
 
     total_bets = len(all_bets)
     total_stake = sum(bet["stake"] for bet in all_bets)
@@ -921,19 +942,32 @@ async def get_stats(request: Request):
 
 
 @api_router.get("/analytics/chart")
-async def get_chart_data(request: Request, days: int = 30):
+async def get_chart_data(
+    request: Request,
+    days: int = 30,
+    start_date: str = None,
+    end_date: str = None,
+    sport: str = None
+):
     user_id = await get_current_user(request)
 
-    # Calculate the date range for the last N days
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=days)
-    start_date_str = start_date.strftime("%Y-%m-%d")
+    # Build query
+    query = {"user_id": user_id}
 
-    # Fetch only bets within the date range
-    bets = await db.bets.find({
-        "user_id": user_id,
-        "date": {"$gte": start_date_str}
-    }, {"_id": 0}).sort("date", 1).to_list(10000)
+    # Date filtering
+    if days and days != -1:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+
+    # Sport filtering
+    if sport and sport != "all":
+        query["sport"] = sport
+
+    # Fetch bets
+    bets = await db.bets.find(query, {"_id": 0}).sort("date", 1).to_list(10000)
 
     daily_data = {}
     chart_data = []
@@ -987,10 +1021,27 @@ async def get_calendar_data(request: Request, year: int, month: int):
 
 
 @api_router.get("/analytics/bookmakers")
-async def get_bookmaker_analytics(request: Request):
+async def get_bookmaker_analytics(
+    request: Request,
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    sport: str = None
+):
     user_id = await get_current_user(request)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+    # Build query
+    query = {"user_id": user_id}
+    if days and days != -1:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+    if sport and sport != "all":
+        query["sport"] = sport
+
+    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
 
     bookie_stats = {}
     for bet in bets:
@@ -1035,10 +1086,27 @@ async def get_bookmaker_analytics(request: Request):
 
 
 @api_router.get("/analytics/tipsters")
-async def get_tipster_analytics(request: Request):
+async def get_tipster_analytics(
+    request: Request,
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    sport: str = None
+):
     user_id = await get_current_user(request)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+    # Build query
+    query = {"user_id": user_id}
+    if days and days != -1:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+    if sport and sport != "all":
+        query["sport"] = sport
+
+    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
 
     tipster_stats = {}
     for bet in bets:
@@ -1086,10 +1154,24 @@ async def get_tipster_analytics(request: Request):
 
 
 @api_router.get("/analytics/sports")
-async def get_sport_analytics(request: Request):
+async def get_sport_analytics(
+    request: Request,
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None
+):
     user_id = await get_current_user(request)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+    # Build query
+    query = {"user_id": user_id}
+    if days and days != -1:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+
+    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
 
     sport_stats = {}
     for bet in bets:
@@ -1136,10 +1218,27 @@ async def get_sport_analytics(request: Request):
 
 
 @api_router.get("/analytics/odds-range")
-async def get_odds_range_analytics(request: Request):
+async def get_odds_range_analytics(
+    request: Request,
+    days: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    sport: str = None
+):
     user_id = await get_current_user(request)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+    # Build query
+    query = {"user_id": user_id}
+    if days and days != -1:
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
+    elif start_date and end_date:
+        query["date"] = {"$gte": start_date, "$lte": end_date}
+    if sport and sport != "all":
+        query["sport"] = sport
+
+    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
 
     ranges = [
         {"name": "1.00-1.50", "min": 1.0, "max": 1.5},
@@ -1489,7 +1588,7 @@ async def get_upcoming_matches(request: Request, days: int = 7):
 
     # Always fetch fresh data (free API has team ID issues, so we use league-based fetching)
     fresh_fixtures = await fetch_and_cache_fixtures(team_ids, days)
-    
+
     # Use fresh fixtures if available, otherwise use cached
     fixtures_to_use = fresh_fixtures if fresh_fixtures else cached_fixtures
 
@@ -1518,7 +1617,7 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
         {"team_id": {"$in": team_ids}},
         {"team_id": 1, "team_name": 1, "league": 1, "_id": 0}
     ).to_list(100)
-    
+
     if not favorite_teams_data:
         return []
 
@@ -1546,60 +1645,61 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
                     "French Ligue 1": "4334",
                     "UEFA Champions League": "4480",
                 }
-                
+
                 league_id = league_id_map.get(league_name)
-                
+
                 if not league_id:
                     # Skip unknown leagues for now
                     logging.warning(f"No league ID mapping for: {league_name}")
                     continue
-                
+
                 # Get next events for this league
                 response = await client.get(
                     f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnextleague.php?id={league_id}"
                 )
-                
+
                 if response.status_code != 200:
                     continue
-                
+
                 data = response.json()
                 events = data.get("events") or []
-                
+
                 # Filter events for our favorite teams by name matching
                 for event in events:
                     if not event:
                         continue
-                    
+
                     home_team = event.get("strHomeTeam", "")
                     away_team = event.get("strAwayTeam", "")
-                    
+
                     # Check if this match involves any of our favorite teams
                     is_relevant = False
                     for team_name in team_names:
                         # Flexible matching - check if team name is in the match
-                        if (team_name.lower() in home_team.lower() or 
+                        if (team_name.lower() in home_team.lower() or
                             team_name.lower() in away_team.lower() or
                             home_team.lower() in team_name.lower() or
-                            away_team.lower() in team_name.lower()):
+                                away_team.lower() in team_name.lower()):
                             is_relevant = True
                             break
-                    
+
                     if not is_relevant:
                         continue
-                    
+
                     # Check date range
                     event_date_str = event.get("dateEvent")
                     if not event_date_str:
                         continue
-                    
+
                     try:
-                        event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                        event_date = datetime.strptime(
+                            event_date_str, "%Y-%m-%d").date()
                         end_date = (now + timedelta(days=days)).date()
                         if event_date < now.date() or event_date > end_date:
                             continue
                     except Exception:
                         continue
-                    
+
                     fixture = {
                         "fixture_id": event.get("idEvent"),
                         "home_team_id": event.get("idHomeTeam"),
@@ -1617,20 +1717,21 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
                         "cached_at": now,
                         "expires_at": expires_at
                     }
-                    
+
                     # Upsert to cache
                     await db.cached_fixtures.update_one(
                         {"fixture_id": fixture["fixture_id"]},
                         {"$set": fixture},
                         upsert=True
                     )
-                    
+
                     fixtures.append(fixture)
-                    
+
             except Exception as e:
-                logging.error(f"Error fetching fixtures for league {league_name}: {e}")
+                logging.error(
+                    f"Error fetching fixtures for league {league_name}: {e}")
                 continue
-    
+
     return fixtures
 
 
