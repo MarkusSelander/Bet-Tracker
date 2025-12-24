@@ -26,7 +26,7 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # TheSportsDB API configuration
-SPORTSDB_API_KEY = "3"  # Free tier key
+SPORTSDB_API_KEY = "123"  # Free test key - official from TheSportsDB documentation
 SPORTSDB_BASE_URL = "https://www.thesportsdb.com/api/v1/json"
 
 # Cache for TheSportsDB lookups to minimize API calls
@@ -1466,8 +1466,13 @@ async def get_upcoming_matches(request: Request, days: int = 7):
 
     team_ids = [team["team_id"] for team in favorite_teams]
 
-    # Check cache first
+    # Clear old cache to force fresh fetch with new logic
     now = datetime.now(timezone.utc)
+    await db.cached_fixtures.delete_many({
+        "expires_at": {"$lt": now}
+    })
+
+    # Check cache first
     end_date = now + timedelta(days=days)
 
     cached_fixtures = await db.cached_fixtures.find({
@@ -1482,13 +1487,15 @@ async def get_upcoming_matches(request: Request, days: int = 7):
         "expires_at": {"$gt": now}
     }, {"_id": 0}).to_list(1000)
 
-    # If cache is empty or stale, fetch from API
-    if not cached_fixtures:
-        cached_fixtures = await fetch_and_cache_fixtures(team_ids, days)
+    # Always fetch fresh data (free API has team ID issues, so we use league-based fetching)
+    fresh_fixtures = await fetch_and_cache_fixtures(team_ids, days)
+    
+    # Use fresh fixtures if available, otherwise use cached
+    fixtures_to_use = fresh_fixtures if fresh_fixtures else cached_fixtures
 
     # Group by date
     grouped = {}
-    for fixture in cached_fixtures:
+    for fixture in fixtures_to_use:
         date = fixture["event_date"]
         if date not in grouped:
             grouped[date] = []
@@ -1498,38 +1505,110 @@ async def get_upcoming_matches(request: Request, days: int = 7):
 
 
 async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]:
-    """Fetch fixtures from TheSportsDB and cache them"""
+    """
+    Fetch fixtures from TheSportsDB and cache them.
+    Note: Free API has issues with team ID lookups, so we use team names for filtering.
+    """
     fixtures = []
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=6)  # 6 hour cache
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for team_id in team_ids:
-            try:
-                # Fetch next 5 events for each team
-                response = await client.get(
-                    f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnext.php?id={team_id}"
-                )
+    # Get team names and leagues from our database
+    favorite_teams_data = await db.favorite_teams.find(
+        {"team_id": {"$in": team_ids}},
+        {"team_id": 1, "team_name": 1, "league": 1, "_id": 0}
+    ).to_list(100)
+    
+    if not favorite_teams_data:
+        return []
 
+    # Group teams by league to minimize API calls
+    leagues_map = {}
+    for team in favorite_teams_data:
+        league = team.get("league", "Unknown")
+        if league not in leagues_map:
+            leagues_map[league] = []
+        leagues_map[league].append(team.get("team_name", ""))
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # For each league, get upcoming events and filter by team name
+        for league_name, team_names in leagues_map.items():
+            try:
+                # Map common league names to their IDs
+                league_id_map = {
+                    "English Premier League": "4328",
+                    "English League Championship": "4329",
+                    "English League 1": "4330",
+                    "English League 2": "4331",
+                    "Spanish La Liga": "4335",
+                    "Italian Serie A": "4332",
+                    "German Bundesliga": "4331",
+                    "French Ligue 1": "4334",
+                    "UEFA Champions League": "4480",
+                }
+                
+                league_id = league_id_map.get(league_name)
+                
+                if not league_id:
+                    # Skip unknown leagues for now
+                    logging.warning(f"No league ID mapping for: {league_name}")
+                    continue
+                
+                # Get next events for this league
+                response = await client.get(
+                    f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnextleague.php?id={league_id}"
+                )
+                
                 if response.status_code != 200:
                     continue
-
+                
                 data = response.json()
                 events = data.get("events") or []
-
-                for event in events[:5]:  # Limit to next 5 matches
+                
+                # Filter events for our favorite teams by name matching
+                for event in events:
                     if not event:
                         continue
-
+                    
+                    home_team = event.get("strHomeTeam", "")
+                    away_team = event.get("strAwayTeam", "")
+                    
+                    # Check if this match involves any of our favorite teams
+                    is_relevant = False
+                    for team_name in team_names:
+                        # Flexible matching - check if team name is in the match
+                        if (team_name.lower() in home_team.lower() or 
+                            team_name.lower() in away_team.lower() or
+                            home_team.lower() in team_name.lower() or
+                            away_team.lower() in team_name.lower()):
+                            is_relevant = True
+                            break
+                    
+                    if not is_relevant:
+                        continue
+                    
+                    # Check date range
+                    event_date_str = event.get("dateEvent")
+                    if not event_date_str:
+                        continue
+                    
+                    try:
+                        event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+                        end_date = (now + timedelta(days=days)).date()
+                        if event_date < now.date() or event_date > end_date:
+                            continue
+                    except Exception:
+                        continue
+                    
                     fixture = {
                         "fixture_id": event.get("idEvent"),
                         "home_team_id": event.get("idHomeTeam"),
                         "away_team_id": event.get("idAwayTeam"),
-                        "home_team_name": event.get("strHomeTeam"),
-                        "away_team_name": event.get("strAwayTeam"),
+                        "home_team_name": home_team,
+                        "away_team_name": away_team,
                         "home_team_badge": event.get("strHomeTeamBadge"),
                         "away_team_badge": event.get("strAwayTeamBadge"),
-                        "event_date": event.get("dateEvent"),
+                        "event_date": event_date_str,
                         "event_time": event.get("strTime"),
                         "venue": event.get("strVenue"),
                         "league": event.get("strLeague"),
@@ -1538,21 +1617,20 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
                         "cached_at": now,
                         "expires_at": expires_at
                     }
-
+                    
                     # Upsert to cache
                     await db.cached_fixtures.update_one(
                         {"fixture_id": fixture["fixture_id"]},
                         {"$set": fixture},
                         upsert=True
                     )
-
+                    
                     fixtures.append(fixture)
-
+                    
             except Exception as e:
-                logging.error(
-                    f"Error fetching fixtures for team {team_id}: {e}")
+                logging.error(f"Error fetching fixtures for league {league_name}: {e}")
                 continue
-
+    
     return fixtures
 
 
