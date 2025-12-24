@@ -527,16 +527,20 @@ class BetUpdate(BaseModel):
 class CoolbetImportedBet(BaseModel):
     """Represents a single bet extracted from Coolbet via bookmarklet"""
     externalId: str  # Unique identifier from Coolbet (e.g., "coolbet-1430")
-    event: str  # Event/game name (e.g., "Minnesota Timberwolves - New York Knicks")
+    # Event/game name (e.g., "Minnesota Timberwolves - New York Knicks")
+    event: str
     stake: float  # Bet amount
     odds: float  # Decimal odds
     result: str  # "won", "lost", or "pending"
     placedAt: str  # ISO timestamp when bet was placed
-    selection: Optional[str] = None  # What was bet on (e.g., "Total Points Over/Under 230 - Over")
+    # What was bet on (e.g., "Total Points Over/Under 230 - Over")
+    selection: Optional[str] = None
     betType: Optional[str] = None  # Type of bet (e.g., "single", "combo")
-    sport: Optional[str] = None  # Sport name from SVG data-name (e.g., "basketball")
+    # Sport name from SVG data-name (e.g., "basketball")
+    sport: Optional[str] = None
     league: Optional[str] = None  # League name (e.g., "NBA")
-    market: Optional[str] = None  # Market type (e.g., "Total Points Over/Under 230")
+    # Market type (e.g., "Total Points Over/Under 230")
+    market: Optional[str] = None
     outcome: Optional[str] = None  # Outcome/pick (e.g., "Over")
 
 
