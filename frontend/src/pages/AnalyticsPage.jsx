@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -299,21 +300,21 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Key Performance Metrics */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Total Profit/Loss */}
-        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-4 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-primary/5 blur-3xl"></div>
           <div className="relative">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-text-secondary">Period Result</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-text-secondary">Period Result</p>
               {stats?.total_profit_loss >= 0 ? (
-                <TrendingUp className="w-5 h-5 text-primary" />
+                <TrendingUp className="w-4 h-4 text-primary" />
               ) : (
-                <TrendingDown className="w-5 h-5 text-destructive" />
+                <TrendingDown className="w-4 h-4 text-destructive" />
               )}
             </div>
             <p
-              className={`text-4xl font-bold font-mono mb-1 ${
+              className={`text-2xl font-bold font-mono mb-1 ${
                 stats?.total_profit_loss >= 0 ? 'text-primary' : 'text-destructive'
               }`}
             >
@@ -328,16 +329,16 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Win Rate */}
-        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-4 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-primary/5 blur-3xl"></div>
           <div className="relative">
-            <p className="mb-3 text-sm font-medium text-text-secondary">Win Rate</p>
+            <p className="mb-2 text-xs font-medium text-text-secondary">Win Rate</p>
             <div className="flex items-baseline gap-2 mb-2">
-              <p className="font-mono text-4xl font-bold text-primary">{(stats?.win_rate || 0).toFixed(1)}%</p>
+              <p className="font-mono text-2xl font-bold text-primary">{(stats?.win_rate || 0).toFixed(1)}%</p>
             </div>
-            <div className="w-full bg-[#27272A] rounded-full h-2.5 overflow-hidden">
+            <div className="w-full bg-[#27272A] rounded-full h-2 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-primary to-primary/80 h-2.5 rounded-full transition-all duration-500"
+                className="h-2 transition-all duration-500 rounded-full bg-gradient-to-r from-primary to-primary/80"
                 style={{ width: `${Math.min(stats?.win_rate || 0, 100)}%` }}
               ></div>
             </div>
@@ -345,11 +346,11 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Total Bets */}
-        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-accent/5 blur-3xl"></div>
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-4 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-accent/5 blur-3xl"></div>
           <div className="relative">
-            <p className="mb-3 text-sm font-medium text-text-secondary">Total Bets</p>
-            <p className="mb-1 font-mono text-4xl font-bold">{stats?.total_bets || 0}</p>
+            <p className="mb-2 text-xs font-medium text-text-secondary">Total Bets</p>
+            <p className="mb-1 font-mono text-2xl font-bold">{stats?.total_bets || 0}</p>
             <div className="flex gap-2 text-xs">
               <span className="text-primary">{stats?.won_count || 0}W</span>
               <span className="text-destructive">{stats?.lost_count || 0}L</span>
@@ -360,12 +361,12 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Current Streak */}
-        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
-          <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-primary/5 blur-3xl"></div>
+        <div className="group relative overflow-hidden bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-xl p-4 shadow-xl hover:shadow-2xl hover:border-primary/50 transition-all duration-300">
+          <div className="absolute top-0 right-0 w-24 h-24 rounded-full bg-primary/5 blur-3xl"></div>
           <div className="relative">
-            <p className="mb-3 text-sm font-medium text-text-secondary">Current Streak</p>
+            <p className="mb-2 text-xs font-medium text-text-secondary">Current Streak</p>
             <p
-              className={`text-4xl font-bold font-mono mb-1 ${
+              className={`text-2xl font-bold font-mono mb-1 ${
                 stats?.current_streak_type === 'won'
                   ? 'text-primary'
                   : stats?.current_streak_type === 'lost'
