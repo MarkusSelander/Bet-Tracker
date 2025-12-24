@@ -1559,6 +1559,9 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
 @api_router.get("/teams/search")
 async def search_teams(request: Request, query: str, sport: Optional[str] = None):
     """Search for teams by name"""
+    # Require authentication
+    await get_current_user(request)
+    
     if len(query) < 2:
         return []
 
