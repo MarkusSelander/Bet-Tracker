@@ -1,8 +1,8 @@
 /**
  * Minified Coolbet Bookmarklet - PRODUCTION READY
- * 
+ *
  * VERIFIED SELECTORS - Based on actual Coolbet DOM (December 2025)
- * 
+ *
  * Copy the entire javascript: URL below and create a bookmark with it.
  */
 
