@@ -81,12 +81,9 @@ export default function TeamsPage() {
 
     setLoadingSearch(true);
     try {
-      const response = await fetch(
-        `${BACKEND_URL}/api/teams/search?query=${encodeURIComponent(query.trim())}`,
-        {
-          credentials: 'include',
-        }
-      );
+      const response = await fetch(`${BACKEND_URL}/api/teams/search?query=${encodeURIComponent(query.trim())}`, {
+        credentials: 'include',
+      });
 
       if (!isMountedRef.current) return;
 
