@@ -19,26 +19,6 @@ export default function TeamsPage() {
   const searchTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
 
-  // Fetch favorites on mount
-  useEffect(() => {
-    isMountedRef.current = true;
-    fetchFavorites();
-
-    return () => {
-      isMountedRef.current = false;
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [fetchFavorites]);
-
-  // Fetch fixtures when favorites change
-  useEffect(() => {
-    if (favorites.length > 0) {
-      fetchFixtures();
-    }
-  }, [favorites.length, fetchFixtures]);
-
   const fetchFavorites = useCallback(async () => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/favorites/teams`, {
@@ -101,9 +81,12 @@ export default function TeamsPage() {
 
     setLoadingSearch(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/teams/search?${new URLSearchParams({ q: query.trim() })}`, {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `${BACKEND_URL}/api/teams/search?query=${encodeURIComponent(query.trim())}`,
+        {
+          credentials: 'include',
+        }
+      );
 
       if (!isMountedRef.current) return;
 
@@ -112,6 +95,7 @@ export default function TeamsPage() {
       }
 
       const data = await response.json();
+      console.log('Search results:', data);
       setSearchResults(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error searching teams:', error);
@@ -125,6 +109,26 @@ export default function TeamsPage() {
       }
     }
   }, []);
+
+  // Fetch favorites on mount
+  useEffect(() => {
+    isMountedRef.current = true;
+    fetchFavorites();
+
+    return () => {
+      isMountedRef.current = false;
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [fetchFavorites]);
+
+  // Fetch fixtures when favorites change
+  useEffect(() => {
+    if (favorites.length > 0) {
+      fetchFixtures();
+    }
+  }, [favorites.length, fetchFixtures]);
 
   const handleSearchChange = useCallback(
     (e) => {
