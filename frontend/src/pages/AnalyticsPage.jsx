@@ -394,17 +394,14 @@ export default function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={350}>
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
               <defs>
-                <linearGradient id="colorPL" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="colorPLPositive" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
                   <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                 </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                  <feMerge>
-                    <feMergeNode in="coloredBlur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
+                <linearGradient id="colorPLNegative" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#EF4444" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
               <XAxis
@@ -435,15 +432,29 @@ export default function AnalyticsPage() {
                 labelFormatter={(label) => `Date: ${label}`}
                 labelStyle={{ color: '#A1A1AA', marginBottom: '4px' }}
               />
+              {/* Positive area */}
               <Area
                 type="monotone"
                 dataKey="cumulative_pl"
                 stroke="#10B981"
                 strokeWidth={3}
-                fill="url(#colorPL)"
+                fill="url(#colorPLPositive)"
                 name="Cumulative P/L"
                 dot={false}
                 activeDot={{ r: 6, fill: '#10B981', stroke: '#18181B', strokeWidth: 2 }}
+                isAnimationActive={true}
+              />
+              {/* Overlay for negative values */}
+              <Area
+                type="monotone"
+                dataKey={(data) => (data.cumulative_pl < 0 ? data.cumulative_pl : null)}
+                stroke="#EF4444"
+                strokeWidth={3}
+                fill="url(#colorPLNegative)"
+                name="Loss"
+                dot={false}
+                activeDot={{ r: 6, fill: '#EF4444', stroke: '#18181B', strokeWidth: 2 }}
+                isAnimationActive={true}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -555,6 +566,63 @@ export default function AnalyticsPage() {
               ))}
             </Bar>
           </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Turnover Chart */}
+      <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
+        <h2 className="flex items-center mb-6 text-xl font-bold">
+          <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-accent to-primary"></span>
+          Cumulative Turnover
+        </h2>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="colorTurnover" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
+            <XAxis
+              dataKey="date"
+              stroke="#71717A"
+              style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+              tickFormatter={formatDate}
+              tickLine={false}
+              axisLine={{ stroke: '#27272A' }}
+            />
+            <YAxis
+              stroke="#71717A"
+              style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+              tickLine={false}
+              axisLine={{ stroke: '#27272A' }}
+            />
+            <Tooltip
+              cursor={{ stroke: '#3B82F6', strokeWidth: 1, strokeDasharray: '5 5' }}
+              contentStyle={{
+                backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '12px',
+                fontFamily: 'JetBrains Mono',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+              }}
+              formatter={(value) => [formatCurrency(value, currency), 'Total Stake']}
+              labelFormatter={(label) => `Date: ${label}`}
+              labelStyle={{ color: '#A1A1AA', marginBottom: '4px' }}
+            />
+            <Area
+              type="monotone"
+              dataKey="cumulative_stake"
+              stroke="#3B82F6"
+              strokeWidth={3}
+              fill="url(#colorTurnover)"
+              name="Cumulative Stake"
+              dot={false}
+              activeDot={{ r: 6, fill: '#3B82F6', stroke: '#18181B', strokeWidth: 2 }}
+            />
+          </LineChart>
         </ResponsiveContainer>
       </div>
 

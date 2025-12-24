@@ -972,17 +972,21 @@ async def get_chart_data(
     daily_data = {}
     chart_data = []
     cumulative_pl = 0
+    cumulative_stake = 0
 
     for bet in bets:
         date = bet["date"]
         if date not in daily_data:
             daily_data[date] = {"date": date,
-                                "daily_pl": 0, "cumulative_pl": 0, "bets": 0}
+                                "daily_pl": 0, "daily_stake": 0, "cumulative_pl": 0, "cumulative_stake": 0, "bets": 0}
 
         daily_data[date]["daily_pl"] += bet["result"]
+        daily_data[date]["daily_stake"] += bet["stake"]
     for date in sorted(daily_data.keys()):
         cumulative_pl += daily_data[date]["daily_pl"]
+        cumulative_stake += daily_data[date]["daily_stake"]
         daily_data[date]["cumulative_pl"] = cumulative_pl
+        daily_data[date]["cumulative_stake"] = cumulative_stake
         chart_data.append(daily_data[date])
 
     return chart_data
