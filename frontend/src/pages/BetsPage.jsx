@@ -305,160 +305,219 @@ export default function BetsPage() {
               Add Bet
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-[#18181B] border-[#27272A] text-white max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>{editingBet ? 'Edit Bet' : 'Add New Bet'}</DialogTitle>
+          <DialogContent className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A]/50 text-white max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <DialogHeader className="border-b border-[#27272A] pb-4 mb-6">
+              <DialogTitle className="text-2xl font-bold flex items-center">
+                <span className="w-1 h-6 bg-gradient-to-b from-primary to-accent rounded-full mr-3"></span>
+                {editingBet ? 'Edit Bet' : 'Add New Bet'}
+              </DialogTitle>
+              <p className="text-text-secondary text-sm mt-2">
+                {editingBet ? 'Update your bet details below' : 'Fill in the details to track your bet'}
+              </p>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="date">Date</Label>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Match Information Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
+                  <span className="w-2 h-2 bg-primary rounded-full mr-2"></span>
+                  Match Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="game" className="text-xs font-medium text-text-secondary">
+                      Match / Event *
+                    </Label>
+                    <Input
+                      id="game"
+                      value={formData.game}
+                      onChange={(e) => setFormData({ ...formData, game: e.target.value })}
+                      placeholder="e.g., Manchester United vs Liverpool"
+                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sport" className="text-xs font-medium text-text-secondary">
+                      Sport
+                    </Label>
+                    <Input
+                      id="sport"
+                      value={formData.sport}
+                      onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
+                      placeholder="e.g., Football, Basketball, Tennis"
+                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date" className="text-xs font-medium text-text-secondary">
+                      Date *
+                    </Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="time" className="text-xs font-medium text-text-secondary">
+                      Time
+                    </Label>
+                    <Input
+                      id="time"
+                      type="time"
+                      step="1"
+                      value={formData.time}
+                      onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="status" className="text-xs font-medium text-text-secondary">
+                      Status *
+                    </Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value) => setFormData({ ...formData, status: value })}
+                    >
+                      <SelectTrigger className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#18181B] border-[#27272A]">
+                        <SelectItem value="won">Won ✓</SelectItem>
+                        <SelectItem value="lost">Lost ✗</SelectItem>
+                        <SelectItem value="push">Push ↔</SelectItem>
+                        <SelectItem value="pending">Pending ⏳</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bet Details Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
+                  <span className="w-2 h-2 bg-accent rounded-full mr-2"></span>
+                  Bet Details
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="bet" className="text-xs font-medium text-text-secondary">
+                    Selection / Bet Type *
+                  </Label>
                   <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="input-enhanced bg-black/20 border-white/10"
+                    id="bet"
+                    value={formData.bet}
+                    onChange={(e) => setFormData({ ...formData, bet: e.target.value })}
+                    placeholder="e.g., Manchester United to win, Over 2.5 goals"
+                    className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
                     required
                   />
                 </div>
-                <div>
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => setFormData({ ...formData, status: value })}
-                  >
-                    <SelectTrigger className="bg-black/20 border-white/10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="won">Won</SelectItem>
-                      <SelectItem value="lost">Lost</SelectItem>
-                      <SelectItem value="push">Push</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="stake" className="text-xs font-medium text-text-secondary">
+                      Stake Amount *
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="stake"
+                        type="number"
+                        step="0.01"
+                        value={formData.stake}
+                        onChange={(e) => setFormData({ ...formData, stake: e.target.value })}
+                        placeholder="100.00"
+                        className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono pl-3 pr-12"
+                        required
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">
+                        {currency === 'NOK' ? 'kr' : currency === 'UNITS' ? 'U' : '$'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="odds" className="text-xs font-medium text-text-secondary">
+                      Odds *
+                    </Label>
+                    <Input
+                      id="odds"
+                      type="number"
+                      step="0.01"
+                      value={formData.odds}
+                      onChange={(e) => setFormData({ ...formData, odds: e.target.value })}
+                      placeholder="2.50"
+                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="game">Game</Label>
-                  <Input
-                    id="game"
-                    value={formData.game}
-                    onChange={(e) => setFormData({ ...formData, game: e.target.value })}
-                    placeholder="e.g., Manchester United vs Liverpool"
-                    className="input-enhanced bg-black/20 border-white/10"
-                    required
-                  />
+              {/* Additional Information Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-text-secondary uppercase tracking-wider flex items-center">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                  Additional Information
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bookie" className="text-xs font-medium text-text-secondary">
+                      Bookmaker
+                    </Label>
+                    <Input
+                      id="bookie"
+                      value={formData.bookie}
+                      onChange={(e) => setFormData({ ...formData, bookie: e.target.value })}
+                      placeholder="e.g., Bet365, Unibet, Coolbet"
+                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tipster" className="text-xs font-medium text-text-secondary">
+                      Tipster / Source
+                    </Label>
+                    <Input
+                      id="tipster"
+                      value={formData.tipster}
+                      onChange={(e) => setFormData({ ...formData, tipster: e.target.value })}
+                      placeholder="e.g., John Doe, BetForum"
+                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="time">Time (Optional)</Label>
-                  <Input
-                    id="time"
-                    type="time"
-                    step="1"
-                    value={formData.time}
-                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                    className="input-enhanced bg-black/20 border-white/10"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="bet">Bet</Label>
-                <Input
-                  id="bet"
-                  value={formData.bet}
-                  onChange={(e) => setFormData({ ...formData, bet: e.target.value })}
-                  placeholder="e.g., Manchester United to win"
-                  className="bg-black/20 border-white/10"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="stake">Stake</Label>
-                  <Input
-                    id="stake"
-                    type="number"
-                    step="0.01"
-                    value={formData.stake}
-                    onChange={(e) => setFormData({ ...formData, stake: e.target.value })}
-                    placeholder="100"
-                    className="bg-black/20 border-white/10"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="odds">Odds</Label>
-                  <Input
-                    id="odds"
-                    type="number"
-                    step="0.01"
-                    value={formData.odds}
-                    onChange={(e) => setFormData({ ...formData, odds: e.target.value })}
-                    placeholder="2.50"
-                    className="bg-black/20 border-white/10"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="bookie">Bookie (Optional)</Label>
-                  <Input
-                    id="bookie"
-                    value={formData.bookie}
-                    onChange={(e) => setFormData({ ...formData, bookie: e.target.value })}
-                    placeholder="Bet365"
-                    className="bg-black/20 border-white/10"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="sport">Sport (Optional)</Label>
-                  <Input
-                    id="sport"
-                    value={formData.sport}
-                    onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
-                    placeholder="Football"
-                    className="bg-black/20 border-white/10"
+                <div className="space-y-2">
+                  <Label htmlFor="notes" className="text-xs font-medium text-text-secondary">
+                    Notes & Analysis
+                  </Label>
+                  <textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Add notes, reasoning, or analysis for this bet..."
+                    className="w-full min-h-[100px] bg-black/30 border border-[#27272A] hover:border-primary/50 focus:border-primary rounded-lg p-3 text-white resize-y transition-colors text-sm"
+                    rows={4}
                   />
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="notes">Notes (Optional)</Label>
-                <textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Add notes about this bet..."
-                  className="w-full min-h-[80px] bg-black/20 border border-white/10 rounded-md p-2 text-white resize-y"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tipster">Tipster (Optional)</Label>
-                <Input
-                  id="tipster"
-                  value={formData.tipster}
-                  onChange={(e) => setFormData({ ...formData, tipster: e.target.value })}
-                  placeholder="John Doe"
-                  className="bg-black/20 border-white/10"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="secondary" onClick={() => setIsDialogOpen(false)}>
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-[#27272A]">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                  className="bg-black/30 border-[#27272A] hover:bg-white/10 text-white px-6"
+                >
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-primary hover:bg-primary/90 text-black font-bold">
-                  {editingBet ? 'Update' : 'Add'} Bet
+                <Button
+                  type="submit"
+                  className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-black font-bold px-8 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all"
+                >
+                  {editingBet ? '✓ Update Bet' : '+ Add Bet'}
                 </Button>
               </div>
             </form>
