@@ -392,31 +392,48 @@ export default function AnalyticsPage() {
             Cumulative Performance
           </h2>
           <ResponsiveContainer width="100%" height={350}>
-            <AreaChart data={chartData}>
+            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
               <defs>
                 <linearGradient id="colorPL" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.4} />
                   <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                 </linearGradient>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                  <feMerge>
+                    <feMergeNode in="coloredBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
               <XAxis
                 dataKey="date"
-                stroke="#A1A1AA"
-                style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+                stroke="#71717A"
+                style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
                 tickFormatter={formatDate}
+                tickLine={false}
+                axisLine={{ stroke: '#27272A' }}
               />
-              <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+              <YAxis
+                stroke="#71717A"
+                style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+                tickLine={false}
+                axisLine={{ stroke: '#27272A' }}
+              />
               <Tooltip
+                cursor={{ stroke: '#10B981', strokeWidth: 1, strokeDasharray: '5 5' }}
                 contentStyle={{
-                  backgroundColor: '#18181B',
-                  border: '1px solid #10B981',
+                  backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
                   borderRadius: '12px',
                   fontFamily: 'JetBrains Mono',
-                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
                 }}
-                formatter={(value) => [formatCurrency(value, currency), 'P/L']}
+                formatter={(value) => [formatCurrency(value, currency), 'Cumulative P/L']}
                 labelFormatter={(label) => `Date: ${label}`}
+                labelStyle={{ color: '#A1A1AA', marginBottom: '4px' }}
               />
               <Area
                 type="monotone"
@@ -425,6 +442,8 @@ export default function AnalyticsPage() {
                 strokeWidth={3}
                 fill="url(#colorPL)"
                 name="Cumulative P/L"
+                dot={false}
+                activeDot={{ r: 6, fill: '#10B981', stroke: '#18181B', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -432,29 +451,55 @@ export default function AnalyticsPage() {
 
         {/* Outcome Distribution */}
         <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
-          <h2 className="mb-6 text-xl font-bold">Distribution</h2>
+          <h2 className="mb-6 text-xl font-bold flex items-center">
+            <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-primary to-accent"></span>
+            Outcome Distribution
+          </h2>
           <ResponsiveContainer width="100%" height={350}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value">
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="45%"
+                innerRadius={70}
+                outerRadius={110}
+                paddingAngle={3}
+                dataKey="value"
+                label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                labelLine={false}
+              >
                 {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.color}
+                    stroke="rgba(0,0,0,0.2)"
+                    strokeWidth={2}
+                  />
                 ))}
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#18181B',
-                  border: '1px solid #10B981',
+                  backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
                   borderRadius: '12px',
                   fontFamily: 'JetBrains Mono',
+                  backdropFilter: 'blur(12px)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
                 }}
+                formatter={(value, name) => [value, name]}
               />
               <Legend
                 verticalAlign="bottom"
-                height={36}
+                height={50}
                 iconType="circle"
+                wrapperStyle={{
+                  paddingTop: '20px',
+                  fontSize: '13px',
+                  fontFamily: 'JetBrains Mono',
+                }}
                 formatter={(value, entry) => (
-                  <span className="text-sm">
-                    {value}: {entry.payload.value}
+                  <span className="text-sm font-medium">
+                    {value}: <span className="font-bold">{entry.payload.value}</span>
                   </span>
                 )}
               />
@@ -470,27 +515,51 @@ export default function AnalyticsPage() {
           Daily Performance
         </h2>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData.slice(-30)}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
+          <BarChart data={chartData.slice(-30)} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="colorGreen" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10B981" stopOpacity={1} />
+                <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
+              </linearGradient>
+              <linearGradient id="colorRed" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#EF4444" stopOpacity={1} />
+                <stop offset="100%" stopColor="#DC2626" stopOpacity={0.8} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272A" vertical={false} />
             <XAxis
               dataKey="date"
-              stroke="#A1A1AA"
-              style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }}
+              stroke="#71717A"
+              style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
               tickFormatter={formatDate}
+              tickLine={false}
+              axisLine={{ stroke: '#27272A' }}
             />
-            <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+            <YAxis
+              stroke="#71717A"
+              style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+              tickLine={false}
+              axisLine={{ stroke: '#27272A' }}
+            />
             <Tooltip
+              cursor={{ fill: 'rgba(255, 255, 255, 0.03)' }}
               contentStyle={{
-                backgroundColor: '#18181B',
-                border: '1px solid #10B981',
+                backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
                 borderRadius: '12px',
                 fontFamily: 'JetBrains Mono',
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
               }}
               formatter={(value) => [formatCurrency(value, currency), 'Daily P/L']}
+              labelStyle={{ color: '#A1A1AA', marginBottom: '4px' }}
             />
-            <Bar dataKey="daily_pl" radius={[8, 8, 0, 0]}>
+            <Bar dataKey="daily_pl" radius={[8, 8, 0, 0]} maxBarSize={50}>
               {chartData.slice(-30).map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.daily_pl >= 0 ? '#10B981' : '#EF4444'} />
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.daily_pl >= 0 ? 'url(#colorGreen)' : 'url(#colorRed)'}
+                />
               ))}
             </Bar>
           </BarChart>
