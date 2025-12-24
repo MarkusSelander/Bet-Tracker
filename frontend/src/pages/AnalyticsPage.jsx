@@ -577,7 +577,7 @@ export default function AnalyticsPage() {
           Cumulative Turnover
         </h2>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
+          <AreaChart data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 5 }}>
             <defs>
               <linearGradient id="colorTurnover" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
@@ -623,7 +623,7 @@ export default function AnalyticsPage() {
               dot={false}
               activeDot={{ r: 6, fill: '#3B82F6', stroke: '#18181B', strokeWidth: 2 }}
             />
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
       </div>
 

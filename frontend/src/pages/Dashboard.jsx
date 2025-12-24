@@ -2,10 +2,10 @@ import { BarChart, FileDown, Receipt, TrendingDown, TrendingUp } from 'lucide-re
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -112,14 +112,14 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div
-          className="stat-card stagger-item bg-[#18181B] border border-[#27272A] rounded-lg p-6"
+          className="stat-card stagger-item bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-accent/50 rounded-xl p-4 shadow-xl hover:shadow-2xl transition-all duration-300"
           data-testid="total-bets-card"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
-              <Receipt className="w-5 h-5 text-accent" strokeWidth={1.5} />
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
+              <Receipt className="w-4 h-4 text-accent" strokeWidth={1.5} />
             </div>
           </div>
           <p className="text-text-secondary text-[9px] uppercase tracking-wider mb-1 font-mono">Total Bets</p>
@@ -127,12 +127,12 @@ export default function Dashboard() {
         </div>
 
         <div
-          className="stat-card stagger-item bg-[#18181B] border border-[#27272A] rounded-lg p-6"
+          className="stat-card stagger-item bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-primary/50 rounded-xl p-4 shadow-xl hover:shadow-2xl transition-all duration-300"
           data-testid="roi-card"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
-              <BarChart className="w-5 h-5 text-primary" strokeWidth={1.5} />
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
+              <BarChart className="w-4 h-4 text-primary" strokeWidth={1.5} />
             </div>
           </div>
           <p className="text-text-secondary text-[9px] uppercase tracking-wider mb-1 font-mono">Total ROI</p>
@@ -146,21 +146,23 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`stat-card stagger-item rounded-lg p-6 ${
-            (stats?.total_profit_loss || 0) >= 0 ? 'profit-card profit-highlight' : 'loss-card'
+          className={`stat-card stagger-item rounded-xl p-4 shadow-xl hover:shadow-2xl transition-all duration-300 ${
+            (stats?.total_profit_loss || 0) >= 0
+              ? 'bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 hover:border-primary/50'
+              : 'bg-gradient-to-br from-destructive/10 to-destructive/5 border border-destructive/30 hover:border-destructive/50'
           }`}
           data-testid="profit-loss-card"
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div
-              className={`w-10 h-10 rounded-lg flex items-center justify-center transition-transform hover:scale-110 ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-transform hover:scale-110 ${
                 (stats?.total_profit_loss || 0) >= 0 ? 'bg-primary/10' : 'bg-destructive/10'
               }`}
             >
               {(stats?.total_profit_loss || 0) >= 0 ? (
-                <TrendingUp className="w-5 h-5 text-primary" strokeWidth={1.5} />
+                <TrendingUp className="w-4 h-4 text-primary" strokeWidth={1.5} />
               ) : (
-                <TrendingDown className="w-5 h-5 text-destructive" strokeWidth={1.5} />
+                <TrendingDown className="w-4 h-4 text-destructive" strokeWidth={1.5} />
               )}
             </div>
           </div>
@@ -176,12 +178,12 @@ export default function Dashboard() {
         </div>
 
         <div
-          className="stat-card stagger-item bg-[#18181B] border border-[#27272A] rounded-lg p-6"
+          className="stat-card stagger-item bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-accent/50 rounded-xl p-4 shadow-xl hover:shadow-2xl transition-all duration-300"
           data-testid="win-rate-card"
         >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
-              <BarChart className="w-5 h-5 text-accent" strokeWidth={1.5} />
+          <div className="flex items-center justify-between mb-2">
+            <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center transition-transform hover:scale-110">
+              <BarChart className="w-4 h-4 text-accent" strokeWidth={1.5} />
             </div>
           </div>
           <p className="text-text-secondary text-[9px] uppercase tracking-wider mb-1 font-mono">Win Rate</p>
@@ -189,18 +191,18 @@ export default function Dashboard() {
         </div>
 
         <div
-          className={`stat-card stagger-item rounded-lg p-6 ${
+          className={`stat-card stagger-item rounded-xl p-4 shadow-xl hover:shadow-2xl transition-all duration-300 ${
             stats?.current_streak_type === 'won'
-              ? 'bg-primary/5 border border-primary/30'
+              ? 'bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/30 hover:border-primary/50'
               : stats?.current_streak_type === 'lost'
-                ? 'bg-destructive/5 border border-destructive/30'
-                : 'bg-[#18181B] border border-[#27272A]'
+                ? 'bg-gradient-to-br from-destructive/10 to-destructive/5 border border-destructive/30 hover:border-destructive/50'
+                : 'bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-white/50'
           }`}
           data-testid="streak-card"
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <div
-              className={`w-10 h-10 rounded-lg flex items-center justify-center transition-transform hover:scale-110 ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-transform hover:scale-110 ${
                 stats?.current_streak_type === 'won'
                   ? 'bg-primary/10'
                   : stats?.current_streak_type === 'lost'
@@ -209,11 +211,11 @@ export default function Dashboard() {
               }`}
             >
               {stats?.current_streak_type === 'won' ? (
-                <TrendingUp className="w-5 h-5 text-primary" strokeWidth={1.5} />
+                <TrendingUp className="w-4 h-4 text-primary" strokeWidth={1.5} />
               ) : stats?.current_streak_type === 'lost' ? (
-                <TrendingDown className="w-5 h-5 text-destructive" strokeWidth={1.5} />
+                <TrendingDown className="w-4 h-4 text-destructive" strokeWidth={1.5} />
               ) : (
-                <BarChart className="w-5 h-5 text-white" strokeWidth={1.5} />
+                <BarChart className="w-4 h-4 text-white" strokeWidth={1.5} />
               )}
             </div>
           </div>
@@ -240,13 +242,13 @@ export default function Dashboard() {
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-[#18181B]/50 border border-[#27272A] rounded-lg p-3">
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-primary/50 rounded-xl p-3 shadow-lg hover:shadow-xl transition-all duration-300">
           <p className="text-text-secondary text-[9px] mb-1">Average Stake</p>
           <p className="text-lg font-bold font-mono">
             {formatCurrency((stats?.total_stake || 0) / (stats?.total_bets || 1), currency)}
           </p>
         </div>
-        <div className="bg-[#18181B]/50 border border-[#27272A] rounded-lg p-3">
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-accent/50 rounded-xl p-3 shadow-lg hover:shadow-xl transition-all duration-300">
           <p className="text-text-secondary text-[9px] mb-1">Average Odds</p>
           <p className="text-lg font-bold font-mono">
             {stats?.total_bets > 0
@@ -254,7 +256,7 @@ export default function Dashboard() {
               : '0.00'}
           </p>
         </div>
-        <div className="bg-[#18181B]/50 border border-[#27272A] rounded-lg p-3">
+        <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-primary/50 rounded-xl p-3 shadow-lg hover:shadow-xl transition-all duration-300">
           <p className="text-text-secondary text-[9px] mb-1">Profit per Bet</p>
           <p
             className={`text-lg font-bold font-mono ${
@@ -269,43 +271,60 @@ export default function Dashboard() {
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* P/L Chart */}
-        <div className="lg:col-span-8 chart-container bg-[#18181B] border border-[#27272A] rounded-lg smooth-appear">
-          <h2 className="text-base font-bold mb-3 flex items-center">
-            <span className="w-1 h-4 bg-primary rounded-full mr-3"></span>
-            Profit/Loss (Last 30 days)
+        <div className="lg:col-span-8 chart-container bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-primary/50 rounded-xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h2 className="text-base font-bold mb-4 flex items-center">
+            <span className="w-1 h-4 bg-gradient-to-b from-primary to-accent rounded-full mr-3"></span>
+            Cumulative Performance (Last 30 days)
           </h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="colorPL" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-              <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
+              <XAxis
+                dataKey="date"
+                stroke="#71717A"
+                style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+                tick={{ fill: '#71717A' }}
+              />
+              <YAxis
+                stroke="#71717A"
+                style={{ fontSize: '11px', fontFamily: 'JetBrains Mono' }}
+                tick={{ fill: '#71717A' }}
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: '#18181B',
                   border: '1px solid #10B981',
-                  borderRadius: '8px',
+                  borderRadius: '12px',
                   fontFamily: 'JetBrains Mono',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
                 }}
+                labelStyle={{ color: '#A1A1AA', fontSize: '11px' }}
+                itemStyle={{ color: '#10B981', fontSize: '12px', fontWeight: 'bold' }}
                 formatter={(value) => formatCurrency(value, currency)}
               />
-              <Line type="monotone" dataKey="daily_pl" stroke="#3B82F6" strokeWidth={2} dot={false} name="Daily P/L" />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="cumulative_pl"
                 stroke="#10B981"
-                strokeWidth={3}
-                dot={false}
+                strokeWidth={2.5}
+                fill="url(#colorPL)"
                 name="Cumulative P/L"
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
 
         {/* Outcome Summary */}
-        <div className="lg:col-span-4 glass-panel border border-[#27272A] rounded-lg p-6 smooth-appear">
-          <h2 className="text-base font-bold mb-3 flex items-center">
-            <span className="w-1 h-4 bg-accent rounded-full mr-3"></span>
-            Outcome Summary
+        <div className="lg:col-span-4 bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-accent/50 rounded-xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300">
+          <h2 className="text-base font-bold mb-4 flex items-center">
+            <span className="w-1 h-4 bg-gradient-to-b from-accent to-primary rounded-full mr-3"></span>
+            Outcome Distribution
           </h2>
           <div className="flex items-center justify-center">
             <ResponsiveContainer width="100%" height={200}>
@@ -324,6 +343,14 @@ export default function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#18181B',
+                    border: '1px solid #27272A',
+                    borderRadius: '8px',
+                    fontFamily: 'JetBrains Mono',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -342,9 +369,9 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Bets */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6 smooth-appear">
-        <h2 className="text-base font-bold mb-3 flex items-center">
-          <span className="w-1 h-4 bg-accent rounded-full mr-3"></span>
+      <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] hover:border-primary/50 rounded-xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300">
+        <h2 className="text-base font-bold mb-4 flex items-center">
+          <span className="w-1 h-4 bg-gradient-to-b from-accent to-primary rounded-full mr-3"></span>
           Recent Bets
         </h2>
         <div className="overflow-x-auto">
@@ -376,7 +403,7 @@ export default function Dashboard() {
                 </tr>
               ) : (
                 recentBets.map((bet) => (
-                  <tr key={bet.bet_id} className="border-b border-[#27272A] hover:bg-white/5 transition-colors">
+                  <tr key={bet.bet_id} className="border-b border-[#27272A]/50 hover:bg-primary/5 transition-colors">
                     <td className="py-2 px-3 text-[10px] font-mono">{bet.date}</td>
                     <td className="py-2 px-3 text-[10px]">{bet.game}</td>
                     <td className="py-2 px-3 text-[10px] text-text-secondary">{bet.bet}</td>
@@ -386,14 +413,14 @@ export default function Dashboard() {
                     </td>
                     <td className="py-2 px-3 text-center">
                       <span
-                        className={`badge-enhanced px-1.5 py-0.5 rounded text-[8px] font-medium ${
+                        className={`badge-enhanced px-2 py-1 rounded-md text-[8px] font-medium ${
                           bet.status === 'won'
-                            ? 'bg-primary/10 text-primary'
+                            ? 'bg-primary/10 text-primary border border-primary/30'
                             : bet.status === 'lost'
-                              ? 'bg-destructive/10 text-destructive'
+                              ? 'bg-destructive/10 text-destructive border border-destructive/30'
                               : bet.status === 'push'
-                                ? 'bg-white/10 text-text-secondary'
-                                : 'bg-accent/10 text-accent'
+                                ? 'bg-white/10 text-text-secondary border border-white/30'
+                                : 'bg-accent/10 text-accent border border-accent/30'
                         }`}
                       >
                         {bet.status.charAt(0).toUpperCase() + bet.status.slice(1)}
