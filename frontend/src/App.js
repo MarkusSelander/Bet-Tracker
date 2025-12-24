@@ -13,6 +13,7 @@ import FavoritesPage from './pages/FavoritesPage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import SettingsPage from './pages/SettingsPage';
+import TeamsPage from './pages/TeamsPage';
 import TipstersPage from './pages/TipstersPage';
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
             <Route path="/bets" element={<BetsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="/tipsters" element={<TipstersPage />} />
             <Route path="/bookmakers" element={<BookmakersPage />} />

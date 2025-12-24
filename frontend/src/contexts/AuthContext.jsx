@@ -70,9 +70,6 @@ export const AuthProvider = ({ children }) => {
   const isMountedRef = useRef(true);
   const authCheckInProgressRef = useRef(false);
 
-  const isMountedRef = useRef(true);
-  const authCheckInProgressRef = useRef(false);
-
   // Memoized auth check function
   const checkAuth = useCallback(async (isInitialLoad = false) => {
     // Prevent concurrent auth checks

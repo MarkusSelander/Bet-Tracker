@@ -554,6 +554,35 @@ class FavoriteTeamCreate(BaseModel):
     league: Optional[str] = None
     badge: Optional[str] = None
 
+
+class TeamSearchResult(BaseModel):
+    team_id: str
+    name: str
+    sport: str
+    league: Optional[str] = None
+    badge: Optional[str] = None
+
+
+class FavoriteTeam(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    team_id: str
+    name: str
+    sport: str
+    league: Optional[str] = None
+    badge: Optional[str] = None
+    added_at: datetime
+
+
+class Fixture(BaseModel):
+    fixture_id: str
+    home_team: str
+    away_team: str
+    date: str
+    time: Optional[str] = None
+    league: str
+    sport: str
+    venue: Optional[str] = None
+
 # Auth Helper
 
 
