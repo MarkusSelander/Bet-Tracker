@@ -246,18 +246,18 @@ export const exportAnalyticsToPDF = async (stats, bookmakerStats, tipsterStats, 
         yPosition = 20;
       }
 
-      pdf.text(bm.bookmaker, 15, yPosition);
-      pdf.text(bm.total_bets.toString(), 70, yPosition);
-      pdf.text(`${bm.win_rate.toFixed(1)}%`, 95, yPosition);
+      pdf.text(bm.name || 'Unknown', 15, yPosition);
+      pdf.text((bm.bets || 0).toString(), 70, yPosition);
+      pdf.text(`${(bm.win_rate || 0).toFixed(1)}%`, 95, yPosition);
 
       // P/L with color
-      if (bm.total_profit_loss >= 0) {
+      if ((bm.profit_loss || 0) >= 0) {
         pdf.setTextColor(16, 185, 129);
       } else {
         pdf.setTextColor(239, 68, 68);
       }
-      pdf.text(formatCurrency(bm.total_profit_loss), 130, yPosition);
-      pdf.text(`${bm.roi >= 0 ? '+' : ''}${bm.roi.toFixed(2)}%`, 165, yPosition);
+      pdf.text(formatCurrency(bm.profit_loss || 0), 130, yPosition);
+      pdf.text(`${(bm.roi || 0) >= 0 ? '+' : ''}${(bm.roi || 0).toFixed(2)}%`, 165, yPosition);
       pdf.setTextColor(0);
 
       yPosition += 6;
@@ -303,18 +303,18 @@ export const exportAnalyticsToPDF = async (stats, bookmakerStats, tipsterStats, 
         yPosition = 20;
       }
 
-      pdf.text(tip.tipster, 15, yPosition);
-      pdf.text(tip.total_bets.toString(), 70, yPosition);
-      pdf.text(`${tip.win_rate.toFixed(1)}%`, 95, yPosition);
+      pdf.text(tip.name || 'Unknown', 15, yPosition);
+      pdf.text((tip.bets || 0).toString(), 70, yPosition);
+      pdf.text(`${(tip.win_rate || 0).toFixed(1)}%`, 95, yPosition);
 
       // P/L with color
-      if (tip.total_profit_loss >= 0) {
+      if ((tip.profit_loss || 0) >= 0) {
         pdf.setTextColor(16, 185, 129);
       } else {
         pdf.setTextColor(239, 68, 68);
       }
-      pdf.text(formatCurrency(tip.total_profit_loss), 130, yPosition);
-      pdf.text(`${tip.roi >= 0 ? '+' : ''}${tip.roi.toFixed(2)}%`, 165, yPosition);
+      pdf.text(formatCurrency(tip.profit_loss || 0), 130, yPosition);
+      pdf.text(`${(tip.roi || 0) >= 0 ? '+' : ''}${(tip.roi || 0).toFixed(2)}%`, 165, yPosition);
       pdf.setTextColor(0);
 
       yPosition += 6;
