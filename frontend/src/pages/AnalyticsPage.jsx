@@ -451,7 +451,7 @@ export default function AnalyticsPage() {
 
         {/* Outcome Distribution */}
         <div className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A] rounded-2xl p-6 shadow-xl">
-          <h2 className="mb-6 text-xl font-bold flex items-center">
+          <h2 className="flex items-center mb-6 text-xl font-bold">
             <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-primary to-accent"></span>
             Outcome Distribution
           </h2>
@@ -469,12 +469,7 @@ export default function AnalyticsPage() {
                 labelLine={false}
               >
                 {pieData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.color}
-                    stroke="rgba(0,0,0,0.2)"
-                    strokeWidth={2}
-                  />
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.2)" strokeWidth={2} />
                 ))}
               </Pie>
               <Tooltip
@@ -556,10 +551,7 @@ export default function AnalyticsPage() {
             />
             <Bar dataKey="daily_pl" radius={[8, 8, 0, 0]} maxBarSize={50}>
               {chartData.slice(-30).map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={entry.daily_pl >= 0 ? 'url(#colorGreen)' : 'url(#colorRed)'}
-                />
+                <Cell key={`cell-${index}`} fill={entry.daily_pl >= 0 ? 'url(#colorGreen)' : 'url(#colorRed)'} />
               ))}
             </Bar>
           </BarChart>
