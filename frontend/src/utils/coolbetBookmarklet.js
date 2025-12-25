@@ -24,6 +24,148 @@
   const API_ENDPOINT = 'https://bet-tracker-backend-rqjp.onrender.com/api/bets/import/coolbet';
   // For local development: const API_ENDPOINT = 'http://localhost:8000/api/bets/import/coolbet';
 
+  /**
+   * Detect bet status with multiple fallback strategies
+   * @param {Element} betRow - The bet ticket DOM element
+   * @returns {string} - Strictly "won" | "lost" | "pending"
+   */
+  function detectStatus(betRow) {
+    try {
+      // Strategy 1: Check .bet-status element text content
+      const statusElement = betRow.querySelector('.bet-status');
+      if (statusElement) {
+        const statusText = statusElement.innerText.toLowerCase().trim();
+
+        // Explicit won patterns
+        if (
+          statusText.includes('won') ||
+          statusText.includes('win') ||
+          statusText.includes('vunnet') || // Norwegian
+          statusText === 'w'
+        ) {
+          return 'won';
+        }
+
+        // Explicit lost patterns
+        if (
+          statusText.includes('lost') ||
+          statusText.includes('lose') ||
+          statusText.includes('tapt') || // Norwegian
+          statusText.includes('cashed out') ||
+          statusText === 'l'
+        ) {
+          return 'lost';
+        }
+
+        // Explicit pending patterns
+        if (
+          statusText.includes('open') ||
+          statusText.includes('pending') ||
+          statusText.includes('live') ||
+          statusText.includes('active') ||
+          statusText.includes('åpen') // Norwegian
+        ) {
+          return 'pending';
+        }
+      }
+
+      // Strategy 2: Check for status badge classes
+      const badgeElement = betRow.querySelector('[class*="badge"], [class*="status"]');
+      if (badgeElement) {
+        const classList = badgeElement.className.toLowerCase();
+
+        if (classList.includes('won') || classList.includes('win') || classList.includes('success')) {
+          return 'won';
+        }
+        if (classList.includes('lost') || classList.includes('lose') || classList.includes('fail')) {
+          return 'lost';
+        }
+        if (classList.includes('pending') || classList.includes('open') || classList.includes('active')) {
+          return 'pending';
+        }
+      }
+
+      // Strategy 3: Check for icon indicators (SVG, i, span with icons)
+      const iconElement = betRow.querySelector('.bet-status svg, .bet-status i, [class*="icon-"]');
+      if (iconElement) {
+        const iconClass = iconElement.className?.toLowerCase() || '';
+        const iconTitle = iconElement.getAttribute('title')?.toLowerCase() || '';
+        const iconAria = iconElement.getAttribute('aria-label')?.toLowerCase() || '';
+
+        const iconText = `${iconClass} ${iconTitle} ${iconAria}`;
+
+        if (iconText.includes('check') || iconText.includes('success') || iconText.includes('won')) {
+          return 'won';
+        }
+        if (iconText.includes('close') || iconText.includes('error') || iconText.includes('lost')) {
+          return 'lost';
+        }
+        if (iconText.includes('pending') || iconText.includes('clock') || iconText.includes('time')) {
+          return 'pending';
+        }
+      }
+
+      // Strategy 4: Check ticket container classes
+      const containerClasses = betRow.className.toLowerCase();
+      if (containerClasses.includes('won') || containerClasses.includes('settled-won')) {
+        return 'won';
+      }
+      if (containerClasses.includes('lost') || containerClasses.includes('settled-lost')) {
+        return 'lost';
+      }
+      if (containerClasses.includes('open') || containerClasses.includes('unsettled')) {
+        return 'pending';
+      }
+
+      // Strategy 5: For combo/parlay bets - check individual legs
+      const legs = betRow.querySelectorAll('[class*="leg"], [class*="selection"]');
+      if (legs.length > 1) {
+        let allWon = true;
+        let anyLost = false;
+
+        legs.forEach((leg) => {
+          const legText = leg.innerText.toLowerCase();
+          if (legText.includes('lost') || legText.includes('tapt')) {
+            anyLost = true;
+            allWon = false;
+          } else if (!legText.includes('won') && !legText.includes('vunnet')) {
+            allWon = false;
+          }
+        });
+
+        if (anyLost) return 'lost';
+        if (allWon) return 'won';
+        return 'pending';
+      }
+
+      // Strategy 6: Check for payout/return amount (if > stake, likely won)
+      const returnElement = betRow.querySelector(
+        '.ticket-return, .ticket-payout, [class*="payout"], [class*="return"]'
+      );
+      const stakeElement = betRow.querySelector('.ticket-total-stake, [class*="stake"]');
+
+      if (returnElement && stakeElement) {
+        const returnText = returnElement.innerText.replace(/[^\d.,]/g, '').replace(',', '.');
+        const stakeText = stakeElement.innerText.replace(/[^\d.,]/g, '').replace(',', '.');
+
+        const returnAmount = parseFloat(returnText);
+        const stakeAmount = parseFloat(stakeText);
+
+        if (!isNaN(returnAmount) && !isNaN(stakeAmount) && stakeAmount > 0) {
+          if (returnAmount > stakeAmount * 1.01) return 'won'; // Won with profit
+          if (returnAmount === 0) return 'lost'; // No return = lost
+        }
+      }
+
+      // Default: pending (conservative approach)
+      console.warn('Could not determine bet status, defaulting to pending', betRow);
+      return 'pending';
+    } catch (error) {
+      console.error('Error in detectStatus:', error);
+      return 'pending'; // Safe default
+    }
+  }
+
   try {
     // Confirm with user
     if (!window.confirm('Import Coolbet bets into Bet Tracker?')) {
@@ -67,9 +209,8 @@
       const stakeText = row.querySelector('.ticket-total-stake')?.innerText;
       const stake = parseFloat(stakeText?.replace(/[^\d,]/g, '').replace(',', '.') || '0');
 
-      // Extract result status
-      const statusText = row.querySelector('.bet-status')?.innerText.toLowerCase();
-      const result = statusText?.includes('won') ? 'won' : statusText?.includes('lost') ? 'lost' : 'pending';
+      // Extract result status using robust detection
+      const result = detectStatus(row);
 
       // Build full bet description for the "bet" field
       const betDescription = market && outcome ? `${market} - ${outcome}` : market || outcome || event;

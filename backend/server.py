@@ -557,6 +557,13 @@ class CoolbetImportResponse(BaseModel):
     total: int  # Total bets received
 
 
+class CoolbetResyncResponse(BaseModel):
+    """Response after resyncing Coolbet bet statuses"""
+    updated: int  # Number of bets successfully updated
+    skipped: int  # Number of bets that didn't need updating
+    total: int  # Total pending bets found
+
+
 class Bookmaker(BaseModel):
     model_config = ConfigDict(extra="ignore")
     bookmaker_id: str
@@ -1535,11 +1542,21 @@ async def import_coolbet_bets(request: Request, import_data: CoolbetImportReques
 
     for bet in import_data.bets:
         try:
-            # Validate result status
-            result_lower = bet.result.lower()
-            if result_lower not in ["won", "lost", "pending"]:
+            # ===== STRICT STATUS NORMALIZATION =====
+            # Normalize incoming status to strictly "won" | "lost" | "pending"
+            result_raw = bet.result.strip().lower()
+
+            # Map common Coolbet variants to normalized values
+            if result_raw in ["won", "win", "w", "vunnet"]:
+                result_lower = "won"
+            elif result_raw in ["lost", "lose", "l", "tapt", "cashed out", "void"]:
+                result_lower = "lost"
+            elif result_raw in ["open", "live", "pending", "active", "åpen"]:
+                result_lower = "pending"
+            else:
+                # Unknown status - log warning and default to pending
                 logging.warning(
-                    f"Invalid result status '{bet.result}' for bet {bet.externalId}, "
+                    f"Unknown result status '{bet.result}' for bet {bet.externalId}, "
                     f"defaulting to 'pending'"
                 )
                 result_lower = "pending"
@@ -1645,6 +1662,167 @@ async def import_coolbet_bets(request: Request, import_data: CoolbetImportReques
         skipped=skipped_count,
         total=total_count
     )
+
+
+@api_router.post("/bets/import/coolbet/resync", response_model=CoolbetResyncResponse)
+async def resync_coolbet_bets(request: Request):
+    """
+    Re-sync Coolbet bet statuses for pending bets.
+
+    This endpoint fixes already-imported Coolbet bets that are stuck as 'pending'
+    by matching them with the imported_bets collection and recalculating their
+    status and result values.
+
+    Use cases:
+    - Fix bets that were imported with incorrect 'pending' status
+    - Update bets after manual status correction in imported_bets
+    - Batch correction after bookmarklet improvements
+
+    Authentication: Requires valid session token
+
+    Returns:
+        CoolbetResyncResponse with counts of updated, skipped, and total bets
+
+    Safety:
+    - Only affects Coolbet bets with status='pending'
+    - Idempotent - safe to run multiple times
+    - Does not modify non-Coolbet bets
+    - Updates both bets and imported_bets collections
+    """
+    user_id = await get_current_user(request)
+
+    updated_count = 0
+    skipped_count = 0
+
+    try:
+        # Find all pending Coolbet bets for this user
+        pending_bets_cursor = db.bets.find({
+            "user_id": user_id,
+            "bookie": "Coolbet",
+            "status": "pending"
+        })
+
+        pending_bets = await pending_bets_cursor.to_list(length=None)
+        total_count = len(pending_bets)
+
+        if total_count == 0:
+            return CoolbetResyncResponse(
+                updated=0,
+                skipped=0,
+                total=0
+            )
+
+        for bet in pending_bets:
+            try:
+                # Extract external_id from notes field
+                # Format: "Imported from Coolbet (ID: coolbet-1430)"
+                notes = bet.get("notes", "")
+                external_id = None
+
+                if "ID:" in notes:
+                    external_id = notes.split("ID:")[1].strip().rstrip(")")
+
+                if not external_id:
+                    logging.warning(
+                        f"Could not extract external_id from bet {bet.get('bet_id')}, skipping"
+                    )
+                    skipped_count += 1
+                    continue
+
+                # Find corresponding imported_bet
+                imported_bet = await db.imported_bets.find_one({
+                    "user_id": user_id,
+                    "external_id": external_id,
+                    "source": "coolbet"
+                })
+
+                if not imported_bet:
+                    logging.warning(
+                        f"No imported_bet found for external_id {external_id}, skipping"
+                    )
+                    skipped_count += 1
+                    continue
+
+                # Get status from imported_bet
+                new_status = imported_bet.get("result", "pending").lower()
+
+                # Normalize status (in case imported_bets has variants)
+                if new_status in ["won", "win", "w", "vunnet"]:
+                    new_status = "won"
+                elif new_status in ["lost", "lose", "l", "tapt", "cashed out", "void"]:
+                    new_status = "lost"
+                elif new_status in ["open", "live", "pending", "active", "åpen"]:
+                    new_status = "pending"
+                else:
+                    new_status = "pending"
+
+                # If still pending, skip (no update needed)
+                if new_status == "pending":
+                    skipped_count += 1
+                    continue
+
+                # Recalculate result value
+                stake = bet.get("stake", 0)
+                odds = bet.get("odds", 1.0)
+
+                if new_status == "won":
+                    result_value = stake * (odds - 1)  # Profit
+                elif new_status == "lost":
+                    result_value = -stake  # Loss
+                else:
+                    result_value = 0.0  # Pending
+
+                # Update bets collection
+                await db.bets.update_one(
+                    {"bet_id": bet["bet_id"]},
+                    {
+                        "$set": {
+                            "status": new_status,
+                            "result": result_value
+                        }
+                    }
+                )
+
+                # Also update imported_bets to ensure consistency
+                await db.imported_bets.update_one(
+                    {
+                        "user_id": user_id,
+                        "external_id": external_id,
+                        "source": "coolbet"
+                    },
+                    {
+                        "$set": {
+                            "result": new_status
+                        }
+                    }
+                )
+
+                updated_count += 1
+                logging.info(
+                    f"Updated bet {bet['bet_id']} (external_id: {external_id}) "
+                    f"from pending to {new_status}"
+                )
+
+            except Exception as e:
+                logging.error(
+                    f"Error resyncing bet {bet.get('bet_id')}: {e}",
+                    exc_info=True
+                )
+                skipped_count += 1
+                continue
+
+        return CoolbetResyncResponse(
+            updated=updated_count,
+            skipped=skipped_count,
+            total=total_count
+        )
+
+    except Exception as e:
+        logging.error(f"Error in resync_coolbet_bets: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to resync Coolbet bets: {str(e)}"
+        )
 
 
 @api_router.get("/bets/export")
