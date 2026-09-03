@@ -132,7 +132,7 @@ export default function CalendarPage() {
       <PageHeader title="Kalender" subtitle="Resultat per dag" testId="calendar-title" />
 
       {/* Month Navigation */}
-      <div className="flex items-center justify-between bg-[#18181B] border border-[#27272A] rounded-lg p-4">
+      <div className="flex items-center justify-between bg-[#18181B] border border-[#27272A] rounded-xl p-4">
         <Button
           data-testid="prev-month-btn"
           variant="secondary"
@@ -174,7 +174,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Calendar Grid */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
         <div className="grid grid-cols-7 gap-2 mb-2">
           {DAYS.map((day) => (
             <div key={day} className="text-center text-sm font-medium text-text-secondary py-2">
@@ -237,7 +237,7 @@ export default function CalendarPage() {
       </div>
 
       {/* Weekly Summary */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6">
         <h2 className="text-lg font-bold mb-4">Ukesoppsummering</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* eslint-disable-next-line react/no-array-index-key */}

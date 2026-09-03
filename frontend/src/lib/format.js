@@ -16,6 +16,13 @@ export const TICKET_TYPE_LABELS = {
   single: 'Enkelt',
   combo: 'Kombi',
   system: 'System',
+  betbuilder: 'Bet Builder',
+};
+
+export const PRODUCT_LABELS = {
+  PREMATCH: 'Prematch',
+  LIVE: 'Live',
+  MIXED: 'Blandet',
 };
 
 export const STATUS_LABELS = {

@@ -199,7 +199,7 @@ export default function SettingsPage() {
               data-testid="import-btn"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="btn-primary-enhanced bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+              className="bg-primary hover:bg-primary/90 text-black font-bold"
             >
               <Upload className="w-4 h-4 mr-2" />
               {importing ? 'Importerer...' : 'Importer CSV'}
@@ -226,7 +226,7 @@ export default function SettingsPage() {
               data-testid="import-coolbet-btn"
               onClick={() => coolbetInputRef.current?.click()}
               disabled={importingCoolbet}
-              className="btn-primary-enhanced bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+              className="bg-primary hover:bg-primary/90 text-black font-bold"
             >
               <Upload className="w-4 h-4 mr-2" />
               {importingCoolbet ? 'Importerer...' : 'Importer Coolbet JSON'}

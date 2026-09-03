@@ -2,12 +2,12 @@ import { FileDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -18,12 +18,88 @@ import {
 import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
-import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { formatCurrency } from '../lib/format';
 import { exportAnalyticsToPDF } from '../utils/pdfExport';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
+const PERIODS = [
+  { value: '7', label: '7 d' },
+  { value: '30', label: '30 d' },
+  { value: '90', label: '90 d' },
+  { value: '365', label: 'År' },
+  { value: 'all', label: 'Alle' },
+];
+const PERIOD_TITLES = {
+  7: '7 dager',
+  30: '30 dager',
+  90: '90 dager',
+  365: 'siste år',
+  all: 'hele perioden',
+};
+const tooltipStyle = {
+  backgroundColor: '#18181B',
+  border: '1px solid #27272A',
+  borderRadius: '8px',
+  fontSize: '12px',
+};
+
+function signedClass(value) {
+  if (value > 0) return 'text-primary';
+  if (value < 0) return 'text-destructive';
+  return '';
+}
+
+function BreakdownTable({ title, nameHeader, rows, empty, currency }) {
+  const sorted = [...rows].sort((a, b) => (b.profit_loss || 0) - (a.profit_loss || 0));
+
+  return (
+    <div className={`${cardClass} p-6`}>
+      <h2 className="text-base font-bold mb-4">{title}</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-[#27272A] text-left text-xs text-text-secondary">
+              <th className="py-2 pr-3 font-medium">{nameHeader}</th>
+              <th className="py-2 pr-3 font-medium text-right">Spill</th>
+              <th className="py-2 pr-3 font-medium text-right">Treff %</th>
+              <th className="py-2 pr-3 font-medium text-right">Innsats</th>
+              <th className="py-2 pr-3 font-medium text-right">Resultat</th>
+              <th className="py-2 font-medium text-right">ROI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="text-center py-8 text-sm text-text-muted">
+                  {empty}
+                </td>
+              </tr>
+            ) : (
+              sorted.map((row) => (
+                <tr key={row.name} className="border-b border-[#27272A]/50">
+                  <td className="py-2.5 pr-3 text-sm font-medium">{row.name}</td>
+                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{row.bets}</td>
+                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{row.win_rate.toFixed(1)}%</td>
+                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{formatCurrency(row.stake, currency)}</td>
+                  <td className={`py-2.5 pr-3 text-sm font-mono text-right ${signedClass(row.profit_loss)}`}>
+                    {row.profit_loss >= 0 ? '+' : ''}
+                    {formatCurrency(row.profit_loss, currency)}
+                  </td>
+                  <td className={`py-2.5 text-sm font-mono text-right ${signedClass(row.roi)}`}>
+                    {row.roi >= 0 ? '+' : ''}
+                    {row.roi.toFixed(1)}%
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const { user } = useOutletContext();
@@ -42,10 +118,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Determine days parameter
         const daysParam = dateRange === 'custom' ? 365 : dateRange;
-
-        // Build sport filter
         const sportParam = selectedSport !== 'all' ? `&sport=${selectedSport}` : '';
 
         const [statsRes, chartRes, sportRes, oddsRes] = await Promise.all([
@@ -69,9 +142,9 @@ export default function AnalyticsPage() {
         const oddsData = await oddsRes.json();
 
         setStats(statsData);
-        setChartData(chartDataRes);
-        setSportStats(sportData);
-        setOddsRangeStats(oddsData);
+        setChartData(Array.isArray(chartDataRes) ? chartDataRes : []);
+        setSportStats(Array.isArray(sportData) ? sportData : []);
+        setOddsRangeStats(Array.isArray(oddsData) ? oddsData : []);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Kunne ikke laste analyse');
@@ -81,12 +154,14 @@ export default function AnalyticsPage() {
     };
 
     fetchData();
-  }, [dateRange, selectedSport]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dateRange, selectedSport]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="bg-[#18181B] border border-[#27272A] rounded-xl h-20 shimmer" />
+        ))}
       </div>
     );
   }
@@ -97,7 +172,12 @@ export default function AnalyticsPage() {
     { name: 'Push', value: stats?.push_count || 0, color: '#A1A1AA' },
     { name: 'Cashout', value: stats?.cashed_count || 0, color: '#F59E0B' },
     { name: 'Åpne', value: stats?.pending_count || 0, color: '#3B82F6' },
-  ];
+  ].filter((item) => item.value > 0);
+  const pl = stats?.total_profit_loss || 0;
+  const avgStake = (stats?.total_stake || 0) / (stats?.total_bets || 1);
+  const dailyData = chartData.length > 40 ? chartData.slice(-40) : chartData;
+  const visibleSports =
+    selectedSport === 'all' ? sportStats : sportStats.filter((sport) => sport.name === selectedSport);
 
   return (
     <div className="space-y-6">
@@ -126,30 +206,26 @@ export default function AnalyticsPage() {
         }
       />
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#18181B] border border-[#27272A] rounded-lg p-4">
-        {/* Date Range Filter */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Periode</Label>
-          <Select value={dateRange} onValueChange={setDateRange}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Siste 7 dager</SelectItem>
-              <SelectItem value="30">Siste 30 dager</SelectItem>
-              <SelectItem value="90">Siste 90 dager</SelectItem>
-              <SelectItem value="365">Siste år</SelectItem>
-              <SelectItem value="all">Alle</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className={`${cardClass} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
+        <div className="flex flex-wrap gap-1.5">
+          {PERIODS.map((period) => (
+            <button
+              key={period.value}
+              type="button"
+              onClick={() => setDateRange(period.value)}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                dateRange === period.value
+                  ? 'bg-primary text-black font-medium'
+                  : 'bg-white/5 text-text-secondary hover:bg-white/10'
+              }`}
+            >
+              {period.label}
+            </button>
+          ))}
         </div>
-
-        {/* Sport Filter */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Sport</Label>
+        <div className="flex items-center gap-3">
           <Select value={selectedSport} onValueChange={setSelectedSport}>
-            <SelectTrigger>
+            <SelectTrigger className="w-[180px] bg-black/20 border-white/10 h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -161,318 +237,180 @@ export default function AnalyticsPage() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-
-        {/* Chart Type Toggle */}
-        <div>
-          <Label className="text-xs text-text-secondary mb-2 block">Diagram</Label>
-          <Select value={chartType} onValueChange={setChartType}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="line">Linje</SelectItem>
-              <SelectItem value="bar">Søyle</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Quick Stats Display */}
-        <div className="flex flex-col justify-center">
-          <p className="text-xs text-text-secondary">Viser</p>
-          <p className="text-lg font-bold text-primary">{stats?.total_bets || 0} spill</p>
+          <p className="text-sm text-text-secondary whitespace-nowrap">
+            <span className="font-mono font-medium text-white">{stats?.total_bets || 0}</span> spill
+          </p>
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Snittinnsats</p>
-          <p className="text-3xl font-bold font-mono">
-            {formatCurrency((stats?.total_stake || 0) / (stats?.total_bets || 1), currency)}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className={cardClass}>
+          <p className="text-xs text-text-secondary mb-1">Resultat</p>
+          <p className={`text-2xl font-bold font-mono ${signedClass(pl)}`}>
+            {pl >= 0 ? '+' : ''}
+            {formatCurrency(pl, currency)}
           </p>
         </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Treffprosent</p>
-          <p className="text-3xl font-bold font-mono text-primary">{(stats?.win_rate || 0).toFixed(1)}%</p>
+        <div className={cardClass}>
+          <p className="text-xs text-text-secondary mb-1">ROI</p>
+          <p className={`text-2xl font-bold font-mono ${signedClass(stats?.roi || 0)}`}>
+            {(stats?.roi || 0).toFixed(1)}%
+          </p>
         </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Streak nå</p>
+        <div className={cardClass}>
+          <p className="text-xs text-text-secondary mb-1">Treffprosent</p>
+          <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
+        </div>
+        <div className={cardClass}>
+          <p className="text-xs text-text-secondary mb-1">Snittinnsats</p>
+          <p className="text-2xl font-bold font-mono">{formatCurrency(avgStake, currency)}</p>
+        </div>
+        <div className={`${cardClass} col-span-2 lg:col-span-1`}>
+          <p className="text-xs text-text-secondary mb-1">Streak</p>
           <p
-            className={`text-3xl font-bold font-mono ${
+            className={`text-2xl font-bold font-mono ${
               stats?.current_streak_type === 'won'
                 ? 'text-primary'
                 : stats?.current_streak_type === 'lost'
                   ? 'text-destructive'
-                  : 'text-white'
+                  : ''
             }`}
           >
-            {stats?.current_streak || 0}{' '}
-            {stats?.current_streak_type ? (stats.current_streak_type === 'won' ? 'W' : 'L') : '-'}
+            {stats?.current_streak || 0}
+            {stats?.current_streak_type === 'won' ? ' V' : stats?.current_streak_type === 'lost' ? ' T' : ''}
+          </p>
+          <p className="text-[11px] text-text-muted mt-1">
+            Beste {stats?.best_win_streak || 0}V · Verst {stats?.worst_loss_streak || 0}T
           </p>
         </div>
+      </div>
 
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <p className="text-text-secondary text-sm mb-2">Beste streak</p>
-          <p className="text-3xl font-bold font-mono text-primary">{stats?.best_win_streak || 0}W</p>
-          <p className="text-xs text-text-muted mt-1">Verst: {stats?.worst_loss_streak || 0}T</p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className={`lg:col-span-8 ${cardClass} p-6`}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-base font-bold">Akkumulert resultat · {PERIOD_TITLES[dateRange]}</h2>
+            <div className="flex rounded-lg border border-[#27272A] overflow-hidden shrink-0">
+              <button
+                type="button"
+                onClick={() => setChartType('line')}
+                className={`px-3 py-1 text-xs ${chartType === 'line' ? 'bg-white/10 text-white' : 'text-text-secondary'}`}
+              >
+                Linje
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('bar')}
+                className={`px-3 py-1 text-xs ${chartType === 'bar' ? 'bg-white/10 text-white' : 'text-text-secondary'}`}
+              >
+                Søyle
+              </button>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            {chartType === 'line' ? (
+              <AreaChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
+                <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
+                <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
+                <Area
+                  type="monotone"
+                  dataKey="cumulative_pl"
+                  stroke="#10B981"
+                  strokeWidth={2}
+                  fill="#10B98122"
+                  name="P/L"
+                />
+              </AreaChart>
+            ) : (
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
+                <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
+                <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
+                <Bar dataKey="cumulative_pl" name="P/L" radius={[2, 2, 0, 0]}>
+                  {chartData.map((entry) => (
+                    <Cell key={entry.date} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+
+        <div className={`lg:col-span-4 ${cardClass} p-6`}>
+          <h2 className="text-base font-bold mb-4">Fordeling</h2>
+          {pieData.length === 0 ? (
+            <p className="text-sm text-text-muted py-12 text-center">Ingen oppgjorte spill i utvalget</p>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={70}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {pieData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 mt-2">
+                {pieData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-sm text-text-secondary">{item.name}</span>
+                    </div>
+                    <span className="text-sm font-mono">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Cumulative P/L Chart */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6">
-          Akkumulert P/L
-          {dateRange === '7' && ' (7 dager)'}
-          {dateRange === '30' && ' (30 dager)'}
-          {dateRange === '90' && ' (90 dager)'}
-          {dateRange === '365' && ' (siste år)'}
-          {dateRange === 'all' && ' (alle)'}
-        </h2>
-        <ResponsiveContainer width="100%" height={400}>
-          {chartType === 'line' ? (
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-              <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#18181B',
-                  border: '1px solid #10B981',
-                  borderRadius: '8px',
-                  fontFamily: 'JetBrains Mono',
-                }}
-                formatter={(value) => formatCurrency(value, currency)}
-              />
-              <Line
-                type="monotone"
-                dataKey="cumulative_pl"
-                stroke="#10B981"
-                strokeWidth={3}
-                dot={false}
-                name="Akkumulert P/L"
-              />
-            </LineChart>
-          ) : (
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-              <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#18181B',
-                  border: '1px solid #10B981',
-                  borderRadius: '8px',
-                  fontFamily: 'JetBrains Mono',
-                }}
-                formatter={(value) => formatCurrency(value, currency)}
-              />
-              <Bar dataKey="cumulative_pl" name="Akkumulert P/L">
-                {chartData.map((entry) => (
-                  <Cell key={entry.date} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
-                ))}
-              </Bar>
-            </BarChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-
-      {/* Daily P/L Bar Chart */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6">Daglig resultat</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData.slice(-30)}>
+      <div className={`${cardClass} p-6`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold">Daglig resultat</h2>
+          {chartData.length > 40 ? <p className="text-xs text-text-muted">Siste 40 dager med aktivitet</p> : null}
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={dailyData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-            <XAxis dataKey="date" stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-            <YAxis stroke="#A1A1AA" style={{ fontSize: '12px', fontFamily: 'JetBrains Mono' }} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#18181B',
-                border: '1px solid #10B981',
-                borderRadius: '8px',
-                fontFamily: 'JetBrains Mono',
-              }}
-              formatter={(value) => formatCurrency(value, currency)}
-            />
-            <Bar dataKey="daily_pl" fill="#10B981" radius={[4, 4, 0, 0]} />
+            <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
+            <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+            <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
+            <Bar dataKey="daily_pl" name="P/L" radius={[3, 3, 0, 0]}>
+              {dailyData.map((entry) => (
+                <Cell key={entry.date} fill={entry.daily_pl >= 0 ? '#10B981' : '#EF4444'} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Outcome Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <h2 className="text-xl font-bold mb-6">Utfallsfordeling</h2>
-          <div className="flex items-center justify-center">
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-          <h2 className="text-xl font-bold mb-6">Nøkkeltall</h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Spill totalt</span>
-              <span className="font-mono font-bold">{stats?.total_bets || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Vunnet</span>
-              <span className="font-mono font-bold text-primary">{stats?.won_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Tapt</span>
-              <span className="font-mono font-bold text-destructive">{stats?.lost_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Push</span>
-              <span className="font-mono font-bold text-text-muted">{stats?.push_count || 0}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-              <span className="text-text-secondary">Åpne</span>
-              <span className="font-mono font-bold text-accent">{stats?.pending_count || 0}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Sport Performance */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-primary rounded-full mr-3"></span>
-          Resultat per sport
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Sport</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Spill</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Treff %</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Innsats</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Resultat</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sportStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    Ingen sportdata
-                  </td>
-                </tr>
-              ) : (
-                sportStats.map((sport) => (
-                  <tr key={sport.name} className="border-b border-[#27272A] hover:bg-white/5">
-                    <td className="py-3 px-4 text-sm font-medium">{sport.name}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{sport.bets}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">
-                      <span className={sport.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                        {sport.win_rate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(sport.stake, currency)}</td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        sport.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {sport.profit_loss >= 0 ? '+' : ''}
-                      {formatCurrency(sport.profit_loss, currency)}
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        sport.roi >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {sport.roi >= 0 ? '+' : ''}
-                      {sport.roi.toFixed(2)}%
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Odds Range Analysis */}
-      <div className="glass-panel border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-6 flex items-center">
-          <span className="w-1 h-6 bg-accent rounded-full mr-3"></span>
-          Resultat per oddsintervall
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full enhanced-table">
-            <thead>
-              <tr className="border-b border-[#27272A]">
-                <th className="text-left py-3 px-4 text-sm font-medium text-text-secondary">Oddsintervall</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Spill</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Treff %</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Innsats</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">Resultat</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-text-secondary">ROI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {oddsRangeStats.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-text-muted">
-                    Ingen oddsdata
-                  </td>
-                </tr>
-              ) : (
-                oddsRangeStats.map((range) => (
-                  <tr key={range.name} className="border-b border-[#27272A] hover:bg-white/5">
-                    <td className="py-3 px-4 text-sm font-medium">{range.name}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{range.bets}</td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">
-                      <span className={range.win_rate >= 50 ? 'text-primary' : 'text-text-secondary'}>
-                        {range.win_rate.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-sm font-mono text-right">{formatCurrency(range.stake, currency)}</td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        range.profit_loss >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {range.profit_loss >= 0 ? '+' : ''}
-                      {formatCurrency(range.profit_loss, currency)}
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-sm font-mono font-bold text-right ${
-                        range.roi >= 0 ? 'text-primary' : 'text-destructive'
-                      }`}
-                    >
-                      {range.roi >= 0 ? '+' : ''}
-                      {range.roi.toFixed(2)}%
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <BreakdownTable
+        title="Per sport"
+        nameHeader="Sport"
+        rows={visibleSports}
+        empty="Ingen sportdata"
+        currency={currency}
+      />
+      <BreakdownTable
+        title="Per oddsintervall"
+        nameHeader="Odds"
+        rows={oddsRangeStats}
+        empty="Ingen oddsdata"
+        currency={currency}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
@@ -29,6 +30,7 @@ export default function Dashboard() {
   const [chartData, setChartData] = useState([]);
   const [recentBets, setRecentBets] = useState([]);
   const [pendingBets, setPendingBets] = useState([]);
+  const [detailBet, setDetailBet] = useState(null);
   const [loading, setLoading] = useState(true);
   const currency = user?.currency || 'NOK';
 
@@ -79,6 +81,16 @@ export default function Dashboard() {
   ];
   const pl = stats?.total_profit_loss || 0;
   const pendingStake = pendingBets.reduce((sum, bet) => sum + (bet.stake || 0), 0);
+
+  const openBetDetails = (bet) => setDetailBet(bet);
+
+  const handleRowKeyDown = (event, bet) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openBetDetails(bet);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -161,7 +173,13 @@ export default function Dashboard() {
             {pendingBets.slice(0, 6).map((bet) => (
               <div
                 key={bet.bet_id}
-                className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0"
+                role="button"
+                tabIndex={0}
+                data-testid={`pending-bet-${bet.bet_id}`}
+                aria-label={`Vis detaljer for ${bet.game}`}
+                onClick={() => openBetDetails(bet)}
+                onKeyDown={(event) => handleRowKeyDown(event, bet)}
+                className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0 cursor-pointer hover:bg-white/5 rounded-md px-1 -mx-1 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
               >
                 <div className="min-w-0">
                   <p className="text-sm truncate">{bet.game}</p>
@@ -252,7 +270,15 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {recentBets.map((bet) => (
-                  <tr key={bet.bet_id} className="border-b border-[#27272A]/50">
+                  <tr
+                    key={bet.bet_id}
+                    data-testid={`recent-bet-${bet.bet_id}`}
+                    tabIndex={0}
+                    aria-label={`Vis detaljer for ${bet.game}`}
+                    onClick={() => openBetDetails(bet)}
+                    onKeyDown={(event) => handleRowKeyDown(event, bet)}
+                    className="border-b border-[#27272A]/50 cursor-pointer hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
+                  >
                     <td className="py-2 pr-3 text-sm font-mono whitespace-nowrap">{bet.date}</td>
                     <td className="py-2 pr-3 text-sm max-w-[220px] truncate">{bet.game}</td>
                     <td className="py-2 pr-3 text-sm font-mono text-right">{bet.odds.toFixed(2)}</td>
@@ -275,6 +301,15 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <BetDetailsDialog
+        bet={detailBet}
+        open={Boolean(detailBet)}
+        onOpenChange={(open) => {
+          if (!open) setDetailBet(null);
+        }}
+        currency={currency}
+      />
     </div>
   );
 }

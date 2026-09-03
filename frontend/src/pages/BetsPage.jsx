@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2 } from 
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
+import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
@@ -19,6 +20,7 @@ export default function BetsPage() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBet, setEditingBet] = useState(null);
+  const [detailBet, setDetailBet] = useState(null);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
     status: 'all',
@@ -190,7 +192,7 @@ export default function BetsPage() {
   };
 
   const handleDelete = async (betId) => {
-    if (!window.confirm('Slette dette spillet?')) return;
+    if (!window.confirm('Slette dette spillet?')) return false;
 
     try {
       const response = await fetch(`${BACKEND_URL}/api/bets/${betId}`, {
@@ -201,9 +203,21 @@ export default function BetsPage() {
       if (!response.ok) throw new Error('Kunne ikke slette spill');
       toast.success('Spill slettet');
       fetchData();
+      return true;
     } catch (error) {
       console.error('Error deleting bet:', error);
       toast.error('Kunne ikke slette spill');
+      return false;
+    }
+  };
+
+  const openBetDetails = (bet) => setDetailBet(bet);
+
+  const handleRowKeyDown = (event, bet) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openBetDetails(bet);
     }
   };
 
@@ -591,7 +605,15 @@ export default function BetsPage() {
                 </tr>
               ) : (
                 currentBets.map((bet) => (
-                  <tr key={bet.bet_id} className="border-b border-[#27272A] hover:bg-white/5 transition-colors">
+                  <tr
+                    key={bet.bet_id}
+                    data-testid={`bet-row-${bet.bet_id}`}
+                    tabIndex={0}
+                    aria-label={`Vis detaljer for ${bet.game}`}
+                    onClick={() => openBetDetails(bet)}
+                    onKeyDown={(event) => handleRowKeyDown(event, bet)}
+                    className="border-b border-[#27272A] hover:bg-white/5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-white/10"
+                  >
                     <td className="py-2 px-3 text-[11px] font-mono whitespace-nowrap">
                       {bet.date.split('-').slice(1).reverse().join('/')} {bet.time ? bet.time.slice(0, 5) : ''}
                     </td>
@@ -636,18 +658,30 @@ export default function BetsPage() {
                       {bet.result >= 0 ? '+' : ''}
                       {formatCurrency(bet.result, currency)}
                     </td>
-                    <td className="py-2 px-3 whitespace-nowrap">
+                    <td
+                      className="py-2 px-3 whitespace-nowrap"
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <div className="flex items-center justify-center space-x-2">
                         <button
+                          type="button"
                           data-testid={`edit-bet-${bet.bet_id}`}
-                          onClick={() => handleEdit(bet)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEdit(bet);
+                          }}
                           className="p-2 hover:bg-white/10 rounded transition-colors"
                         >
                           <Pencil className="w-4 h-4 text-accent" />
                         </button>
                         <button
+                          type="button"
                           data-testid={`delete-bet-${bet.bet_id}`}
-                          onClick={() => handleDelete(bet.bet_id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDelete(bet.bet_id);
+                          }}
                           className="p-2 hover:bg-white/10 rounded transition-colors"
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
@@ -735,6 +769,23 @@ export default function BetsPage() {
           </div>
         )}
       </div>
+
+      <BetDetailsDialog
+        bet={detailBet}
+        open={Boolean(detailBet)}
+        onOpenChange={(open) => {
+          if (!open) setDetailBet(null);
+        }}
+        currency={currency}
+        onEdit={(bet) => {
+          setDetailBet(null);
+          handleEdit(bet);
+        }}
+        onDelete={async (bet) => {
+          const deleted = await handleDelete(bet.bet_id);
+          if (deleted) setDetailBet(null);
+        }}
+      />
     </div>
   );
 }
