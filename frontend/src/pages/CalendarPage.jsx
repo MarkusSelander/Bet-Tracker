@@ -222,9 +222,7 @@ export default function CalendarPage() {
                         {isPositive ? '+' : ''}
                         {formatCurrency(profitLoss, currency, 0)}
                       </div>
-                      <div className="text-xs text-text-muted">
-                        {bets} spill
-                      </div>
+                      <div className="text-xs text-text-muted">{bets} spill</div>
                       <div className="text-xs text-text-muted">
                         {won}W-{lost}L
                       </div>
