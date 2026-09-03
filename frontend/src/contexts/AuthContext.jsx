@@ -72,6 +72,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     const userData = await response.json();
+    delete userData.session_token;
     setUser(userData);
     return userData;
   };

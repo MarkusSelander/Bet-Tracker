@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
 
 from coolbet import map_coolbet_ticket
+from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
 from stats import compute_stats
 
 ROOT_DIR = Path(__file__).parent
@@ -633,7 +634,8 @@ async def login(request: Request, response: Response):
     )
 
     user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return user_doc
+    # session_token is for Bearer clients (Chrome extension). Cookie auth is unchanged.
+    return login_payload(user_doc or {}, session_token)
 
 
 @api_router.get("/auth/me")
@@ -1535,10 +1537,13 @@ async def search_teams(request: Request, query: str, sport: Optional[str] = None
             return []
 
 
+# Chrome extension uses Authorization Bearer (not cookies). unpacked IDs change,
+# so allow any chrome-extension:// origin in addition to CORS_ORIGINS (Vercel etc.).
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origin_regex=CHROME_EXTENSION_ORIGIN_RE,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -211,7 +211,9 @@ export default function SettingsPage() {
             <p className="text-sm text-text-secondary mb-3">
               Last opp <span className="font-mono text-text-primary">coolbet_bets.json</span> fra{' '}
               <span className="font-mono text-text-primary">sync.py</span>. Eksisterende kuponger oppdateres på
-              Coolbet-id.
+              Coolbet-id. For automatisk synk: last den utpakkede Chrome-utvidelsen fra mappen{' '}
+              <span className="font-mono text-text-primary">extension/</span> (se{' '}
+              <span className="font-mono text-text-primary">extension/README.md</span>).
             </p>
             <input
               ref={coolbetInputRef}

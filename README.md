@@ -81,6 +81,8 @@ docker run -d -p 27017:27017 --name mongodb mongo
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=bet_tracker
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
+# Chrome-utvidelsen bruker Bearer-token (ikke cookies). Backend tillater også
+# chrome-extension://<32 tegn> via allow_origin_regex — du trenger ikke liste ID-en.
 ```
 
 ### Frontend (.env)

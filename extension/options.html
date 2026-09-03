@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bet Tracker-synk</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Bet Tracker-innlogging</h1>
+      <p class="lead">
+        Utvidelsen henter spillhistorikk fra Coolbet (der du er innlogget i Chrome) og sender
+        kupongene til Bet Tracker med Bearer-token. Coolbet-passord lagres ikke.
+      </p>
+
+      <label for="api-url">Backend-URL</label>
+      <input id="api-url" type="url" placeholder="https://ditt-api-domene.example" />
+
+      <fieldset>
+        <legend>Logg inn med e-post og passord</legend>
+        <label for="email">E-post</label>
+        <input id="email" type="email" autocomplete="username" />
+        <label for="password">Passord</label>
+        <input id="password" type="password" autocomplete="current-password" />
+        <button id="login" type="button">Logg inn på Bet Tracker</button>
+      </fieldset>
+
+      <label for="token">Eller lim inn session-token</label>
+      <input id="token" type="password" placeholder="session_…" />
+
+      <label class="check">
+        <input id="auto-history" type="checkbox" />
+        Auto-synk når du åpner Coolbet bet-history
+      </label>
+      <label class="check">
+        <input id="auto-alarm" type="checkbox" />
+        Auto-synk hver 6. time (åpner Coolbet i bakgrunnen)
+      </label>
+
+      <button id="save" type="button">Lagre</button>
+      <p id="message" class="message" hidden></p>
+    </main>
+    <script src="lib/history.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

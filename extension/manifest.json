@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Bet Tracker Coolbet Sync",
+  "version": "1.0.0",
+  "description": "Synkroniserer Coolbet-spillhistorikk til Bet Tracker.",
+  "permissions": ["storage", "alarms", "scripting", "tabs", "webRequest"],
+  "host_permissions": [
+    "https://www.coolbet.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Coolbet → Bet Tracker",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.coolbet.com/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.coolbet.com/*"],
+      "js": ["lib/history.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Coolbet → Bet Tracker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Coolbet-synk</h1>
+      <p id="status" class="status">Sjekker…</p>
+    </header>
+    <p id="last-sync" class="muted"></p>
+    <p id="result" class="muted"></p>
+    <p id="error" class="error" hidden></p>
+    <div class="actions">
+      <button id="sync-now" type="button">Synk nå</button>
+      <button id="open-options" type="button" class="secondary">Innstillinger</button>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 dist/
 build/
+coolbet_bets.json
+coolbet_storage.json
+dasd.md
