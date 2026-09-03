@@ -7,13 +7,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
-import bcrypt
 import httpx
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict
 from starlette.middleware.cors import CORSMiddleware
+
+from coolbet import map_coolbet_ticket
+from stats import compute_stats
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -21,12 +23,13 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+is_production = os.environ.get('ENVIRONMENT', '').lower() == 'production'
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # TheSportsDB API configuration
-SPORTSDB_API_KEY = "123"  # Free test key - official from TheSportsDB documentation
+SPORTSDB_API_KEY = "3"  # Free tier key
 SPORTSDB_BASE_URL = "https://www.thesportsdb.com/api/v1/json"
 
 # Cache for TheSportsDB lookups to minimize API calls
@@ -457,17 +460,6 @@ class User(BaseModel):
     created_at: datetime
 
 
-class UserRegister(BaseModel):
-    email: EmailStr
-    password: str
-    name: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-
 class UserSession(BaseModel):
     model_config = ConfigDict(extra="ignore")
     user_id: str
@@ -486,12 +478,20 @@ class Bet(BaseModel):
     bet: str
     stake: float
     odds: float
-    status: str  # "won", "lost", "pending", "push"
+    status: str  # "won", "lost", "pending", "push", "cashed"
     result: float  # profit/loss amount
     bookie: Optional[str] = None
     tipster: Optional[str] = None
     sport: Optional[str] = None
     notes: Optional[str] = None
+    source_id: Optional[str] = None
+    league: Optional[str] = None
+    ticket_type: Optional[str] = None
+    product: Optional[str] = None
+    total_matches: Optional[int] = None
+    expected_result_date: Optional[str] = None
+    cashout_amount: Optional[float] = None
+    display_id: Optional[int] = None
     created_at: datetime
 
 
@@ -521,47 +521,6 @@ class BetUpdate(BaseModel):
     tipster: Optional[str] = None
     sport: Optional[str] = None
     notes: Optional[str] = None
-
-
-# Models for Coolbet bookmarklet import
-class CoolbetImportedBet(BaseModel):
-    """Represents a single bet extracted from Coolbet via bookmarklet"""
-    externalId: str  # Unique identifier from Coolbet (e.g., "coolbet-1430")
-    # Event/game name (e.g., "Minnesota Timberwolves - New York Knicks")
-    event: str
-    stake: float  # Bet amount
-    odds: float  # Decimal odds
-    result: str  # "won", "lost", or "pending"
-    placedAt: str  # ISO timestamp when bet was placed
-    # What was bet on (e.g., "Total Points Over/Under 230 - Over")
-    selection: Optional[str] = None
-    betType: Optional[str] = None  # Type of bet (e.g., "single", "combo")
-    # Sport name from SVG data-name (e.g., "basketball")
-    sport: Optional[str] = None
-    league: Optional[str] = None  # League name (e.g., "NBA")
-    # Market type (e.g., "Total Points Over/Under 230")
-    market: Optional[str] = None
-    outcome: Optional[str] = None  # Outcome/pick (e.g., "Over")
-
-
-class CoolbetImportRequest(BaseModel):
-    """Request payload for importing Coolbet bets via bookmarklet"""
-    source: str  # Must be "coolbet"
-    bets: List[CoolbetImportedBet]
-
-
-class CoolbetImportResponse(BaseModel):
-    """Response after importing Coolbet bets"""
-    imported: int  # Number of bets successfully imported
-    skipped: int  # Number of duplicates skipped
-    total: int  # Total bets received
-
-
-class CoolbetResyncResponse(BaseModel):
-    """Response after resyncing Coolbet bet statuses"""
-    updated: int  # Number of bets successfully updated
-    skipped: int  # Number of bets that didn't need updating
-    total: int  # Total pending bets found
 
 
 class Bookmaker(BaseModel):
@@ -595,45 +554,7 @@ class FavoriteTeamCreate(BaseModel):
     league: Optional[str] = None
     badge: Optional[str] = None
 
-
-class TeamSearchResult(BaseModel):
-    team_id: str
-    name: str
-    sport: str
-    league: Optional[str] = None
-    badge: Optional[str] = None
-
-
-class FavoriteTeam(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    team_id: str
-    name: str
-    sport: str
-    league: Optional[str] = None
-    badge: Optional[str] = None
-    added_at: datetime
-
-
-class Fixture(BaseModel):
-    fixture_id: str
-    home_team: str
-    away_team: str
-    date: str
-    time: Optional[str] = None
-    league: str
-    sport: str
-    venue: Optional[str] = None
-
 # Auth Helper
-
-
-def is_production() -> bool:
-    """Check if we're running in production (HTTPS environment)"""
-    return (
-        os.environ.get('ENVIRONMENT') == 'production' or
-        os.environ.get('VERCEL') == '1' or
-        'render.com' in os.environ.get('RENDER_EXTERNAL_HOSTNAME', '')
-    )
 
 
 async def get_current_user(request: Request) -> str:
@@ -656,8 +577,6 @@ async def get_current_user(request: Request) -> str:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
-        # Clean up expired session
-        await db.user_sessions.delete_one({"session_token": session_token})
         raise HTTPException(status_code=401, detail="Session expired")
 
     return session_doc["user_id"]
@@ -665,81 +584,32 @@ async def get_current_user(request: Request) -> str:
 # Auth Routes
 
 
-@api_router.post("/auth/register")
-async def register(request: Request, response: Response, user_data: UserRegister):
-    # Check if user already exists
-    existing_user = await db.users.find_one({"email": user_data.email}, {"_id": 0})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    # Validate password strength
-    if len(user_data.password) < 8:
-        raise HTTPException(
-            status_code=400, detail="Password must be at least 8 characters long")
-
-    # Hash password
-    password_hash = bcrypt.hashpw(user_data.password.encode(
-        'utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-    # Create user
-    user_id = f"user_{uuid.uuid4().hex[:12]}"
-    name = user_data.name if user_data.name else user_data.email.split(
-        "@")[0].title()
-
-    await db.users.insert_one({
-        "user_id": user_id,
-        "email": user_data.email,
-        "name": name,
-        "password_hash": password_hash,
-        "picture": None,
-        "currency": "USD",
-        "created_at": datetime.now(timezone.utc)
-    })
-
-    # Create session
-    session_token = f"session_{uuid.uuid4().hex}"
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-
-    await db.user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": session_token,
-        "expires_at": expires_at,
-        "created_at": datetime.now(timezone.utc)
-    })
-
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=is_production(),
-        samesite="none" if is_production() else "lax",
-        max_age=7 * 24 * 60 * 60,
-        path="/"
-    )
-
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    return user_doc
-
-
 @api_router.post("/auth/login")
-async def login(request: Request, response: Response, user_data: UserLogin):
-    # Find user
-    user_doc = await db.users.find_one({"email": user_data.email}, {"_id": 0})
-    if not user_doc:
-        raise HTTPException(
-            status_code=401, detail="Invalid email or password")
+async def login(request: Request, response: Response):
+    body = await request.json()
+    email = body.get("email")
+    password = body.get("password")
 
-    # Check if user has password_hash (old demo users might not have one)
-    if "password_hash" not in user_doc:
+    if not email or not password:
         raise HTTPException(
-            status_code=401, detail="Account needs to be reset. Please register again.")
+            status_code=400, detail="Email and password required")
 
-    # Verify password
-    if not bcrypt.checkpw(user_data.password.encode('utf-8'), user_doc["password_hash"].encode('utf-8')):
-        raise HTTPException(
-            status_code=401, detail="Invalid email or password")
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
 
-    user_id = user_doc["user_id"]
+    if not existing_user:
+        # Auto-create user on first login (demo mode)
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id,
+            "email": email,
+            "name": email.split("@")[0].title(),
+            "picture": None,
+            "currency": "USD",
+            "created_at": datetime.now(timezone.utc)
+        })
+    else:
+        user_id = existing_user["user_id"]
 
     # Create session
     session_token = f"session_{uuid.uuid4().hex}"
@@ -756,21 +626,20 @@ async def login(request: Request, response: Response, user_data: UserLogin):
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=is_production(),
-        samesite="none" if is_production() else "lax",
+        secure=is_production,
+        samesite="none" if is_production else "lax",
         max_age=7 * 24 * 60 * 60,
         path="/"
     )
 
-    # Return user without password_hash
-    user_doc.pop("password_hash", None)
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     return user_doc
 
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     user_id = await get_current_user(request)
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
     return user_doc
@@ -781,12 +650,11 @@ async def logout(request: Request, response: Response):
     session_token = request.cookies.get("session_token")
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
-
     response.delete_cookie(
         "session_token",
         path="/",
-        secure=is_production(),
-        samesite="none" if is_production() else "lax"
+        secure=is_production,
+        samesite="none" if is_production else "lax",
     )
     return {"message": "Logged out"}
 
@@ -899,135 +767,42 @@ async def delete_bet(request: Request, bet_id: str):
 
 
 @api_router.get("/analytics/stats")
-async def get_stats(
-    request: Request,
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None,
-    sport: str = None
-):
+async def get_stats(request: Request):
     user_id = await get_current_user(request)
 
-    # Build query with filters
-    query = {"user_id": user_id}
-
-    # Date filtering
-    if days and days != -1:  # -1 = all time
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-
-    # Sport filtering
-    if sport and sport != "all":
-        query["sport"] = sport
-
-    all_bets = await db.bets.find(query, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
-
-    total_bets = len(all_bets)
-    total_stake = sum(bet["stake"] for bet in all_bets)
-    total_profit_loss = sum(bet["result"] for bet in all_bets)
-
-    won_bets = [bet for bet in all_bets if bet["status"] == "won"]
-    lost_bets = [bet for bet in all_bets if bet["status"] == "lost"]
-    push_bets = [bet for bet in all_bets if bet["status"] == "push"]
-    pending_bets = [bet for bet in all_bets if bet["status"] == "pending"]
-
-    # Calculate streaks
-    current_streak = 0
-    current_streak_type = None
-    best_win_streak = 0
-    worst_loss_streak = 0
-    temp_win_streak = 0
-    temp_loss_streak = 0
-
-    for bet in all_bets:
-        if bet["status"] == "won":
-            temp_win_streak += 1
-            temp_loss_streak = 0
-            if current_streak_type == "won" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "won"
-            else:
-                current_streak = 1
-                current_streak_type = "won"
-            best_win_streak = max(best_win_streak, temp_win_streak)
-        elif bet["status"] == "lost":
-            temp_loss_streak += 1
-            temp_win_streak = 0
-            if current_streak_type == "lost" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "lost"
-            else:
-                current_streak = 1
-                current_streak_type = "lost"
-            worst_loss_streak = max(worst_loss_streak, temp_loss_streak)
-        # Push doesn't break streak but doesn't count toward it
-
-    return {
-        "total_bets": total_bets,
-        "total_stake": total_stake,
-        "total_profit_loss": total_profit_loss,
-        "roi": (total_profit_loss / total_stake * 100) if total_stake > 0 else 0,
-        "won_count": len(won_bets),
-        "lost_count": len(lost_bets),
-        "push_count": len(push_bets),
-        "pending_count": len(pending_bets),
-        "win_rate": (len(won_bets) / (len(won_bets) + len(lost_bets)) * 100) if (len(won_bets) + len(lost_bets)) > 0 else 0,
-        "current_streak": current_streak,
-        "current_streak_type": current_streak_type,
-        "best_win_streak": best_win_streak,
-        "worst_loss_streak": worst_loss_streak
-    }
+    all_bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
+    return compute_stats(all_bets)
 
 
 @api_router.get("/analytics/chart")
-async def get_chart_data(
-    request: Request,
-    days: int = 30,
-    start_date: str = None,
-    end_date: str = None,
-    sport: str = None
-):
+async def get_chart_data(request: Request, days: int = 30):
     user_id = await get_current_user(request)
 
-    # Build query
-    query = {"user_id": user_id}
+    # Calculate the date range for the last N days
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    start_date_str = start_date.strftime("%Y-%m-%d")
 
-    # Date filtering
-    if days and days != -1:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-
-    # Sport filtering
-    if sport and sport != "all":
-        query["sport"] = sport
-
-    # Fetch bets
-    bets = await db.bets.find(query, {"_id": 0}).sort("date", 1).to_list(10000)
+    # Fetch only bets within the date range
+    bets = await db.bets.find({
+        "user_id": user_id,
+        "date": {"$gte": start_date_str}
+    }, {"_id": 0}).sort("date", 1).to_list(10000)
 
     daily_data = {}
     chart_data = []
     cumulative_pl = 0
-    cumulative_stake = 0
 
     for bet in bets:
         date = bet["date"]
         if date not in daily_data:
             daily_data[date] = {"date": date,
-                                "daily_pl": 0, "daily_stake": 0, "cumulative_pl": 0, "cumulative_stake": 0, "bets": 0}
+                                "daily_pl": 0, "cumulative_pl": 0, "bets": 0}
 
         daily_data[date]["daily_pl"] += bet["result"]
-        daily_data[date]["daily_stake"] += bet["stake"]
     for date in sorted(daily_data.keys()):
         cumulative_pl += daily_data[date]["daily_pl"]
-        cumulative_stake += daily_data[date]["daily_stake"]
         daily_data[date]["cumulative_pl"] = cumulative_pl
-        daily_data[date]["cumulative_stake"] = cumulative_stake
         chart_data.append(daily_data[date])
 
     return chart_data
@@ -1066,27 +841,10 @@ async def get_calendar_data(request: Request, year: int, month: int):
 
 
 @api_router.get("/analytics/bookmakers")
-async def get_bookmaker_analytics(
-    request: Request,
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None,
-    sport: str = None
-):
+async def get_bookmaker_analytics(request: Request):
     user_id = await get_current_user(request)
 
-    # Build query
-    query = {"user_id": user_id}
-    if days and days != -1:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-    if sport and sport != "all":
-        query["sport"] = sport
-
-    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
 
     bookie_stats = {}
     for bet in bets:
@@ -1131,27 +889,10 @@ async def get_bookmaker_analytics(
 
 
 @api_router.get("/analytics/tipsters")
-async def get_tipster_analytics(
-    request: Request,
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None,
-    sport: str = None
-):
+async def get_tipster_analytics(request: Request):
     user_id = await get_current_user(request)
 
-    # Build query
-    query = {"user_id": user_id}
-    if days and days != -1:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-    if sport and sport != "all":
-        query["sport"] = sport
-
-    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
 
     tipster_stats = {}
     for bet in bets:
@@ -1199,24 +940,10 @@ async def get_tipster_analytics(
 
 
 @api_router.get("/analytics/sports")
-async def get_sport_analytics(
-    request: Request,
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None
-):
+async def get_sport_analytics(request: Request):
     user_id = await get_current_user(request)
 
-    # Build query
-    query = {"user_id": user_id}
-    if days and days != -1:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-
-    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
 
     sport_stats = {}
     for bet in bets:
@@ -1263,27 +990,10 @@ async def get_sport_analytics(
 
 
 @api_router.get("/analytics/odds-range")
-async def get_odds_range_analytics(
-    request: Request,
-    days: int = None,
-    start_date: str = None,
-    end_date: str = None,
-    sport: str = None
-):
+async def get_odds_range_analytics(request: Request):
     user_id = await get_current_user(request)
 
-    # Build query
-    query = {"user_id": user_id}
-    if days and days != -1:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=days)
-        query["date"] = {"$gte": start.strftime("%Y-%m-%d")}
-    elif start_date and end_date:
-        query["date"] = {"$gte": start_date, "$lte": end_date}
-    if sport and sport != "all":
-        query["sport"] = sport
-
-    bets = await db.bets.find(query, {"_id": 0}).to_list(10000)
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
 
     ranges = [
         {"name": "1.00-1.50", "min": 1.0, "max": 1.5},
@@ -1497,332 +1207,60 @@ async def import_bets(request: Request):
     return {"imported": imported_count}
 
 
-@api_router.post("/bets/import/coolbet", response_model=CoolbetImportResponse)
-async def import_coolbet_bets(request: Request, import_data: CoolbetImportRequest):
-    """
-    Import bets from Coolbet via bookmarklet.
-
-    This endpoint accepts bet data extracted from Coolbet's bet history page
-    by a browser bookmarklet. It validates, normalizes, and stores the bets
-    while preventing duplicates.
-
-    Authentication: Requires valid session token (cookie or Authorization header)
-
-    Returns:
-        CoolbetImportResponse with counts of imported, skipped, and total bets
-    """
+@api_router.post("/bets/import/coolbet")
+async def import_coolbet_bets(request: Request):
     user_id = await get_current_user(request)
+    body = await request.json()
 
-    # Validate source
-    if import_data.source.lower() != "coolbet":
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid source. Expected 'coolbet'"
-        )
+    if isinstance(body, list):
+        tickets = body
+    else:
+        tickets = body.get("tickets")
+        if tickets is None and isinstance(body.get("csv_data"), list):
+            tickets = body.get("csv_data")
 
-    if not import_data.bets:
-        raise HTTPException(
-            status_code=400,
-            detail="No bets provided"
-        )
+    if not isinstance(tickets, list) or len(tickets) == 0:
+        raise HTTPException(status_code=400, detail="tickets array required")
 
-    imported_count = 0
-    skipped_count = 0
-    total_count = len(import_data.bets)
+    imported = 0
+    updated = 0
+    skipped = 0
 
-    # Create a compound index for efficient duplicate detection (if not exists)
-    try:
-        await db.imported_bets.create_index(
-            [("user_id", 1), ("external_id", 1), ("source", 1)],
-            unique=True,
-            name="user_external_source_unique"
-        )
-    except Exception:
-        pass  # Index may already exist
-
-    for bet in import_data.bets:
+    for ticket in tickets:
         try:
-            # ===== STRICT STATUS NORMALIZATION =====
-            # Normalize incoming status to strictly "won" | "lost" | "pending"
-            result_raw = bet.result.strip().lower()
-
-            # Map common Coolbet variants to normalized values
-            if result_raw in ["won", "win", "w", "vunnet"]:
-                result_lower = "won"
-            elif result_raw in ["lost", "lose", "l", "tapt", "cashed out", "void"]:
-                result_lower = "lost"
-            elif result_raw in ["open", "live", "pending", "active", "åpen"]:
-                result_lower = "pending"
-            else:
-                # Unknown status - log warning and default to pending
-                logging.warning(
-                    f"Unknown result status '{bet.result}' for bet {bet.externalId}, "
-                    f"defaulting to 'pending'"
-                )
-                result_lower = "pending"
-
-            # Parse timestamp
-            try:
-                placed_at = datetime.fromisoformat(
-                    bet.placedAt.replace('Z', '+00:00'))
-            except Exception as e:
-                logging.error(f"Invalid timestamp '{bet.placedAt}': {e}")
-                # Default to current time if parsing fails
-                placed_at = datetime.now(timezone.utc)
-
-            # Ensure timezone aware
-            if placed_at.tzinfo is None:
-                placed_at = placed_at.replace(tzinfo=timezone.utc)
-
-            # Auto-detect sport from event name if not provided
-            # Prefer the sport from bookmarklet (from SVG icon) if available
-            if bet.sport and bet.sport != 'unknown':
-                detected_sport = bet.sport
-            else:
-                detected_sport = await detect_sport_from_game_async(bet.event)
-
-            # Calculate result value based on status
-            if result_lower == "won":
-                result_value = bet.stake * (bet.odds - 1)  # Profit
-            elif result_lower == "lost":
-                result_value = -bet.stake  # Loss
-            else:
-                result_value = 0.0  # Pending
-
-            # Prepare bet document for imported_bets collection
-            imported_bet_doc = {
-                "user_id": user_id,
-                "source": "coolbet",
-                "external_id": bet.externalId,
-                "event": bet.event,
-                "selection": bet.selection or bet.event,
-                "stake": bet.stake,
-                "odds": bet.odds,
-                "result": result_lower,
-                "bet_type": bet.betType or "single",
-                "sport": detected_sport,
-                "league": bet.league,
-                "market": bet.market,
-                "outcome": bet.outcome,
-                "placed_at": placed_at,
-                "imported_at": datetime.now(timezone.utc)
-            }
-
-            # Try to insert into imported_bets (will fail if duplicate)
-            try:
-                await db.imported_bets.insert_one(imported_bet_doc)
-
-                # Also insert into main bets collection for analytics
-                bet_id = f"bet_{uuid.uuid4().hex[:12]}"
-                bet_doc = {
-                    "bet_id": bet_id,
-                    "user_id": user_id,
-                    "date": placed_at.strftime("%Y-%m-%d"),
-                    "time": placed_at.strftime("%H:%M:%S"),
-                    "game": bet.event,
-                    "bet": bet.selection or bet.event,
-                    "stake": bet.stake,
-                    "odds": bet.odds,
-                    "status": result_lower,
-                    "result": result_value,
-                    "bookie": "Coolbet",
-                    "tipster": None,
-                    "sport": detected_sport,
-                    "notes": f"Imported from Coolbet (ID: {bet.externalId})",
-                    "created_at": datetime.now(timezone.utc)
-                }
-
-                await db.bets.insert_one(bet_doc)
-                imported_count += 1
-
-            except Exception as e:
-                # Check if it's a duplicate key error
-                if "duplicate" in str(e).lower() or "E11000" in str(e):
-                    skipped_count += 1
-                    logging.info(
-                        f"Skipping duplicate bet: user={user_id}, "
-                        f"externalId={bet.externalId}"
-                    )
-                else:
-                    # Re-raise unexpected errors
-                    raise
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logging.error(
-                f"Error importing Coolbet bet {bet.externalId}: {e}",
-                exc_info=True
-            )
-            skipped_count += 1
-            continue
-
-    return CoolbetImportResponse(
-        imported=imported_count,
-        skipped=skipped_count,
-        total=total_count
-    )
-
-
-@api_router.post("/bets/import/coolbet/resync", response_model=CoolbetResyncResponse)
-async def resync_coolbet_bets(request: Request):
-    """
-    Re-sync Coolbet bet statuses for pending bets.
-
-    This endpoint fixes already-imported Coolbet bets that are stuck as 'pending'
-    by matching them with the imported_bets collection and recalculating their
-    status and result values.
-
-    Use cases:
-    - Fix bets that were imported with incorrect 'pending' status
-    - Update bets after manual status correction in imported_bets
-    - Batch correction after bookmarklet improvements
-
-    Authentication: Requires valid session token
-
-    Returns:
-        CoolbetResyncResponse with counts of updated, skipped, and total bets
-
-    Safety:
-    - Only affects Coolbet bets with status='pending'
-    - Idempotent - safe to run multiple times
-    - Does not modify non-Coolbet bets
-    - Updates both bets and imported_bets collections
-    """
-    user_id = await get_current_user(request)
-
-    updated_count = 0
-    skipped_count = 0
-
-    try:
-        # Find all pending Coolbet bets for this user
-        pending_bets_cursor = db.bets.find({
-            "user_id": user_id,
-            "bookie": "Coolbet",
-            "status": "pending"
-        })
-
-        pending_bets = await pending_bets_cursor.to_list(length=None)
-        total_count = len(pending_bets)
-
-        if total_count == 0:
-            return CoolbetResyncResponse(
-                updated=0,
-                skipped=0,
-                total=0
-            )
-
-        for bet in pending_bets:
-            try:
-                # Extract external_id from notes field
-                # Format: "Imported from Coolbet (ID: coolbet-1430)"
-                notes = bet.get("notes", "")
-                external_id = None
-
-                if "ID:" in notes:
-                    external_id = notes.split("ID:")[1].strip().rstrip(")")
-
-                if not external_id:
-                    logging.warning(
-                        f"Could not extract external_id from bet {bet.get('bet_id')}, skipping"
-                    )
-                    skipped_count += 1
-                    continue
-
-                # Find corresponding imported_bet
-                imported_bet = await db.imported_bets.find_one({
-                    "user_id": user_id,
-                    "external_id": external_id,
-                    "source": "coolbet"
-                })
-
-                if not imported_bet:
-                    logging.warning(
-                        f"No imported_bet found for external_id {external_id}, skipping"
-                    )
-                    skipped_count += 1
-                    continue
-
-                # Get status from imported_bet
-                new_status = imported_bet.get("result", "pending").lower()
-
-                # Normalize status (in case imported_bets has variants)
-                if new_status in ["won", "win", "w", "vunnet"]:
-                    new_status = "won"
-                elif new_status in ["lost", "lose", "l", "tapt", "cashed out", "void"]:
-                    new_status = "lost"
-                elif new_status in ["open", "live", "pending", "active", "åpen"]:
-                    new_status = "pending"
-                else:
-                    new_status = "pending"
-
-                # If still pending, skip (no update needed)
-                if new_status == "pending":
-                    skipped_count += 1
-                    continue
-
-                # Recalculate result value
-                stake = bet.get("stake", 0)
-                odds = bet.get("odds", 1.0)
-
-                if new_status == "won":
-                    result_value = stake * (odds - 1)  # Profit
-                elif new_status == "lost":
-                    result_value = -stake  # Loss
-                else:
-                    result_value = 0.0  # Pending
-
-                # Update bets collection
-                await db.bets.update_one(
-                    {"bet_id": bet["bet_id"]},
-                    {
-                        "$set": {
-                            "status": new_status,
-                            "result": result_value
-                        }
-                    }
-                )
-
-                # Also update imported_bets to ensure consistency
-                await db.imported_bets.update_one(
-                    {
-                        "user_id": user_id,
-                        "external_id": external_id,
-                        "source": "coolbet"
-                    },
-                    {
-                        "$set": {
-                            "result": new_status
-                        }
-                    }
-                )
-
-                updated_count += 1
-                logging.info(
-                    f"Updated bet {bet['bet_id']} (external_id: {external_id}) "
-                    f"from pending to {new_status}"
-                )
-
-            except Exception as e:
-                logging.error(
-                    f"Error resyncing bet {bet.get('bet_id')}: {e}",
-                    exc_info=True
-                )
-                skipped_count += 1
+            if not isinstance(ticket, dict) or not ticket.get("id"):
+                skipped += 1
                 continue
 
-        return CoolbetResyncResponse(
-            updated=updated_count,
-            skipped=skipped_count,
-            total=total_count
-        )
+            mapped = map_coolbet_ticket(ticket)
+            source_id = mapped["source_id"]
+            existing = await db.bets.find_one(
+                {"user_id": user_id, "source_id": source_id},
+                {"_id": 0, "bet_id": 1, "created_at": 1},
+            )
 
-    except Exception as e:
-        logging.error(f"Error in resync_coolbet_bets: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to resync Coolbet bets: {str(e)}"
-        )
+            now = datetime.now(timezone.utc)
+            doc = {
+                **mapped,
+                "user_id": user_id,
+                "bet_id": existing["bet_id"] if existing else f"bet_{uuid.uuid4().hex[:12]}",
+                "created_at": existing["created_at"] if existing else now,
+            }
+
+            if existing:
+                await db.bets.replace_one(
+                    {"bet_id": existing["bet_id"], "user_id": user_id},
+                    doc,
+                )
+                updated += 1
+            else:
+                await db.bets.insert_one(doc)
+                imported += 1
+        except Exception as e:
+            logging.error(f"Error importing Coolbet ticket: {e}")
+            skipped += 1
+
+    return {"imported": imported, "updated": updated, "skipped": skipped}
 
 
 @api_router.get("/bets/export")
@@ -1938,13 +1376,8 @@ async def get_upcoming_matches(request: Request, days: int = 7):
 
     team_ids = [team["team_id"] for team in favorite_teams]
 
-    # Clear old cache to force fresh fetch with new logic
-    now = datetime.now(timezone.utc)
-    await db.cached_fixtures.delete_many({
-        "expires_at": {"$lt": now}
-    })
-
     # Check cache first
+    now = datetime.now(timezone.utc)
     end_date = now + timedelta(days=days)
 
     cached_fixtures = await db.cached_fixtures.find({
@@ -1959,15 +1392,13 @@ async def get_upcoming_matches(request: Request, days: int = 7):
         "expires_at": {"$gt": now}
     }, {"_id": 0}).to_list(1000)
 
-    # Always fetch fresh data (free API has team ID issues, so we use league-based fetching)
-    fresh_fixtures = await fetch_and_cache_fixtures(team_ids, days)
-
-    # Use fresh fixtures if available, otherwise use cached
-    fixtures_to_use = fresh_fixtures if fresh_fixtures else cached_fixtures
+    # If cache is empty or stale, fetch from API
+    if not cached_fixtures:
+        cached_fixtures = await fetch_and_cache_fixtures(team_ids, days)
 
     # Group by date
     grouped = {}
-    for fixture in fixtures_to_use:
+    for fixture in cached_fixtures:
         date = fixture["event_date"]
         if date not in grouped:
             grouped[date] = []
@@ -1977,58 +1408,17 @@ async def get_upcoming_matches(request: Request, days: int = 7):
 
 
 async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]:
-    """
-    Fetch fixtures from TheSportsDB and cache them.
-    Note: Free API has issues with team ID lookups, so we use team names for filtering.
-    """
+    """Fetch fixtures from TheSportsDB and cache them"""
     fixtures = []
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(hours=6)  # 6 hour cache
 
-    # Get team names and leagues from our database
-    favorite_teams_data = await db.favorite_teams.find(
-        {"team_id": {"$in": team_ids}},
-        {"team_id": 1, "team_name": 1, "league": 1, "_id": 0}
-    ).to_list(100)
-
-    if not favorite_teams_data:
-        return []
-
-    # Group teams by league to minimize API calls
-    leagues_map = {}
-    for team in favorite_teams_data:
-        league = team.get("league", "Unknown")
-        if league not in leagues_map:
-            leagues_map[league] = []
-        leagues_map[league].append(team.get("team_name", ""))
-
     async with httpx.AsyncClient(timeout=10.0) as client:
-        # For each league, get upcoming events and filter by team name
-        for league_name, team_names in leagues_map.items():
+        for team_id in team_ids:
             try:
-                # Map common league names to their IDs
-                league_id_map = {
-                    "English Premier League": "4328",
-                    "English League Championship": "4329",
-                    "English League 1": "4330",
-                    "English League 2": "4331",
-                    "Spanish La Liga": "4335",
-                    "Italian Serie A": "4332",
-                    "German Bundesliga": "4331",
-                    "French Ligue 1": "4334",
-                    "UEFA Champions League": "4480",
-                }
-
-                league_id = league_id_map.get(league_name)
-
-                if not league_id:
-                    # Skip unknown leagues for now
-                    logging.warning(f"No league ID mapping for: {league_name}")
-                    continue
-
-                # Get next events for this league
+                # Fetch next 5 events for each team
                 response = await client.get(
-                    f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnextleague.php?id={league_id}"
+                    f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnext.php?id={team_id}"
                 )
 
                 if response.status_code != 200:
@@ -2037,51 +1427,19 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
                 data = response.json()
                 events = data.get("events") or []
 
-                # Filter events for our favorite teams by name matching
-                for event in events:
+                for event in events[:5]:  # Limit to next 5 matches
                     if not event:
-                        continue
-
-                    home_team = event.get("strHomeTeam", "")
-                    away_team = event.get("strAwayTeam", "")
-
-                    # Check if this match involves any of our favorite teams
-                    is_relevant = False
-                    for team_name in team_names:
-                        # Flexible matching - check if team name is in the match
-                        if (team_name.lower() in home_team.lower() or
-                            team_name.lower() in away_team.lower() or
-                            home_team.lower() in team_name.lower() or
-                                away_team.lower() in team_name.lower()):
-                            is_relevant = True
-                            break
-
-                    if not is_relevant:
-                        continue
-
-                    # Check date range
-                    event_date_str = event.get("dateEvent")
-                    if not event_date_str:
-                        continue
-
-                    try:
-                        event_date = datetime.strptime(
-                            event_date_str, "%Y-%m-%d").date()
-                        end_date = (now + timedelta(days=days)).date()
-                        if event_date < now.date() or event_date > end_date:
-                            continue
-                    except Exception:
                         continue
 
                     fixture = {
                         "fixture_id": event.get("idEvent"),
                         "home_team_id": event.get("idHomeTeam"),
                         "away_team_id": event.get("idAwayTeam"),
-                        "home_team_name": home_team,
-                        "away_team_name": away_team,
+                        "home_team_name": event.get("strHomeTeam"),
+                        "away_team_name": event.get("strAwayTeam"),
                         "home_team_badge": event.get("strHomeTeamBadge"),
                         "away_team_badge": event.get("strAwayTeamBadge"),
-                        "event_date": event_date_str,
+                        "event_date": event.get("dateEvent"),
                         "event_time": event.get("strTime"),
                         "venue": event.get("strVenue"),
                         "league": event.get("strLeague"),
@@ -2102,7 +1460,7 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
 
             except Exception as e:
                 logging.error(
-                    f"Error fetching fixtures for league {league_name}: {e}")
+                    f"Error fetching fixtures for team {team_id}: {e}")
                 continue
 
     return fixtures
@@ -2111,9 +1469,6 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
 @api_router.get("/teams/search")
 async def search_teams(request: Request, query: str, sport: Optional[str] = None):
     """Search for teams by name"""
-    # Require authentication
-    await get_current_user(request)
-
     if len(query) < 2:
         return []
 
@@ -2180,20 +1535,10 @@ async def search_teams(request: Request, query: str, sport: Optional[str] = None
             return []
 
 
-# CORS configuration
-cors_origins_env = os.environ.get('CORS_ORIGINS', '')
-if cors_origins_env:
-    # Split by comma and strip whitespace
-    cors_origins = [origin.strip()
-                    for origin in cors_origins_env.split(',') if origin.strip()]
-else:
-    # Default to allowing all origins (only for development)
-    cors_origins = ['*']
-
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=cors_origins,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )

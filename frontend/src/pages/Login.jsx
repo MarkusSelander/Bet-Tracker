@@ -1,6 +1,6 @@
 import { TrendingUp } from 'lucide-react';
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -20,7 +20,7 @@ export default function Login() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-text-secondary">Loading...</p>
+          <p className="text-text-secondary">Laster...</p>
         </div>
       </div>
     );
@@ -35,7 +35,7 @@ export default function Login() {
     e.preventDefault();
 
     if (!email || !password) {
-      toast.error('Vennligst fyll ut email og passord');
+      toast.error('Skriv inn e-post og passord');
       return;
     }
 
@@ -43,11 +43,11 @@ export default function Login() {
 
     try {
       await login(email, password);
-      toast.success('Logget inn!');
+      toast.success('Innlogget');
       navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('Login error:', error);
-      toast.error(error.message || 'Innlogging feilet');
+      toast.error('Innlogging feilet');
     } finally {
       setSubmitting(false);
     }
@@ -76,7 +76,7 @@ export default function Login() {
 
             <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
             <p className="text-text-secondary text-center mb-8">
-              Track your bets, analyze performance, maximize profits
+              Hold oversikt over spill og resultat
             </p>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -98,7 +98,7 @@ export default function Login() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Enter any password"
+                  placeholder="Passord"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-black/20 border-white/10"
@@ -117,10 +117,7 @@ export default function Login() {
             </form>
 
             <p className="text-xs text-text-muted text-center mt-6">
-              Har du ikke en konto?{' '}
-              <Link to="/register" className="text-primary hover:underline font-medium">
-                Registrer deg
-              </Link>
+              Demo: e-post og passord oppretter konto automatisk
             </p>
           </div>
         </div>

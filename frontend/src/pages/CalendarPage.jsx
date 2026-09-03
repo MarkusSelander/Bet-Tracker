@@ -1,37 +1,33 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
+import { formatCurrency } from '../lib/format';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-const formatCurrency = (value, currency) => {
-  if (currency === 'UNITS') return `${value.toFixed(0)} U`;
-  if (currency === 'NOK') return `${value.toFixed(0)} kr`;
-  return `$${value.toFixed(0)}`;
-};
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 const MONTHS = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
+  'januar',
+  'februar',
+  'mars',
+  'april',
+  'mai',
+  'juni',
+  'juli',
+  'august',
+  'september',
+  'oktober',
+  'november',
+  'desember',
 ];
 
 export default function CalendarPage() {
   const { user } = useOutletContext();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarData, setCalendarData] = useState({});
-  const currency = user?.currency || 'USD';
+  const currency = user?.currency || 'NOK';
 
   const fetchCalendarData = async () => {
     try {
@@ -42,14 +38,12 @@ export default function CalendarPage() {
         credentials: 'include',
       });
 
-      const data = response.ok ? await response.json() : null;
+      const data = await response.json();
       // Convert array to object keyed by date
       const dataObj = {};
-      if (Array.isArray(data)) {
-        data.forEach((item) => {
-          dataObj[item.date] = item;
-        });
-      }
+      data.forEach((item) => {
+        dataObj[item.date] = item;
+      });
       setCalendarData(dataObj);
     } catch (error) {
       console.error('Error fetching calendar data:', error);
@@ -67,7 +61,7 @@ export default function CalendarPage() {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+    const startingDayOfWeek = (firstDay.getDay() + 6) % 7;
 
     const days = [];
 
@@ -135,12 +129,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-4xl font-bold mb-2" data-testid="calendar-title">
-          Calendar
-        </h1>
-        <p className="text-text-secondary">View your betting performance by day</p>
-      </div>
+      <PageHeader title="Kalender" subtitle="Resultat per dag" testId="calendar-title" />
 
       {/* Month Navigation */}
       <div className="flex items-center justify-between bg-[#18181B] border border-[#27272A] rounded-lg p-4">
@@ -160,14 +149,14 @@ export default function CalendarPage() {
           </h2>
           <div className="flex items-center space-x-6 mt-2">
             <div className="text-sm">
-              <span className="text-text-muted">Monthly Total: </span>
+              <span className="text-text-muted">Måned: </span>
               <span className={`font-mono font-bold ${monthlyTotal >= 0 ? 'text-primary' : 'text-destructive'}`}>
                 {monthlyTotal >= 0 ? '+' : ''}
                 {formatCurrency(monthlyTotal, currency)}
               </span>
             </div>
             <div className="text-sm">
-              <span className="text-text-muted">Total Bets: </span>
+              <span className="text-text-muted">Spill: </span>
               <span className="font-mono font-bold">{monthlyBets}</span>
             </div>
           </div>
@@ -231,10 +220,10 @@ export default function CalendarPage() {
                         className={`text-sm font-mono font-bold ${isPositive ? 'text-primary' : 'text-destructive'}`}
                       >
                         {isPositive ? '+' : ''}
-                        {formatCurrency(profitLoss, currency)}
+                        {formatCurrency(profitLoss, currency, 0)}
                       </div>
                       <div className="text-xs text-text-muted">
-                        {bets} bet{bets !== 1 ? 's' : ''}
+                        {bets} spill
                       </div>
                       <div className="text-xs text-text-muted">
                         {won}W-{lost}L
@@ -250,7 +239,7 @@ export default function CalendarPage() {
 
       {/* Weekly Summary */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-4">Weekly Summary</h2>
+        <h2 className="text-lg font-bold mb-4">Ukesoppsummering</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           {/* eslint-disable-next-line react/no-array-index-key */}
           {getWeeklyStats().map((week, index) => (
@@ -260,14 +249,14 @@ export default function CalendarPage() {
                 week.profit >= 0 ? 'border-primary/30 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
               }`}
             >
-              <div className="text-sm text-text-muted mb-2">Week {index + 1}</div>
+              <div className="text-sm text-text-muted mb-2">Uke {index + 1}</div>
               <div
                 className={`text-xl font-mono font-bold mb-1 ${week.profit >= 0 ? 'text-primary' : 'text-destructive'}`}
               >
                 {week.profit >= 0 ? '+' : ''}
                 {formatCurrency(week.profit, currency)}
               </div>
-              <div className="text-xs text-text-muted">{week.bets} bets</div>
+              <div className="text-xs text-text-muted">{week.bets} spill</div>
             </div>
           ))}
         </div>

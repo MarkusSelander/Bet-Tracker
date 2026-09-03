@@ -1,40 +1,34 @@
-import { ChevronLeft, ChevronRight, Filter, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
+import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-
-const formatCurrency = (value, currency) => {
-  if (currency === 'UNITS') return `${value.toFixed(2)} U`;
-  if (currency === 'NOK') return `${value.toFixed(2)} kr`;
-  return `$${value.toFixed(2)}`;
-};
 
 export default function BetsPage() {
   const { user } = useOutletContext();
   const [bets, setBets] = useState([]);
   const [filteredBets, setFilteredBets] = useState([]);
-  const [bookmakers, setBookmakers] = useState([]);
-  const [tipsters, setTipsters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBet, setEditingBet] = useState(null);
+  const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
     status: '',
-    bookie: '',
-    tipster: '',
     sport: '',
     dateFrom: '',
     dateTo: '',
   });
   const [datePreset, setDatePreset] = useState('all');
-  const currency = user?.currency || 'USD';
+  const currency = user?.currency || 'NOK';
+  const availableSports = [...new Set(bets.map((bet) => bet.sport).filter(Boolean))].sort();
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,26 +55,16 @@ export default function BetsPage() {
   useEffect(() => {
     applyFilters();
     setCurrentPage(1); // Reset to first page when filters change
-  }, [bets, filters]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bets, filters, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = async () => {
     try {
-      const [betsRes, bookmakersRes, tipstersRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/bets`, { credentials: 'include' }),
-        fetch(`${BACKEND_URL}/api/bookmakers`, { credentials: 'include' }),
-        fetch(`${BACKEND_URL}/api/tipsters`, { credentials: 'include' }),
-      ]);
-
-      const betsData = betsRes.ok ? await betsRes.json() : null;
-      const bookmakersData = bookmakersRes.ok ? await bookmakersRes.json() : null;
-      const tipstersData = tipstersRes.ok ? await tipstersRes.json() : null;
-
+      const betsRes = await fetch(`${BACKEND_URL}/api/bets`, { credentials: 'include' });
+      const betsData = await betsRes.json();
       setBets(Array.isArray(betsData) ? betsData : []);
-      setBookmakers(Array.isArray(bookmakersData) ? bookmakersData : []);
-      setTipsters(Array.isArray(tipstersData) ? tipstersData : []);
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast.error('Failed to load bets');
+      toast.error('Kunne ikke laste spill');
     } finally {
       setLoading(false);
     }
@@ -98,14 +82,16 @@ export default function BetsPage() {
     if (filters.status) {
       filtered = filtered.filter((bet) => bet.status === filters.status);
     }
-    if (filters.bookie) {
-      filtered = filtered.filter((bet) => bet.bookie === filters.bookie);
-    }
-    if (filters.tipster) {
-      filtered = filtered.filter((bet) => bet.tipster === filters.tipster);
-    }
     if (filters.sport) {
       filtered = filtered.filter((bet) => bet.sport === filters.sport);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter((bet) =>
+        [bet.game, bet.bet, bet.sport, bet.league, bet.bookie].some((field) =>
+          String(field || '').toLowerCase().includes(q)
+        )
+      );
     }
 
     setFilteredBets(filtered);
@@ -156,16 +142,8 @@ export default function BetsPage() {
           body: JSON.stringify(formData),
         });
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
-            window.location.href = '/login';
-            return;
-          }
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || 'Failed to update bet');
-        }
-        toast.success('Bet updated successfully');
+        if (!response.ok) throw new Error('Kunne ikke oppdatere spill');
+        toast.success('Spill oppdatert');
       } else {
         const response = await fetch(`${BACKEND_URL}/api/bets`, {
           method: 'POST',
@@ -178,16 +156,8 @@ export default function BetsPage() {
           }),
         });
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
-            window.location.href = '/login';
-            return;
-          }
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.detail || 'Failed to create bet');
-        }
-        toast.success('Bet added successfully');
+        if (!response.ok) throw new Error('Kunne ikke opprette spill');
+        toast.success('Spill lagt til');
       }
 
       setIsDialogOpen(false);
@@ -195,7 +165,7 @@ export default function BetsPage() {
       fetchData();
     } catch (error) {
       console.error('Error saving bet:', error);
-      toast.error(error.message || 'Failed to save bet');
+      toast.error('Kunne ikke lagre spill');
     }
   };
 
@@ -218,7 +188,7 @@ export default function BetsPage() {
   };
 
   const handleDelete = async (betId) => {
-    if (!window.confirm('Are you sure you want to delete this bet?')) return;
+    if (!window.confirm('Slette dette spillet?')) return;
 
     try {
       const response = await fetch(`${BACKEND_URL}/api/bets/${betId}`, {
@@ -226,20 +196,12 @@ export default function BetsPage() {
         credentials: 'include',
       });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          toast.error('Du er ikke innlogget. Vennligst logg inn igjen.');
-          window.location.href = '/login';
-          return;
-        }
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || 'Failed to delete bet');
-      }
-      toast.success('Bet deleted successfully');
+      if (!response.ok) throw new Error('Kunne ikke slette spill');
+      toast.success('Spill slettet');
       fetchData();
     } catch (error) {
       console.error('Error deleting bet:', error);
-      toast.error('Failed to delete bet');
+      toast.error('Kunne ikke slette spill');
     }
   };
 
@@ -274,256 +236,196 @@ export default function BetsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-16 h-16 border-4 rounded-full border-primary border-t-transparent animate-spin"></div>
+        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="mb-2 text-4xl font-bold" data-testid="bets-title">
-            Bets
-          </h1>
-          <p className="text-text-secondary">Manage your betting history</p>
-        </div>
-
-        <Dialog
-          open={isDialogOpen}
-          onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button
-              data-testid="add-bet-btn"
-              className="btn-primary-enhanced bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Bet
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-gradient-to-br from-[#18181B] to-[#0F0F10] border border-[#27272A]/50 text-white max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
-            <DialogHeader className="border-b border-[#27272A] pb-4 mb-6">
-              <DialogTitle className="flex items-center text-2xl font-bold">
-                <span className="w-1 h-6 mr-3 rounded-full bg-gradient-to-b from-primary to-accent"></span>
-                {editingBet ? 'Edit Bet' : 'Add New Bet'}
-              </DialogTitle>
-              <p className="mt-2 text-sm text-text-secondary">
-                {editingBet ? 'Update your bet details below' : 'Fill in the details to track your bet'}
-              </p>
+      <PageHeader
+        title="Spill"
+        subtitle="Søk, filtrer og rediger kupongene dine"
+        testId="bets-title"
+        action={
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                data-testid="add-bet-btn"
+                className="bg-primary hover:bg-primary/90 text-black font-bold"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nytt spill
+              </Button>
+            </DialogTrigger>
+          <DialogContent className="bg-[#18181B] border-[#27272A] text-white max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{editingBet ? 'Rediger spill' : 'Nytt spill'}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Match Information Section */}
-              <div className="space-y-4">
-                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
-                  <span className="w-2 h-2 mr-2 rounded-full bg-primary"></span>
-                  Match Information
-                </h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="game" className="text-xs font-medium text-text-secondary">
-                      Match / Event *
-                    </Label>
-                    <Input
-                      id="game"
-                      value={formData.game}
-                      onChange={(e) => setFormData({ ...formData, game: e.target.value })}
-                      placeholder="e.g., Manchester United vs Liverpool"
-                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sport" className="text-xs font-medium text-text-secondary">
-                      Sport
-                    </Label>
-                    <Input
-                      id="sport"
-                      value={formData.sport}
-                      onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
-                      placeholder="e.g., Football, Basketball, Tennis"
-                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="date" className="text-xs font-medium text-text-secondary">
-                      Date *
-                    </Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="time" className="text-xs font-medium text-text-secondary">
-                      Time
-                    </Label>
-                    <Input
-                      id="time"
-                      type="time"
-                      step="1"
-                      value={formData.time}
-                      onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                      className="input-enhanced bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="status" className="text-xs font-medium text-text-secondary">
-                      Status *
-                    </Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value) => setFormData({ ...formData, status: value })}
-                    >
-                      <SelectTrigger className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-[#18181B] border-[#27272A]">
-                        <SelectItem value="won">Won ✓</SelectItem>
-                        <SelectItem value="lost">Lost ✗</SelectItem>
-                        <SelectItem value="push">Push ↔</SelectItem>
-                        <SelectItem value="pending">Pending ⏳</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bet Details Section */}
-              <div className="space-y-4">
-                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
-                  <span className="w-2 h-2 mr-2 rounded-full bg-accent"></span>
-                  Bet Details
-                </h3>
-                <div className="space-y-2">
-                  <Label htmlFor="bet" className="text-xs font-medium text-text-secondary">
-                    Selection / Bet Type *
-                  </Label>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="date">Dato</Label>
                   <Input
-                    id="bet"
-                    value={formData.bet}
-                    onChange={(e) => setFormData({ ...formData, bet: e.target.value })}
-                    placeholder="e.g., Manchester United to win, Over 2.5 goals"
-                    className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
+                    id="date"
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="input-enhanced bg-black/20 border-white/10"
                     required
                   />
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="stake" className="text-xs font-medium text-text-secondary">
-                      Stake Amount *
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="stake"
-                        type="number"
-                        step="0.01"
-                        value={formData.stake}
-                        onChange={(e) => setFormData({ ...formData, stake: e.target.value })}
-                        placeholder="100.00"
-                        className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono pl-3 pr-12"
-                        required
-                      />
-                      <span className="absolute text-sm -translate-y-1/2 right-3 top-1/2 text-text-secondary">
-                        {currency === 'NOK' ? 'kr' : currency === 'UNITS' ? 'U' : '$'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="odds" className="text-xs font-medium text-text-secondary">
-                      Odds *
-                    </Label>
-                    <Input
-                      id="odds"
-                      type="number"
-                      step="0.01"
-                      value={formData.odds}
-                      onChange={(e) => setFormData({ ...formData, odds: e.target.value })}
-                      placeholder="2.50"
-                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors font-mono"
-                      required
-                    />
-                  </div>
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value) => setFormData({ ...formData, status: value })}
+                  >
+                    <SelectTrigger className="bg-black/20 border-white/10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="won">Vunnet</SelectItem>
+                      <SelectItem value="lost">Tapt</SelectItem>
+                      <SelectItem value="push">Push</SelectItem>
+                      <SelectItem value="pending">Åpen</SelectItem>
+                      <SelectItem value="cashed">Cashout</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              {/* Additional Information Section */}
-              <div className="space-y-4">
-                <h3 className="flex items-center text-sm font-semibold tracking-wider uppercase text-text-secondary">
-                  <span className="w-2 h-2 mr-2 bg-blue-500 rounded-full"></span>
-                  Additional Information
-                </h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="bookie" className="text-xs font-medium text-text-secondary">
-                      Bookmaker
-                    </Label>
-                    <Input
-                      id="bookie"
-                      value={formData.bookie}
-                      onChange={(e) => setFormData({ ...formData, bookie: e.target.value })}
-                      placeholder="e.g., Bet365, Unibet, Coolbet"
-                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tipster" className="text-xs font-medium text-text-secondary">
-                      Tipster / Source
-                    </Label>
-                    <Input
-                      id="tipster"
-                      value={formData.tipster}
-                      onChange={(e) => setFormData({ ...formData, tipster: e.target.value })}
-                      placeholder="e.g., John Doe, BetForum"
-                      className="bg-black/30 border-[#27272A] hover:border-primary/50 focus:border-primary transition-colors"
-                    />
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="game">Kamp</Label>
+                  <Input
+                    id="game"
+                    value={formData.game}
+                    onChange={(e) => setFormData({ ...formData, game: e.target.value })}
+                    placeholder="f.eks. Manchester United vs Liverpool"
+                    className="input-enhanced bg-black/20 border-white/10"
+                    required
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="notes" className="text-xs font-medium text-text-secondary">
-                    Notes & Analysis
-                  </Label>
-                  <textarea
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Add notes, reasoning, or analysis for this bet..."
-                    className="w-full min-h-[100px] bg-black/30 border border-[#27272A] hover:border-primary/50 focus:border-primary rounded-lg p-3 text-white resize-y transition-colors text-sm"
-                    rows={4}
+                <div>
+                  <Label htmlFor="time">Tid (valgfritt)</Label>
+                  <Input
+                    id="time"
+                    type="time"
+                    step="1"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    className="input-enhanced bg-black/20 border-white/10"
                   />
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 pt-4 border-t border-[#27272A]">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                  className="bg-black/30 border-[#27272A] hover:bg-white/10 text-white px-6"
-                >
-                  Cancel
+              <div>
+                <Label htmlFor="bet">Marked</Label>
+                <Input
+                  id="bet"
+                  value={formData.bet}
+                  onChange={(e) => setFormData({ ...formData, bet: e.target.value })}
+                  placeholder="f.eks. Manchester United vinner"
+                  className="bg-black/20 border-white/10"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="stake">Innsats</Label>
+                  <Input
+                    id="stake"
+                    type="number"
+                    step="0.01"
+                    value={formData.stake}
+                    onChange={(e) => setFormData({ ...formData, stake: e.target.value })}
+                    placeholder="100"
+                    className="bg-black/20 border-white/10"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="odds">Odds</Label>
+                  <Input
+                    id="odds"
+                    type="number"
+                    step="0.01"
+                    value={formData.odds}
+                    onChange={(e) => setFormData({ ...formData, odds: e.target.value })}
+                    placeholder="2.50"
+                    className="bg-black/20 border-white/10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="bookie">Bookmaker (valgfritt)</Label>
+                  <Input
+                    id="bookie"
+                    value={formData.bookie}
+                    onChange={(e) => setFormData({ ...formData, bookie: e.target.value })}
+                    placeholder="Bet365"
+                    className="bg-black/20 border-white/10"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="sport">Sport (valgfritt)</Label>
+                  <Input
+                    id="sport"
+                    value={formData.sport}
+                    onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
+                    placeholder="Fotball"
+                    className="bg-black/20 border-white/10"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="notes">Notater (valgfritt)</Label>
+                <textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Notater om spillet..."
+                  className="w-full min-h-[80px] bg-black/20 border border-white/10 rounded-md p-2 text-white resize-y"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="tipster">Tipster (valgfritt)</Label>
+                <Input
+                  id="tipster"
+                  value={formData.tipster}
+                  onChange={(e) => setFormData({ ...formData, tipster: e.target.value })}
+                  placeholder="John Doe"
+                  className="bg-black/20 border-white/10"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button type="button" variant="secondary" onClick={() => setIsDialogOpen(false)}>
+                  Avbryt
                 </Button>
-                <Button
-                  type="submit"
-                  className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary text-black font-bold px-8 shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all"
-                >
-                  {editingBet ? '✓ Update Bet' : '+ Add Bet'}
+                <Button type="submit" className="bg-primary hover:bg-primary/90 text-black font-bold">
+                  {editingBet ? 'Oppdater' : 'Legg til'}
                 </Button>
               </div>
             </form>
           </DialogContent>
         </Dialog>
-      </div>
+        }
+      />
 
       {/* Filters */}
       <div className="glass-panel border border-[#27272A] rounded-lg p-4 space-y-4">
@@ -536,7 +438,7 @@ export default function BetsPage() {
               onClick={() => handleDatePreset('all')}
               className={datePreset === 'all' ? 'bg-primary text-black' : 'bg-white/5'}
             >
-              All Time
+              Alle
             </Button>
             <Button
               size="sm"
@@ -544,7 +446,7 @@ export default function BetsPage() {
               onClick={() => handleDatePreset('today')}
               className={datePreset === 'today' ? 'bg-primary text-black' : 'bg-white/5'}
             >
-              Today
+              I dag
             </Button>
             <Button
               size="sm"
@@ -552,7 +454,7 @@ export default function BetsPage() {
               onClick={() => handleDatePreset('week')}
               className={datePreset === 'week' ? 'bg-primary text-black' : 'bg-white/5'}
             >
-              This Week
+              Uke
             </Button>
             <Button
               size="sm"
@@ -560,7 +462,7 @@ export default function BetsPage() {
               onClick={() => handleDatePreset('month')}
               className={datePreset === 'month' ? 'bg-primary text-black' : 'bg-white/5'}
             >
-              This Month
+              Måned
             </Button>
             <Button
               size="sm"
@@ -568,16 +470,16 @@ export default function BetsPage() {
               onClick={() => handleDatePreset('custom')}
               className={datePreset === 'custom' ? 'bg-primary text-black' : 'bg-white/5'}
             >
-              Custom Range
+              Periode
             </Button>
           </div>
         </div>
 
         {datePreset === 'custom' && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="dateFrom" className="block mb-2 text-sm text-text-secondary">
-                From Date
+              <Label htmlFor="dateFrom" className="text-sm text-text-secondary mb-2 block">
+                Fra dato
               </Label>
               <Input
                 id="dateFrom"
@@ -588,8 +490,8 @@ export default function BetsPage() {
               />
             </div>
             <div>
-              <Label htmlFor="dateTo" className="block mb-2 text-sm text-text-secondary">
-                To Date
+              <Label htmlFor="dateTo" className="text-sm text-text-secondary mb-2 block">
+                Til dato
               </Label>
               <Input
                 id="dateTo"
@@ -602,63 +504,44 @@ export default function BetsPage() {
           </div>
         )}
 
-        <div className="flex items-center space-x-4">
-          <span className="text-sm text-text-secondary">Filter by:</span>
-          <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="relative">
+          <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk kamp, marked, sport..."
+            className="pl-9 bg-black/20 border-white/10"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
               <SelectTrigger className="bg-black/20 border-white/10">
-                <SelectValue placeholder="Filter by Status" />
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value=" ">All Statuses</SelectItem>
-                <SelectItem value="won">Won</SelectItem>
-                <SelectItem value="lost">Lost</SelectItem>
+                <SelectItem value=" ">Alle statuser</SelectItem>
+                <SelectItem value="won">Vunnet</SelectItem>
+                <SelectItem value="lost">Tapt</SelectItem>
                 <SelectItem value="push">Push</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.bookie} onValueChange={(value) => setFilters({ ...filters, bookie: value })}>
-              <SelectTrigger className="bg-black/20 border-white/10">
-                <SelectValue placeholder="Filter by Bookie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=" ">All Bookies</SelectItem>
-                {bookmakers.map((bm) => (
-                  <SelectItem key={bm.bookmaker_id} value={bm.name}>
-                    {bm.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="pending">Åpen</SelectItem>
+                <SelectItem value="cashed">Cashout</SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={filters.sport} onValueChange={(value) => setFilters({ ...filters, sport: value })}>
               <SelectTrigger className="bg-black/20 border-white/10">
-                <SelectValue placeholder="Filter by Sport" />
+                <SelectValue placeholder="Sport" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value=" ">All Sports</SelectItem>
-                <SelectItem value="Football">Football</SelectItem>
-                <SelectItem value="Basketball">Basketball</SelectItem>
-                <SelectItem value="Tennis">Tennis</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filters.tipster} onValueChange={(value) => setFilters({ ...filters, tipster: value })}>
-              <SelectTrigger className="bg-black/20 border-white/10">
-                <SelectValue placeholder="Filter by Tipster" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=" ">All Tipsters</SelectItem>
-                {tipsters.map((tip) => (
-                  <SelectItem key={tip.tipster_id} value={tip.name}>
-                    {tip.name}
+                <SelectItem value=" ">Alle sporter</SelectItem>
+                {availableSports.map((sport) => (
+                  <SelectItem key={sport} value={sport}>
+                    {sport}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </div>
         </div>
       </div>
 
@@ -669,42 +552,42 @@ export default function BetsPage() {
             <thead>
               <tr className="border-b border-[#27272A] bg-black/20">
                 <th className="text-left py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
-                  Date
+                  Dato
                 </th>
                 <th className="text-left py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[150px]">
-                  Game
+                  Kamp
                 </th>
-                <th className="text-left py-2 px-3 text-[1  1px] font-medium text-text-secondary whitespace-nowrap max-w-[200px]">
-                  Bet
+                <th className="text-left py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[200px]">
+                  Marked
                 </th>
                 <th className="text-right py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
                   Odds
                 </th>
                 <th className="text-right py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
-                  Stake
+                  Innsats
                 </th>
                 <th className="text-left py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
                   Sport
                 </th>
                 <th className="text-left py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
-                  Bookie
+                  Type
                 </th>
                 <th className="text-center py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
                   Status
                 </th>
                 <th className="text-right py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
-                  Result
+                  Resultat
                 </th>
                 <th className="text-center py-2 px-3 text-[11px] font-medium text-text-secondary whitespace-nowrap">
-                  Actions
+                  Handling
                 </th>
               </tr>
             </thead>
             <tbody>
               {filteredBets.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center text-text-muted">
-                    No bets found
+                  <td colSpan="10" className="text-center py-12 text-text-muted">
+                    Ingen spill treffer filtrene
                   </td>
                 </tr>
               ) : (
@@ -713,7 +596,10 @@ export default function BetsPage() {
                     <td className="py-2 px-3 text-[11px] font-mono whitespace-nowrap">
                       {bet.date.split('-').slice(1).reverse().join('/')} {bet.time ? bet.time.slice(0, 5) : ''}
                     </td>
-                    <td className="py-2 px-3 text-[11px] whitespace-nowrap max-w-[150px] truncate">{bet.game}</td>
+                    <td className="py-2 px-3 text-[11px] max-w-[220px]">
+                      <div className="truncate">{bet.game}</div>
+                      {bet.league ? <div className="text-[10px] text-text-muted truncate">{bet.league}</div> : null}
+                    </td>
                     <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap max-w-[200px] truncate">
                       {bet.bet}
                     </td>
@@ -724,20 +610,21 @@ export default function BetsPage() {
                       {formatCurrency(bet.stake, currency)}
                     </td>
                     <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap">{bet.sport || '-'}</td>
-                    <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap">{bet.bookie || '-'}</td>
-                    <td className="px-3 py-2 text-center whitespace-nowrap">
-                      <span
-                        className={`badge-enhanced px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                          bet.status === 'won'
-                            ? 'bg-primary/10 text-primary'
-                            : bet.status === 'lost'
-                              ? 'bg-destructive/10 text-destructive'
-                              : bet.status === 'push'
-                                ? 'bg-white/10 text-text-secondary'
-                                : 'bg-accent/10 text-accent'
-                        }`}
-                      >
-                        {bet.status.charAt(0).toUpperCase() + bet.status.slice(1)}
+                    <td className="py-2 px-3 text-[11px] text-text-secondary whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        {bet.ticket_type ? (
+                          <span className="px-1.5 py-0.5 rounded bg-white/10 text-[9px] uppercase">{bet.ticket_type}</span>
+                        ) : (
+                          '-'
+                        )}
+                        {bet.product === 'LIVE' ? (
+                          <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[9px]">LIVE</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-center whitespace-nowrap">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusClass(bet.status)}`}>
+                        {STATUS_LABELS[bet.status] || bet.status}
                       </span>
                     </td>
                     <td
@@ -748,19 +635,19 @@ export default function BetsPage() {
                       {bet.result >= 0 ? '+' : ''}
                       {formatCurrency(bet.result, currency)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="py-2 px-3 whitespace-nowrap">
                       <div className="flex items-center justify-center space-x-2">
                         <button
                           data-testid={`edit-bet-${bet.bet_id}`}
                           onClick={() => handleEdit(bet)}
-                          className="p-2 transition-colors rounded hover:bg-white/10"
+                          className="p-2 hover:bg-white/10 rounded transition-colors"
                         >
                           <Pencil className="w-4 h-4 text-accent" />
                         </button>
                         <button
                           data-testid={`delete-bet-${bet.bet_id}`}
                           onClick={() => handleDelete(bet.bet_id)}
-                          className="p-2 transition-colors rounded hover:bg-white/10"
+                          className="p-2 hover:bg-white/10 rounded transition-colors"
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </button>
@@ -778,9 +665,9 @@ export default function BetsPage() {
           <div className="border-t border-[#27272A] px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="text-sm text-text-secondary">
-                Showing <span className="font-medium text-white">{startIndex + 1}</span> to{' '}
-                <span className="font-medium text-white">{Math.min(endIndex, filteredBets.length)}</span> of{' '}
-                <span className="font-medium text-white">{filteredBets.length}</span> bets
+                Viser <span className="font-medium text-white">{startIndex + 1}</span>–
+                <span className="font-medium text-white">{Math.min(endIndex, filteredBets.length)}</span> av{' '}
+                <span className="font-medium text-white">{filteredBets.length}</span> spill
               </div>
 
               <div className="flex items-center space-x-2">
@@ -792,7 +679,7 @@ export default function BetsPage() {
                   className="bg-black/20 border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="w-4 h-4 mr-1" />
-                  Previous
+                  Forrige
                 </Button>
 
                 <div className="flex items-center space-x-1">
@@ -839,7 +726,7 @@ export default function BetsPage() {
                   disabled={currentPage === totalPages}
                   className="bg-black/20 border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  Next
+                  Neste
                   <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>

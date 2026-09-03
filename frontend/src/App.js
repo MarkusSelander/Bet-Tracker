@@ -6,15 +6,10 @@ import { Toaster } from './components/ui/sonner';
 import { AuthProvider } from './contexts/AuthContext';
 import AnalyticsPage from './pages/AnalyticsPage';
 import BetsPage from './pages/BetsPage';
-import BookmakersPage from './pages/BookmakersPage';
 import CalendarPage from './pages/CalendarPage';
-import CoolbetImportPage from './pages/CoolbetImportPage';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import SettingsPage from './pages/SettingsPage';
-import TeamsPage from './pages/TeamsPage';
-import TipstersPage from './pages/TipstersPage';
 
 function App() {
   return (
@@ -23,7 +18,6 @@ function App() {
         <Toaster position="top-right" />
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route
             element={
               <ProtectedRoute>
@@ -36,11 +30,7 @@ function App() {
             <Route path="/bets" element={<BetsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/teams" element={<TeamsPage />} />
-            <Route path="/tipsters" element={<TipstersPage />} />
-            <Route path="/bookmakers" element={<BookmakersPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/import/coolbet" element={<CoolbetImportPage />} />
           </Route>
         </Routes>
       </AuthProvider>

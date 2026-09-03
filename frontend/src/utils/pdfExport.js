@@ -188,7 +188,7 @@ export const exportDashboardToPDF = async (stats, chartData, recentBets, currenc
   pdf.save(`bet-tracker-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportAnalyticsToPDF = async (stats, bookmakerStats, tipsterStats, currency) => {
+export const exportAnalyticsToPDF = async (stats, currency) => {
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
@@ -200,7 +200,6 @@ export const exportAnalyticsToPDF = async (stats, bookmakerStats, tipsterStats, 
     return `$${value.toFixed(2)}`;
   };
 
-  // Title
   pdf.setFontSize(24);
   pdf.setFont(undefined, 'bold');
   pdf.text('Analytics Report', pageWidth / 2, yPosition, { align: 'center' });
@@ -213,115 +212,46 @@ export const exportAnalyticsToPDF = async (stats, bookmakerStats, tipsterStats, 
   pdf.setTextColor(0);
 
   yPosition += 15;
-
-  // Bookmaker Performance
-  if (bookmakerStats && bookmakerStats.length > 0) {
-    pdf.setFontSize(16);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Bookmaker Performance', 15, yPosition);
-
-    yPosition += 8;
-
-    // Table headers
-    pdf.setFontSize(9);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Bookmaker', 15, yPosition);
-    pdf.text('Bets', 70, yPosition);
-    pdf.text('Win Rate', 95, yPosition);
-    pdf.text('P/L', 130, yPosition);
-    pdf.text('ROI', 165, yPosition);
-
-    yPosition += 2;
-    pdf.line(15, yPosition, pageWidth - 15, yPosition);
-    yPosition += 5;
-
-    // Table rows
-    pdf.setFont(undefined, 'normal');
-
-    for (let i = 0; i < bookmakerStats.length; i++) {
-      const bm = bookmakerStats[i];
-
-      if (yPosition > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-
-      pdf.text(bm.name || 'Unknown', 15, yPosition);
-      pdf.text((bm.bets || 0).toString(), 70, yPosition);
-      pdf.text(`${(bm.win_rate || 0).toFixed(1)}%`, 95, yPosition);
-
-      // P/L with color
-      if ((bm.profit_loss || 0) >= 0) {
-        pdf.setTextColor(16, 185, 129);
-      } else {
-        pdf.setTextColor(239, 68, 68);
-      }
-      pdf.text(formatCurrency(bm.profit_loss || 0), 130, yPosition);
-      pdf.text(`${(bm.roi || 0) >= 0 ? '+' : ''}${(bm.roi || 0).toFixed(2)}%`, 165, yPosition);
-      pdf.setTextColor(0);
-
-      yPosition += 6;
-    }
-  }
+  pdf.setFontSize(16);
+  pdf.setFont(undefined, 'bold');
+  pdf.text('Summary Statistics', 15, yPosition);
 
   yPosition += 10;
+  pdf.setFontSize(11);
+  pdf.setFont(undefined, 'normal');
 
-  // Tipster Performance
-  if (tipsterStats && tipsterStats.length > 0) {
-    if (yPosition > pageHeight - 60) {
-      pdf.addPage();
-      yPosition = 20;
-    }
+  const leftCol = 15;
+  const rightCol = pageWidth / 2 + 10;
 
-    pdf.setFontSize(16);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Tipster Performance', 15, yPosition);
+  pdf.setFont(undefined, 'bold');
+  pdf.text('Total Bets:', leftCol, yPosition);
+  pdf.setFont(undefined, 'normal');
+  pdf.text(`${stats?.total_bets || 0}`, leftCol + 40, yPosition);
 
-    yPosition += 8;
+  yPosition += 7;
+  pdf.setFont(undefined, 'bold');
+  pdf.text('Win Rate:', leftCol, yPosition);
+  pdf.setFont(undefined, 'normal');
+  pdf.text(`${(stats?.win_rate || 0).toFixed(1)}%`, leftCol + 40, yPosition);
 
-    // Table headers
-    pdf.setFontSize(9);
-    pdf.setFont(undefined, 'bold');
-    pdf.text('Tipster', 15, yPosition);
-    pdf.text('Bets', 70, yPosition);
-    pdf.text('Win Rate', 95, yPosition);
-    pdf.text('P/L', 130, yPosition);
-    pdf.text('ROI', 165, yPosition);
+  yPosition -= 7;
+  pdf.setFont(undefined, 'bold');
+  pdf.text('Total ROI:', rightCol, yPosition);
+  pdf.setFont(undefined, 'normal');
+  const roiColor = (stats?.roi || 0) >= 0 ? [16, 185, 129] : [239, 68, 68];
+  pdf.setTextColor(...roiColor);
+  pdf.text(`${(stats?.roi || 0).toFixed(2)}%`, rightCol + 40, yPosition);
+  pdf.setTextColor(0);
 
-    yPosition += 2;
-    pdf.line(15, yPosition, pageWidth - 15, yPosition);
-    yPosition += 5;
+  yPosition += 7;
+  pdf.setFont(undefined, 'bold');
+  pdf.text('Total Result:', rightCol, yPosition);
+  pdf.setFont(undefined, 'normal');
+  const plColor = (stats?.total_profit_loss || 0) >= 0 ? [16, 185, 129] : [239, 68, 68];
+  pdf.setTextColor(...plColor);
+  pdf.text(formatCurrency(stats?.total_profit_loss || 0), rightCol + 40, yPosition);
+  pdf.setTextColor(0);
 
-    // Table rows
-    pdf.setFont(undefined, 'normal');
-
-    for (let i = 0; i < tipsterStats.length; i++) {
-      const tip = tipsterStats[i];
-
-      if (yPosition > pageHeight - 20) {
-        pdf.addPage();
-        yPosition = 20;
-      }
-
-      pdf.text(tip.name || 'Unknown', 15, yPosition);
-      pdf.text((tip.bets || 0).toString(), 70, yPosition);
-      pdf.text(`${(tip.win_rate || 0).toFixed(1)}%`, 95, yPosition);
-
-      // P/L with color
-      if ((tip.profit_loss || 0) >= 0) {
-        pdf.setTextColor(16, 185, 129);
-      } else {
-        pdf.setTextColor(239, 68, 68);
-      }
-      pdf.text(formatCurrency(tip.profit_loss || 0), 130, yPosition);
-      pdf.text(`${(tip.roi || 0) >= 0 ? '+' : ''}${(tip.roi || 0).toFixed(2)}%`, 165, yPosition);
-      pdf.setTextColor(0);
-
-      yPosition += 6;
-    }
-  }
-
-  // Footer
   const pageCount = pdf.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     pdf.setPage(i);
