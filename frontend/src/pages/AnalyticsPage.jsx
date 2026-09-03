@@ -43,7 +43,7 @@ export default function AnalyticsPage() {
     const fetchData = async () => {
       try {
         // Determine days parameter
-        let daysParam = dateRange === 'custom' ? 365 : dateRange;
+        const daysParam = dateRange === 'custom' ? 365 : dateRange;
 
         // Build sport filter
         const sportParam = selectedSport !== 'all' ? `&sport=${selectedSport}` : '';
@@ -270,8 +270,8 @@ export default function AnalyticsPage() {
                 formatter={(value) => formatCurrency(value, currency)}
               />
               <Bar dataKey="cumulative_pl" name="Akkumulert P/L">
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
+                {chartData.map((entry) => (
+                  <Cell key={entry.date} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
                 ))}
               </Bar>
             </BarChart>
@@ -318,9 +318,8 @@ export default function AnalyticsPage() {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {/* eslint-disable-next-line react/no-array-index-key */}
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  {pieData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
                   ))}
                 </Pie>
               </PieChart>
@@ -381,9 +380,8 @@ export default function AnalyticsPage() {
                   </td>
                 </tr>
               ) : (
-                // eslint-disable-next-line react/no-array-index-key
-                sportStats.map((sport, index) => (
-                  <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
+                sportStats.map((sport) => (
+                  <tr key={sport.name} className="border-b border-[#27272A] hover:bg-white/5">
                     <td className="py-3 px-4 text-sm font-medium">{sport.name}</td>
                     <td className="py-3 px-4 text-sm font-mono text-right">{sport.bets}</td>
                     <td className="py-3 px-4 text-sm font-mono text-right">
@@ -442,9 +440,8 @@ export default function AnalyticsPage() {
                   </td>
                 </tr>
               ) : (
-                // eslint-disable-next-line react/no-array-index-key
-                oddsRangeStats.map((range, index) => (
-                  <tr key={index} className="border-b border-[#27272A] hover:bg-white/5">
+                oddsRangeStats.map((range) => (
+                  <tr key={range.name} className="border-b border-[#27272A] hover:bg-white/5">
                     <td className="py-3 px-4 text-sm font-medium">{range.name}</td>
                     <td className="py-3 px-4 text-sm font-mono text-right">{range.bets}</td>
                     <td className="py-3 px-4 text-sm font-mono text-right">

@@ -187,6 +187,7 @@ export default function CalendarPage() {
           {/* eslint-disable-next-line react/no-array-index-key */}
           {getDaysInMonth().map((day, index) => {
             if (!day) {
+              // eslint-disable-next-line react/no-array-index-key
               return <div key={`empty-${index}`} className="aspect-square" />;
             }
 
@@ -242,7 +243,7 @@ export default function CalendarPage() {
           {/* eslint-disable-next-line react/no-array-index-key */}
           {getWeeklyStats().map((week, index) => (
             <div
-              key={index}
+              key={`uke-${index + 1}`}
               className={`border rounded-lg p-4 ${
                 week.profit >= 0 ? 'border-primary/30 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
               }`}
