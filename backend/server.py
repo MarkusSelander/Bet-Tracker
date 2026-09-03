@@ -456,7 +456,7 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    currency: str = "USD"
+    currency: str = "NOK"
     created_at: datetime
 
 
@@ -605,7 +605,7 @@ async def login(request: Request, response: Response):
             "email": email,
             "name": email.split("@")[0].title(),
             "picture": None,
-            "currency": "USD",
+            "currency": "NOK",
             "created_at": datetime.now(timezone.utc)
         })
     else:

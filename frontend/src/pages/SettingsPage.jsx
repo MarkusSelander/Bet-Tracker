@@ -210,7 +210,8 @@ export default function SettingsPage() {
             <h3 className="font-medium mb-2">Importer Coolbet</h3>
             <p className="text-sm text-text-secondary mb-3">
               Last opp <span className="font-mono text-text-primary">coolbet_bets.json</span> fra{' '}
-              <span className="font-mono text-text-primary">sync.py</span>. Eksisterende kuponger oppdateres på Coolbet-id.
+              <span className="font-mono text-text-primary">sync.py</span>. Eksisterende kuponger oppdateres på
+              Coolbet-id.
             </p>
             <input
               ref={coolbetInputRef}

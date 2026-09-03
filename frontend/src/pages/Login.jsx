@@ -75,17 +75,15 @@ export default function Login() {
             </div>
 
             <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
-            <p className="text-text-secondary text-center mb-8">
-              Hold oversikt over spill og resultat
-            </p>
+            <p className="text-text-secondary text-center mb-8">Hold oversikt over spill og resultat</p>
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">E-post</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder="din@epost.no"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-black/20 border-white/10"
@@ -94,7 +92,7 @@ export default function Login() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Passord</Label>
                 <Input
                   id="password"
                   type="password"

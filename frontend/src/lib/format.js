@@ -12,6 +12,12 @@ export function formatCurrency(value, currency = 'NOK', digits = 2) {
   })} kr`;
 }
 
+export const TICKET_TYPE_LABELS = {
+  single: 'Enkelt',
+  combo: 'Kombi',
+  system: 'System',
+};
+
 export const STATUS_LABELS = {
   won: 'Vunnet',
   lost: 'Tapt',

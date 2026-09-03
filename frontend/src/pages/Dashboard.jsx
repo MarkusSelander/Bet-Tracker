@@ -1,7 +1,18 @@
 import { Clock, FileDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
@@ -148,7 +159,10 @@ export default function Dashboard() {
           </div>
           <div className="space-y-2">
             {pendingBets.slice(0, 6).map((bet) => (
-              <div key={bet.bet_id} className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0">
+              <div
+                key={bet.bet_id}
+                className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0"
+              >
                 <div className="min-w-0">
                   <p className="text-sm truncate">{bet.game}</p>
                   <p className="text-xs text-text-secondary truncate">{bet.bet}</p>
@@ -175,7 +189,14 @@ export default function Dashboard() {
                 contentStyle={{ backgroundColor: '#18181B', border: '1px solid #27272A', borderRadius: '8px' }}
                 formatter={(value) => formatCurrency(value, currency)}
               />
-              <Area type="monotone" dataKey="cumulative_pl" stroke="#10B981" strokeWidth={2} fill="#10B98122" name="P/L" />
+              <Area
+                type="monotone"
+                dataKey="cumulative_pl"
+                stroke="#10B981"
+                strokeWidth={2}
+                fill="#10B98122"
+                name="P/L"
+              />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -213,7 +234,9 @@ export default function Dashboard() {
           </Link>
         </div>
         {recentBets.length === 0 ? (
-          <p className="text-sm text-text-muted py-8 text-center">Ingen spill ennå. Legg inn ditt første fra Spill-siden.</p>
+          <p className="text-sm text-text-muted py-8 text-center">
+            Ingen spill ennå. Legg inn ditt første fra Spill-siden.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -239,7 +262,9 @@ export default function Dashboard() {
                         {STATUS_LABELS[bet.status] || bet.status}
                       </span>
                     </td>
-                    <td className={`py-2 text-sm font-mono text-right ${bet.result >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                    <td
+                      className={`py-2 text-sm font-mono text-right ${bet.result >= 0 ? 'text-primary' : 'text-destructive'}`}
+                    >
                       {bet.result >= 0 ? '+' : ''}
                       {formatCurrency(bet.result, currency)}
                     </td>
