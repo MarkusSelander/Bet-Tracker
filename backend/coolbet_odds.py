@@ -160,3 +160,59 @@ def attach_odds(fixture: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[s
         "odds_1x2": extract_1x2(event),
         "coolbet_event_id": event_id(event),
     }
+
+
+_LINE = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def classify_market(market: Dict[str, Any]) -> Optional[str]:
+    label = str(market.get("name") or market.get("market_name") or "").lower()
+    mtype = str(market.get("type") or market.get("market_type") or "").lower()
+    blob = f"{label} {mtype}"
+    if "1x2" in blob or "match result" in blob:
+        return "1x2"
+    if "both teams" in blob or "btts" in blob or "begge lag" in blob:
+        return "btts"
+    if "over/under" in blob or "over under" in blob or "total goals" in blob:
+        return "over_under"
+    return None
+
+
+def extract_main_markets(event: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not event:
+        return []
+    raw = event.get("markets") or event.get("market_list") or []
+    if not isinstance(raw, list):
+        return []
+    found: Dict[str, Dict[str, Any]] = {}
+    for market in raw:
+        if not isinstance(market, dict):
+            continue
+        key = classify_market(market)
+        if not key or key in found:
+            continue
+        outcomes = []
+        for item in market.get("outcomes") or market.get("selections") or []:
+            if not isinstance(item, dict):
+                continue
+            odds = _outcome_odds(item)
+            name = item.get("name") or item.get("outcome_name")
+            if name and odds is not None:
+                outcomes.append({"name": str(name), "odds": odds})
+        if not outcomes:
+            continue
+        line = None
+        if key == "over_under":
+            match = _LINE.search(str(market.get("name") or market.get("line") or ""))
+            if match:
+                line = float(match.group(1))
+            elif market.get("line") is not None:
+                line = float(market["line"])
+        found[key] = {
+            "key": key,
+            "name": market.get("name") or market.get("market_name") or key,
+            "line": line,
+            "outcomes": outcomes,
+        }
+    order = ["1x2", "over_under", "btts"]
+    return [found[key] for key in order if key in found]

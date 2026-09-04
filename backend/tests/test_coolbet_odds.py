@@ -96,3 +96,51 @@ def test_attach_odds_sets_1x2_and_event_id_on_hit():
     out = attach_odds(fixture, events)
     assert out["odds_1x2"] == {"home": 1.85, "draw": 3.4, "away": 4.2}
     assert out["coolbet_event_id"] == "hit"
+
+
+from coolbet_odds import extract_main_markets
+
+
+def test_extract_main_markets_keeps_1x2_ou_btts_only():
+    markets = extract_main_markets(
+        {
+            "id": "hit",
+            "markets": [
+                {
+                    "name": "Match Result (1X2)",
+                    "outcomes": [
+                        {"name": "1", "odds": 1.85},
+                        {"name": "X", "odds": 3.4},
+                        {"name": "2", "odds": 4.2},
+                    ],
+                },
+                {
+                    "name": "Total Goals Over/Under 2.5",
+                    "outcomes": [
+                        {"name": "Over", "odds": 1.72},
+                        {"name": "Under", "odds": 2.05},
+                    ],
+                },
+                {
+                    "name": "Both Teams to Score",
+                    "outcomes": [
+                        {"name": "Yes", "odds": 1.8},
+                        {"name": "No", "odds": 1.95},
+                    ],
+                },
+                {
+                    "name": "Correct Score",
+                    "outcomes": [{"name": "1-0", "odds": 8.0}],
+                },
+            ],
+        }
+    )
+    names = [market["key"] for market in markets]
+    assert names == ["1x2", "over_under", "btts"]
+    assert markets[1]["line"] == 2.5
+    assert markets[2]["outcomes"][0]["odds"] == 1.8
+
+
+def test_extract_main_markets_empty_without_event():
+    assert extract_main_markets(None) == []
+    assert extract_main_markets({}) == []
