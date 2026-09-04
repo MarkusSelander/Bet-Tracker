@@ -190,7 +190,14 @@ export default function AnalyticsPage() {
             variant="secondary"
             onClick={async () => {
               try {
-                await exportAnalyticsToPDF(stats, currency);
+                await exportAnalyticsToPDF(stats, currency, {
+                  chartData,
+                  sportStats: visibleSports,
+                  oddsRangeStats,
+                  periodLabel: PERIOD_TITLES[dateRange],
+                  sportLabel: selectedSport === 'all' ? 'Alle sporter' : selectedSport,
+                  userName: user?.name,
+                });
                 toast.success('PDF eksportert');
               } catch (error) {
                 console.error('PDF export error:', error);

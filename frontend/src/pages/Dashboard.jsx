@@ -103,7 +103,10 @@ export default function Dashboard() {
             variant="secondary"
             onClick={async () => {
               try {
-                await exportDashboardToPDF(stats, chartData, recentBets, currency);
+                await exportDashboardToPDF(stats, chartData, recentBets, currency, {
+                  pendingBets,
+                  userName: user?.name,
+                });
                 toast.success('PDF eksportert');
               } catch (error) {
                 console.error('PDF export error:', error);
