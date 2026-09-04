@@ -63,9 +63,7 @@ export default function BetDetailsDialog({ bet, open, onOpenChange, currency = '
               <div className="min-w-0">
                 <DialogTitle className="text-left leading-snug">{bet.game}</DialogTitle>
                 {isPresent(bet.bet) ? (
-                  <DialogDescription className="text-left text-text-secondary mt-1">
-                    {bet.bet}
-                  </DialogDescription>
+                  <DialogDescription className="text-left text-text-secondary mt-1">{bet.bet}</DialogDescription>
                 ) : (
                   <DialogDescription className="sr-only">Spilldetaljer</DialogDescription>
                 )}
