@@ -18,6 +18,7 @@ from starlette.middleware.cors import CORSMiddleware
 from coolbet import map_coolbet_ticket
 from coolbet_odds import enrich_fixtures, fetch_coolbet_events, markets_payload, match_event, extract_main_markets
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
+from dates import is_cache_fresh
 from mongo import mongo_client_kwargs
 from stats import compute_stats
 
@@ -1519,7 +1520,7 @@ async def search_teams(request: Request, query: str, sport: Optional[str] = None
     )
 
     now = datetime.now(timezone.utc)
-    if cached and cached.get("expires_at") > now:
+    if cached and is_cache_fresh(cached.get("expires_at"), now):
         return cached.get("teams", [])
 
     # Fetch from API
