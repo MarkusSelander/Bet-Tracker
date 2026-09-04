@@ -75,6 +75,27 @@
     return (tickets || []).map((ticket) => ticket.id).filter(Boolean);
   }
 
+  function collectKnownIdsFromBets(bets) {
+    return (bets || []).map((bet) => bet && bet.source_id).filter(Boolean);
+  }
+
+  function isOpenTicket(ticket) {
+    const status = String((ticket && ticket.status) || "").toUpperCase();
+    return Boolean(OPEN_STATUSES[status]);
+  }
+
+  function shouldFetchTicketDetails(ticket, knownIds) {
+    if (!needsTicketDetails(ticket)) return false;
+    if (!knownIds || knownIds.size === 0) return true;
+    if (!knownIds.has(ticket.id)) return true;
+    return isOpenTicket(ticket);
+  }
+
+  function ticketsToImport(tickets, knownIds) {
+    if (!knownIds || knownIds.size === 0) return tickets || [];
+    return (tickets || []).filter((ticket) => !knownIds.has(ticket.id) || isOpenTicket(ticket));
+  }
+
   function ticketDetailPaths(ticketId, displayId) {
     const query = "language=eu&layout=EUROPEAN";
     const ids = [ticketId];
@@ -185,13 +206,72 @@
     return `Sist synket: ${new Date(resolved).toLocaleString("nb-NO")}`;
   }
 
+  function clampPercent(value) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  function historyPercent(page, totalPages, hasNextPage) {
+    const safePage = Math.max(1, Number(page) || 1);
+    if (totalPages && totalPages > 0) {
+      return 12 + 56 * (safePage / totalPages);
+    }
+    if (hasNextPage === false) return 68;
+    return 12 + 56 * (1 - 1 / (safePage + 1));
+  }
+
+  function computeSyncProgress(input) {
+    const state = input && typeof input === "object" ? input : {};
+    if (Number.isFinite(state.percent) && state.label && state.phase) {
+      return {
+        phase: state.phase,
+        percent: clampPercent(state.percent),
+        label: String(state.label),
+      };
+    }
+    const phase = state.phase || "auth";
+    const tickets = Number(state.tickets) || 0;
+    const page = Number(state.page) || 1;
+    const totalPages = Number(state.totalPages) || 0;
+    const detailsDone = Number(state.detailsDone) || 0;
+    const detailsTotal = Number(state.detailsTotal) || 0;
+
+    if (phase === "done") {
+      return { phase, percent: 100, label: "Ferdig" };
+    }
+    if (phase === "import") {
+      return { phase, percent: 95, label: "Sender til Bet Tracker…" };
+    }
+    if (phase === "coolbet") {
+      return { phase, percent: 10, label: "Åpner Coolbet…" };
+    }
+    if (phase === "details") {
+      const ratio = detailsTotal > 0 ? detailsDone / detailsTotal : 0;
+      return {
+        phase,
+        percent: clampPercent(70 + 20 * ratio),
+        label: `Henter kupongdetaljer · ${detailsDone}/${detailsTotal}`,
+      };
+    }
+    if (phase === "history") {
+      const percent = clampPercent(historyPercent(page, totalPages, state.hasNextPage));
+      return {
+        phase,
+        percent,
+        label: `Henter historikk · side ${page} · ${tickets} kuponger`,
+      };
+    }
+    return { phase: "auth", percent: 4, label: "Sjekker Bet Tracker…" };
+  }
+
   return {
     HISTORY_PATH,
     TICKET_STATUS,
     PAGE_SIZE,
     authHeaders,
     betsUrl,
+    collectKnownIdsFromBets,
     collectTicketIds,
+    computeSyncProgress,
     formatLastSync,
     historyQuery,
     historyUrl,
@@ -204,7 +284,9 @@
     needsTicketDetails,
     parseTimestamp,
     resolveLastSyncAt,
+    shouldFetchTicketDetails,
     shouldStopPagination,
     ticketDetailPaths,
+    ticketsToImport,
   };
 });

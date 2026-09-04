@@ -41,6 +41,29 @@ h1 {
   color: var(--muted);
 }
 
+.progress {
+  margin-top: 10px;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.25s ease;
+}
+
+#progress-label {
+  margin: 6px 0 0;
+}
+
 .error {
   margin: 8px 0 0;
   color: var(--danger);

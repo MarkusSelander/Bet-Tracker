@@ -11,6 +11,20 @@
       <p id="status" class="status">Sjekker…</p>
     </header>
     <p id="last-sync" class="muted"></p>
+    <div
+      id="progress"
+      class="progress"
+      hidden
+      role="progressbar"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-label="Synk-fremgang"
+    >
+      <div class="progress-track">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <p id="progress-label" class="muted"></p>
+    </div>
     <p id="result" class="muted"></p>
     <p id="error" class="error" hidden></p>
     <div class="actions">

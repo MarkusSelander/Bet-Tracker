@@ -2,6 +2,9 @@ const statusEl = document.getElementById("status");
 const lastSyncEl = document.getElementById("last-sync");
 const resultEl = document.getElementById("result");
 const errorEl = document.getElementById("error");
+const progressEl = document.getElementById("progress");
+const progressBarEl = document.getElementById("progress-bar");
+const progressLabelEl = document.getElementById("progress-label");
 const syncBtn = document.getElementById("sync-now");
 
 const STATUS_TEXT = {
@@ -18,6 +21,17 @@ function render(state) {
   statusEl.textContent = STATUS_TEXT[status] || STATUS_TEXT.error;
   statusEl.className = `status ${status === "ok" ? "ok" : status === "need_coolbet" || status === "need_bet_tracker" ? "warn" : status === "syncing" ? "" : "error"}`;
   lastSyncEl.textContent = CoolbetHistory.formatLastSync(lastSyncAt);
+  const progress = status === "syncing" ? CoolbetHistory.computeSyncProgress(state.syncProgress || { phase: "auth" }) : null;
+  if (progress) {
+    progressEl.hidden = false;
+    progressBarEl.style.width = `${progress.percent}%`;
+    progressLabelEl.textContent = `${progress.label} · ${progress.percent}%`;
+    progressEl.setAttribute("aria-valuenow", String(progress.percent));
+  } else {
+    progressEl.hidden = true;
+    progressBarEl.style.width = "0%";
+    progressLabelEl.textContent = "";
+  }
   if (state.lastResult && status === "ok") {
     const r = state.lastResult;
     resultEl.textContent = `${r.fetched || 0} hentet · ${r.imported || 0} nye · ${r.updated || 0} oppdatert`;
@@ -80,6 +94,10 @@ async function refresh() {
 syncBtn.addEventListener("click", async () => {
   syncBtn.disabled = true;
   statusEl.textContent = STATUS_TEXT.syncing;
+  const start = CoolbetHistory.computeSyncProgress({ phase: "auth" });
+  progressEl.hidden = false;
+  progressBarEl.style.width = `${start.percent}%`;
+  progressLabelEl.textContent = `${start.label} · ${start.percent}%`;
   await chrome.runtime.sendMessage({ type: "RUN_SYNC" });
   await refresh();
 });
@@ -90,7 +108,7 @@ document.getElementById("open-options").addEventListener("click", () => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.lastSyncAt || changes.lastStatus || changes.lastResult || changes.lastError) {
+  if (changes.lastSyncAt || changes.lastStatus || changes.lastResult || changes.lastError || changes.syncProgress) {
     refresh();
   }
 });
