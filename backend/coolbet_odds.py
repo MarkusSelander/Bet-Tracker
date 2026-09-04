@@ -69,7 +69,10 @@ def flatten_search_payload(payload: Any) -> List[Dict[str, Any]]:
     for key in ("matches", "events", "results", "data", "tickets"):
         value = payload.get(key)
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
+            items = [item for item in value if isinstance(item, dict)]
+            if items:
+                return items
+            continue
         if isinstance(value, dict):
             nested = flatten_search_payload(value)
             if nested:

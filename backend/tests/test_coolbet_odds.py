@@ -8,6 +8,13 @@ def test_flatten_reads_matches_or_events_lists():
     assert direct[0]["id"] == "2"
 
 
+def test_flatten_skips_empty_list_and_reads_next_key():
+    events = flatten_search_payload(
+        {"matches": [], "events": [{"id": "1", "name": "Brann - Viking"}]}
+    )
+    assert events[0]["id"] == "1"
+
+
 def test_match_event_pairs_same_day_and_both_team_names():
     fixture = {
         "home_team_name": "SK Brann",
@@ -60,3 +67,32 @@ def test_attach_odds_sets_nulls_when_no_event():
     assert out["odds_1x2"] is None
     assert out["coolbet_event_id"] is None
     assert out["fixture_id"] == "e1"
+
+
+def test_attach_odds_sets_1x2_and_event_id_on_hit():
+    fixture = {
+        "fixture_id": "e1",
+        "home_team_name": "Brann",
+        "away_team_name": "Viking",
+        "event_date": "2026-09-06",
+    }
+    events = [
+        {
+            "id": "hit",
+            "name": "Brann - Viking",
+            "start_date": "2026-09-06T16:00:00Z",
+            "markets": [
+                {
+                    "name": "Match Result (1X2)",
+                    "outcomes": [
+                        {"name": "1", "odds": 1.85},
+                        {"name": "X", "odds": 3.4},
+                        {"name": "2", "odds": 4.2},
+                    ],
+                }
+            ],
+        }
+    ]
+    out = attach_odds(fixture, events)
+    assert out["odds_1x2"] == {"home": 1.85, "draw": 3.4, "away": 4.2}
+    assert out["coolbet_event_id"] == "hit"
