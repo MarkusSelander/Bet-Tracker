@@ -16,10 +16,11 @@ function buildFavoriteFeed(grouped) {
     }
     const leagues = Object.keys(byLeague)
       .sort()
-      .map((name) => ({
-        name,
-        matches: byLeague[name].slice().sort((a, b) => String(a.event_time || '').localeCompare(String(b.event_time || ''))),
-      }));
+      .map((name) => {
+        const leagueMatches = byLeague[name].slice();
+        leagueMatches.sort((a, b) => String(a.event_time || '').localeCompare(String(b.event_time || '')));
+        return { name, matches: leagueMatches };
+      });
     return { date, leagues };
   });
 }

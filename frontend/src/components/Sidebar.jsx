@@ -1,4 +1,4 @@
-import { BarChart3, Calendar, LayoutDashboard, ListChecks, LogOut, Settings, TrendingUp, X } from 'lucide-react';
+import { BarChart3, Calendar, LayoutDashboard, ListChecks, LogOut, Settings, Star, TrendingUp, X } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/bets', icon: ListChecks, label: 'Spill', testId: 'nav-bets' },
   { to: '/calendar', icon: Calendar, label: 'Kalender', testId: 'nav-calendar' },
   { to: '/analytics', icon: BarChart3, label: 'Analyse', testId: 'nav-analytics' },
+  { to: '/favorites', icon: Star, label: 'Favoritter', testId: 'nav-favorites' },
   { to: '/settings', icon: Settings, label: 'Innstillinger', testId: 'nav-settings' },
 ];
 
