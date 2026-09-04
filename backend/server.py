@@ -16,6 +16,7 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from coolbet import map_coolbet_ticket
+from coolbet_odds import enrich_fixtures, fetch_coolbet_events, markets_payload, match_event, extract_main_markets
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
 from mongo import mongo_client_kwargs
 from stats import compute_stats
@@ -1412,7 +1413,8 @@ async def get_upcoming_matches(request: Request, days: int = 7):
     if not cached_fixtures:
         cached_fixtures = await fetch_and_cache_fixtures(team_ids, days)
 
-    # Group by date
+    cached_fixtures = enrich_fixtures(cached_fixtures, fetch_events=fetch_coolbet_events)
+
     grouped = {}
     for fixture in cached_fixtures:
         date = fixture["event_date"]
@@ -1421,6 +1423,27 @@ async def get_upcoming_matches(request: Request, days: int = 7):
         grouped[date].append(fixture)
 
     return grouped
+
+
+@api_router.get("/favorites/matches/{fixture_id}/markets")
+async def get_favorite_match_markets(request: Request, fixture_id: str):
+    await get_current_user(request)
+    fixture = await db.cached_fixtures.find_one({"fixture_id": fixture_id}, {"_id": 0})
+    if not fixture:
+        return {"markets": [], "missing": True}
+
+    events = fetch_coolbet_events(
+        fixture.get("home_team_name") or "",
+        fixture.get("away_team_name") or "",
+    )
+    event = match_event(fixture, events)
+    enriched = {
+        **fixture,
+        "coolbet_event_id": event.get("id") if event else None,
+    }
+    if event and event.get("id"):
+        enriched["coolbet_event_id"] = str(event.get("id"))
+    return markets_payload(enriched, event)
 
 
 async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]:

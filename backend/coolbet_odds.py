@@ -254,3 +254,21 @@ def fetch_coolbet_events(home: str, away: str, client: Any = None) -> List[Dict[
     finally:
         if close:
             http.close()
+
+
+def enrich_fixtures(fixtures: List[Dict[str, Any]], fetch_events=None) -> List[Dict[str, Any]]:
+    fetch = fetch_events or fetch_coolbet_events
+    enriched = []
+    for fixture in fixtures:
+        events = fetch(
+            fixture.get("home_team_name") or "",
+            fixture.get("away_team_name") or "",
+        )
+        enriched.append(attach_odds(fixture, events))
+    return enriched
+
+
+def markets_payload(fixture: Dict[str, Any], event: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not fixture.get("coolbet_event_id") or not event:
+        return {"markets": [], "missing": True}
+    return {"markets": extract_main_markets(event), "missing": False, "coolbet_event_id": fixture.get("coolbet_event_id")}

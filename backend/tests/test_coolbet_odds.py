@@ -186,3 +186,56 @@ def test_fetch_coolbet_events_returns_empty_on_http_error():
             raise RuntimeError("network")
 
     assert fetch_coolbet_events("Brann", "Viking", client=Boom()) == []
+
+
+from coolbet_odds import enrich_fixtures, markets_payload
+
+
+def test_enrich_fixtures_calls_search_once_per_fixture():
+    fixture = {
+        "fixture_id": "fix-1",
+        "home_team_name": "Brann",
+        "away_team_name": "Viking",
+        "event_date": "2026-09-06",
+    }
+    event = {
+        "id": "cb-1",
+        "name": "Brann - Viking",
+        "start_date": "2026-09-06T16:00:00Z",
+        "markets": [
+            {
+                "name": "Match Result (1X2)",
+                "outcomes": [
+                    {"name": "1", "odds": 1.9},
+                    {"name": "X", "odds": 3.5},
+                    {"name": "2", "odds": 4.0},
+                ],
+            }
+        ],
+    }
+
+    def fake_fetch(home, away, client=None):
+        assert home == "Brann"
+        return [event]
+
+    out = enrich_fixtures([fixture], fetch_events=fake_fetch)
+    assert out[0]["coolbet_event_id"] == "cb-1"
+    assert out[0]["odds_1x2"]["home"] == 1.9
+
+
+def test_markets_payload_uses_cached_event_or_empty():
+    event = {
+        "id": "cb-1",
+        "markets": [
+            {
+                "name": "Both Teams to Score",
+                "outcomes": [{"name": "Yes", "odds": 1.8}, {"name": "No", "odds": 1.95}],
+            }
+        ],
+    }
+    payload = markets_payload({"coolbet_event_id": "cb-1"}, event)
+    assert payload["missing"] is False
+    assert payload["markets"][0]["key"] == "btts"
+    empty = markets_payload({"coolbet_event_id": None}, None)
+    assert empty["missing"] is True
+    assert empty["markets"] == []
