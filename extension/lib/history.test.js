@@ -3,11 +3,15 @@ const assert = require("node:assert/strict");
 const {
   HISTORY_PATH,
   authHeaders,
+  betsUrl,
+  formatLastSync,
   historyQuery,
   importUrl,
+  latestBetCreatedAt,
   loginPayload,
   mergeTicketDetails,
   needsTicketDetails,
+  resolveLastSyncAt,
   shouldStopPagination,
   ticketDetailPaths,
 } = require("./history.js");
@@ -121,4 +125,56 @@ test("mergeTicketDetails unwraps nested ticket payloads", () => {
   );
   assert.equal(merged.matches[1].match_name, "C - D");
   assert.equal(needsTicketDetails(merged), false);
+});
+
+test("formatLastSync says never only when no timestamp exists", () => {
+  assert.equal(formatLastSync(null), "Sist synket: aldri");
+  assert.equal(formatLastSync(undefined), "Sist synket: aldri");
+  assert.equal(formatLastSync(0), "Sist synket: aldri");
+  assert.equal(formatLastSync(""), "Sist synket: aldri");
+});
+
+test("formatLastSync shows a real time for stored sync timestamps", () => {
+  const ts = Date.parse("2026-09-04T12:00:00.000Z");
+  const text = formatLastSync(ts);
+  assert.notEqual(text, "Sist synket: aldri");
+  assert.match(text, /^Sist synket: /);
+  assert.ok(text.includes("2026"));
+});
+
+test("latestBetCreatedAt uses the newest Coolbet import time", () => {
+  assert.equal(latestBetCreatedAt([]), null);
+  assert.equal(
+    latestBetCreatedAt([
+      { created_at: "2026-08-01T10:00:00.000Z" },
+      { created_at: "2026-09-04T18:30:00.000Z" },
+      { created_at: "2026-07-01T00:00:00.000Z" },
+    ]),
+    Date.parse("2026-09-04T18:30:00.000Z")
+  );
+});
+
+test("bets url can filter by bookie", () => {
+  assert.equal(
+    betsUrl("https://api.example.com/", "Coolbet"),
+    "https://api.example.com/api/bets?bookie=Coolbet"
+  );
+});
+
+test("resolveLastSyncAt prefers local lastSyncAt and falls back to backend field", () => {
+  const local = Date.parse("2026-09-05T08:00:00.000Z");
+  assert.equal(resolveLastSyncAt({ lastSyncAt: local }), local);
+  assert.equal(
+    resolveLastSyncAt({ last_coolbet_sync_at: "2026-09-04T12:00:00.000Z" }),
+    Date.parse("2026-09-04T12:00:00.000Z")
+  );
+  assert.equal(
+    resolveLastSyncAt({
+      lastSyncAt: local,
+      last_coolbet_sync_at: "2026-09-01T00:00:00.000Z",
+    }),
+    local
+  );
+  assert.equal(resolveLastSyncAt({ lastStatus: "ok" }), null);
+  assert.equal(resolveLastSyncAt({}), null);
 });

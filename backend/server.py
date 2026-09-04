@@ -17,7 +17,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from coolbet import map_coolbet_ticket
 from coolbet_odds import enrich_fixtures, fetch_coolbet_events, markets_payload, match_event, extract_main_markets
-from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
+from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from dates import is_cache_fresh
 from mongo import mongo_client_kwargs
 from stats import compute_stats
@@ -591,6 +591,26 @@ def _unavailable_db() -> HTTPException:
     return HTTPException(status_code=503, detail="Database unavailable")
 
 
+async def attach_last_coolbet_sync(user_doc: Optional[dict]) -> Optional[dict]:
+    if not user_doc:
+        return user_doc
+    if user_doc.get("last_coolbet_sync_at"):
+        return user_doc
+    latest = await db.bets.find_one(
+        {"user_id": user_doc["user_id"], "bookie": "Coolbet"},
+        {"_id": 0, "created_at": 1},
+        sort=[("created_at", -1)],
+    )
+    last_sync = resolve_last_coolbet_sync_at(user_doc, (latest or {}).get("created_at"))
+    if last_sync:
+        user_doc["last_coolbet_sync_at"] = last_sync
+        await db.users.update_one(
+            {"user_id": user_doc["user_id"]},
+            {"$set": {"last_coolbet_sync_at": last_sync}},
+        )
+    return user_doc
+
+
 # Auth Routes
 
 
@@ -634,6 +654,7 @@ async def login(request: Request, response: Response):
             "expires_at": expires_at,
             "created_at": datetime.now(timezone.utc)
         })
+        user_doc = await attach_last_coolbet_sync(user_doc)
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
 
@@ -655,7 +676,9 @@ async def login(request: Request, response: Response):
 async def get_me(request: Request):
     try:
         user_id = await get_current_user(request)
-        user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        user_doc = await attach_last_coolbet_sync(
+            await db.users.find_one({"user_id": user_id}, {"_id": 0})
+        )
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
     if not user_doc:
@@ -1237,12 +1260,13 @@ async def import_coolbet_bets(request: Request):
         if tickets is None and isinstance(body.get("csv_data"), list):
             tickets = body.get("csv_data")
 
-    if not isinstance(tickets, list) or len(tickets) == 0:
+    if not isinstance(tickets, list):
         raise HTTPException(status_code=400, detail="tickets array required")
 
     imported = 0
     updated = 0
     skipped = 0
+    now = datetime.now(timezone.utc)
 
     for ticket in tickets:
         try:
@@ -1257,7 +1281,6 @@ async def import_coolbet_bets(request: Request):
                 {"_id": 0, "bet_id": 1, "created_at": 1},
             )
 
-            now = datetime.now(timezone.utc)
             doc = {
                 **mapped,
                 "user_id": user_id,
@@ -1277,6 +1300,11 @@ async def import_coolbet_bets(request: Request):
         except Exception as e:
             logging.error(f"Error importing Coolbet ticket: {e}")
             skipped += 1
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"last_coolbet_sync_at": now}},
+    )
 
     return {"imported": imported, "updated": updated, "skipped": skipped}
 

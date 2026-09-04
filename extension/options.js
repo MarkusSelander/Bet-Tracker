@@ -40,7 +40,10 @@ document.getElementById("save").addEventListener("click", async () => {
   const token = tokenEl.value.trim();
   await saveExtras();
   if (token) {
-    await chrome.storage.local.set({ sessionToken: token, lastStatus: "ok", lastError: "" });
+    const extras = { sessionToken: token, lastError: "" };
+    const stored = await chrome.storage.local.get(["lastSyncAt"]);
+    if (stored.lastSyncAt) extras.lastStatus = "ok";
+    await chrome.storage.local.set(extras);
   }
   showMessage("Lagret.", true);
 });
@@ -71,12 +74,13 @@ document.getElementById("login").addEventListener("click", async () => {
     }
     tokenEl.value = data.session_token;
     passwordEl.value = "";
+    const lastSyncAt = CoolbetHistory.resolveLastSyncAt(data);
     await chrome.storage.local.set({
       apiUrl,
       email,
       sessionToken: data.session_token,
-      lastStatus: "ok",
       lastError: "",
+      ...(lastSyncAt ? { lastSyncAt, lastStatus: "ok" } : {}),
     });
     showMessage("Innlogget. Token er lagret lokalt i utvidelsen.", true);
   } catch (err) {

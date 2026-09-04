@@ -42,6 +42,12 @@
     return `${String(apiBase).replace(/\/$/, "")}/api/auth/me`;
   }
 
+  function betsUrl(apiBase, bookie) {
+    const base = `${String(apiBase).replace(/\/$/, "")}/api/bets`;
+    if (!bookie) return base;
+    return `${base}?bookie=${encodeURIComponent(bookie)}`;
+  }
+
   function authHeaders(token) {
     return {
       Authorization: `Bearer ${token}`,
@@ -143,20 +149,61 @@
     return merged;
   }
 
+  function parseTimestamp(value) {
+    if (value == null || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) && ms > 0 ? ms : null;
+    }
+    if (typeof value === "string") {
+      const asNum = Number(value);
+      if (Number.isFinite(asNum) && asNum > 0) return asNum;
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    return null;
+  }
+
+  function resolveLastSyncAt(state) {
+    if (!state || typeof state !== "object") return null;
+    return parseTimestamp(state.lastSyncAt) || parseTimestamp(state.last_coolbet_sync_at);
+  }
+
+  function latestBetCreatedAt(bets) {
+    let latest = null;
+    for (const bet of bets || []) {
+      const ts = parseTimestamp(bet && bet.created_at);
+      if (ts && (latest == null || ts > latest)) latest = ts;
+    }
+    return latest;
+  }
+
+  function formatLastSync(ts) {
+    const resolved = parseTimestamp(ts);
+    if (!resolved) return "Sist synket: aldri";
+    return `Sist synket: ${new Date(resolved).toLocaleString("nb-NO")}`;
+  }
+
   return {
     HISTORY_PATH,
     TICKET_STATUS,
     PAGE_SIZE,
     authHeaders,
+    betsUrl,
     collectTicketIds,
+    formatLastSync,
     historyQuery,
     historyUrl,
     importUrl,
+    latestBetCreatedAt,
     loginPayload,
     loginUrl,
     meUrl,
     mergeTicketDetails,
     needsTicketDetails,
+    parseTimestamp,
+    resolveLastSyncAt,
     shouldStopPagination,
     ticketDetailPaths,
   };

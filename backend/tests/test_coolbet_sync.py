@@ -1,5 +1,7 @@
 import re
 
+from datetime import datetime, timezone
+
 from coolbet_sync import (
     CHROME_EXTENSION_ORIGIN_RE,
     auth_headers,
@@ -8,6 +10,7 @@ from coolbet_sync import (
     login_payload,
     merge_ticket_details,
     needs_ticket_details,
+    resolve_last_coolbet_sync_at,
     should_stop_pagination,
     ticket_detail_paths,
 )
@@ -107,6 +110,14 @@ def test_ticket_detail_paths_include_id():
     assert "language=eu" in paths[0]
     assert any("/s/sbgate/bets/ticket/" in path for path in paths)
     assert any(path.startswith("/s/sbgate/bets/1949?") for path in paths)
+
+
+def test_resolve_last_coolbet_sync_at_uses_user_field_then_latest_bet():
+    stored = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+    fallback = datetime(2026, 8, 1, 9, 0, tzinfo=timezone.utc)
+    assert resolve_last_coolbet_sync_at({"last_coolbet_sync_at": stored}, fallback) == stored
+    assert resolve_last_coolbet_sync_at({}, fallback) == fallback
+    assert resolve_last_coolbet_sync_at({"last_coolbet_sync_at": None}, None) is None
 
 
 def test_merge_unwraps_nested_ticket_payload():

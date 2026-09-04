@@ -107,6 +107,7 @@ async function runSync(reason) {
         "apiUrl",
         "sessionToken",
         "knownIds",
+        "lastSyncAt",
       ]);
 
       if (!config.apiUrl || !config.sessionToken) {
@@ -124,6 +125,12 @@ async function runSync(reason) {
       }
       if (!meResponse.ok) {
         throw new Error(`Bet Tracker /auth/me ${meResponse.status}`);
+      }
+      const me = await meResponse.json().catch(() => ({}));
+      const remoteSyncAt = CoolbetHistory.resolveLastSyncAt(me);
+      if (remoteSyncAt && !config.lastSyncAt) {
+        await setState({ lastSyncAt: remoteSyncAt });
+        config.lastSyncAt = remoteSyncAt;
       }
 
       const tabId = await ensureCoolbetTab();
@@ -170,10 +177,12 @@ async function runSync(reason) {
         new Set([...(config.knownIds || []), ...CoolbetHistory.collectTicketIds(tickets)])
       ).slice(-4000);
 
+      const lastSyncAt = Date.now();
+      await setState({ lastSyncAt });
       await setState({
         lastStatus: "ok",
         lastError: "",
-        lastSyncAt: Date.now(),
+        lastSyncAt,
         lastResult: {
           fetched: tickets.length,
           imported: summary.imported || 0,
@@ -217,8 +226,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "COOLBET_HISTORY_OPEN") {
-    maybeAutoSync("history-page");
-    return undefined;
+    Promise.resolve(maybeAutoSync("history-page")).finally(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (message.type === "RUN_SYNC") {
@@ -227,7 +236,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "GET_STATE") {
-    chrome.storage.local.get(null).then(sendResponse);
+    chrome.storage.local
+      .get([
+        "lastSyncAt",
+        "lastStatus",
+        "lastResult",
+        "lastError",
+        "sessionToken",
+        "apiUrl",
+      ])
+      .then((state) => {
+        sendResponse({
+          ...state,
+          lastSyncAt: CoolbetHistory.resolveLastSyncAt(state),
+        });
+      });
     return true;
   }
 
@@ -238,6 +261,16 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) maybeAutoSync("alarm");
 });
 
+async function recoverInterruptedSync() {
+  const current = await chrome.storage.local.get(["lastStatus", "lastSyncAt"]);
+  if (current.lastStatus === "syncing") {
+    await chrome.storage.local.set({
+      lastStatus: current.lastSyncAt ? "ok" : "",
+      lastError: "",
+    });
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   const current = await chrome.storage.local.get(["autoOnHistory", "autoAlarm"]);
   if (current.autoOnHistory === undefined) {
@@ -246,7 +279,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (current.autoAlarm) {
     chrome.alarms.create(ALARM_NAME, { periodInMinutes: 360 });
   }
+  await recoverInterruptedSync();
 });
+
+recoverInterruptedSync();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.autoAlarm) return;
