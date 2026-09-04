@@ -8,6 +8,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import BetsPage from './pages/BetsPage';
 import CalendarPage from './pages/CalendarPage';
 import Dashboard from './pages/Dashboard';
+import FavoritesPage from './pages/FavoritesPage';
 import Login from './pages/Login';
 import SettingsPage from './pages/SettingsPage';
 
@@ -30,6 +31,7 @@ function App() {
             <Route path="/bets" element={<BetsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
