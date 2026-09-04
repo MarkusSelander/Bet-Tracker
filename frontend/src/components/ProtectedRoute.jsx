@@ -5,7 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
-  // Show loader while checking auth state
+  if (user) {
+    return React.cloneElement(children, { user });
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -17,11 +20,5 @@ export default function ProtectedRoute({ children }) {
     );
   }
 
-  // Redirect to login only when loading is done AND user is null
-  if (!loading && !user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  // User is authenticated, render children
-  return React.cloneElement(children, { user });
+  return <Navigate to="/login" replace />;
 }

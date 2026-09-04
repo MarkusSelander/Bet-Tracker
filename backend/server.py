@@ -12,17 +12,19 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict
+from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
 from starlette.middleware.cors import CORSMiddleware
 
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
+from mongo import mongo_client_kwargs
 from stats import compute_stats
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(mongo_url, **mongo_client_kwargs(mongo_url))
 db = client[os.environ['DB_NAME']]
 is_production = os.environ.get('ENVIRONMENT', '').lower() == 'production'
 
@@ -582,7 +584,16 @@ async def get_current_user(request: Request) -> str:
 
     return session_doc["user_id"]
 
+def _unavailable_db() -> HTTPException:
+    return HTTPException(status_code=503, detail="Database unavailable")
+
+
 # Auth Routes
+
+
+@api_router.get("/health")
+async def health():
+    return {"ok": True}
 
 
 @api_router.post("/auth/login")
@@ -595,33 +606,33 @@ async def login(request: Request, response: Response):
         raise HTTPException(
             status_code=400, detail="Email and password required")
 
-    # Check if user exists
-    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+    try:
+        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
 
-    if not existing_user:
-        # Auto-create user on first login (demo mode)
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": email.split("@")[0].title(),
-            "picture": None,
-            "currency": "NOK",
+        if existing_user:
+            user_doc = existing_user
+        else:
+            user_doc = {
+                "user_id": f"user_{uuid.uuid4().hex[:12]}",
+                "email": email,
+                "name": email.split("@")[0].title(),
+                "picture": None,
+                "currency": "NOK",
+                "created_at": datetime.now(timezone.utc),
+            }
+            await db.users.insert_one({**user_doc})
+
+        session_token = f"session_{uuid.uuid4().hex}"
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+        await db.user_sessions.insert_one({
+            "user_id": user_doc["user_id"],
+            "session_token": session_token,
+            "expires_at": expires_at,
             "created_at": datetime.now(timezone.utc)
         })
-    else:
-        user_id = existing_user["user_id"]
-
-    # Create session
-    session_token = f"session_{uuid.uuid4().hex}"
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-
-    await db.user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": session_token,
-        "expires_at": expires_at,
-        "created_at": datetime.now(timezone.utc)
-    })
+    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
+        raise _unavailable_db() from None
 
     response.set_cookie(
         key="session_token",
@@ -633,15 +644,17 @@ async def login(request: Request, response: Response):
         path="/"
     )
 
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     # session_token is for Bearer clients (Chrome extension). Cookie auth is unchanged.
-    return login_payload(user_doc or {}, session_token)
+    return login_payload(user_doc, session_token)
 
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
-    user_id = await get_current_user(request)
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    try:
+        user_id = await get_current_user(request)
+        user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
+        raise _unavailable_db() from None
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
     return user_doc

@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -15,17 +16,22 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const authCheckId = useRef(0);
 
   useEffect(() => {
+    const checkId = ++authCheckId.current;
+
     const checkAuth = async () => {
       try {
         if (!BACKEND_URL) {
           throw new Error('REACT_APP_BACKEND_URL is not defined');
         }
 
-        const response = await fetch(`${BACKEND_URL}/api/auth/me`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/me`, {
           credentials: 'include',
         });
+
+        if (authCheckId.current !== checkId) return;
 
         if (!response.ok) {
           setUser(null);
@@ -40,10 +46,13 @@ export const AuthProvider = ({ children }) => {
         const userData = await response.json();
         setUser(userData);
       } catch (error) {
+        if (authCheckId.current !== checkId) return;
         console.error('Auth check failed:', error);
         setUser(null);
       } finally {
-        setLoading(false);
+        if (authCheckId.current === checkId) {
+          setLoading(false);
+        }
       }
     };
 
@@ -55,7 +64,10 @@ export const AuthProvider = ({ children }) => {
       throw new Error('REACT_APP_BACKEND_URL is not defined');
     }
 
-    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    authCheckId.current += 1;
+    setLoading(false);
+
+    const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -63,6 +75,9 @@ export const AuthProvider = ({ children }) => {
     });
 
     if (!response.ok) {
+      if (response.status === 503) {
+        throw new Error('Databasen er utilgjengelig. Prøv igjen om et øyeblikk.');
+      }
       throw new Error('Login failed');
     }
 
@@ -78,9 +93,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    authCheckId.current += 1;
     try {
       if (BACKEND_URL) {
-        await fetch(`${BACKEND_URL}/api/auth/logout`, {
+        await fetchWithTimeout(`${BACKEND_URL}/api/auth/logout`, {
           method: 'POST',
           credentials: 'include',
         });
@@ -89,6 +105,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
+      setLoading(false);
     }
   };
 

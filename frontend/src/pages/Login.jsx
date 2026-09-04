@@ -9,25 +9,12 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { user, loading, login } = useAuth();
+  const { user, login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Show loader while checking auth state
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-text-secondary">Laster...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Redirect to dashboard only when loading is done AND user exists
-  if (!loading && user) {
+  if (user) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -47,7 +34,7 @@ export default function Login() {
       navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('Login error:', error);
-      toast.error('Innlogging feilet');
+      toast.error(error.message === 'Login failed' ? 'Innlogging feilet' : error.message);
     } finally {
       setSubmitting(false);
     }
@@ -55,14 +42,8 @@ export default function Login() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{
-          backgroundImage:
-            'url(https://images.unsplash.com/photo-1608154119029-53f3c6ad12e4?crop=entropy&cs=srgb&fm=jpg&q=85)',
-        }}
-      >
-        <div className="absolute inset-0 bg-black/80"></div>
+      <div className="absolute inset-0 bg-[#09090B]">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(16,185,129,0.12),_transparent_55%)]"></div>
       </div>
 
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
