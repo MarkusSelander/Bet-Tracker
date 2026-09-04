@@ -30,10 +30,13 @@ function formatExpectedDate(value) {
   });
 }
 
-function isPartialTicket(bet) {
-  const extraLegs = Number(bet?.total_matches) > 1;
-  const comboLike = ['combo', 'system', 'betbuilder'].includes(bet?.ticket_type);
-  return extraLegs || comboLike;
+function missingComboLegs(bet) {
+  const comboLike = Number(bet?.total_matches) > 1 || ['combo', 'system', 'betbuilder'].includes(bet?.ticket_type);
+  if (!comboLike) return false;
+  const stored = Array.isArray(bet?.legs) ? bet.legs.length : 0;
+  const expected = Number(bet?.total_matches) || 0;
+  if (expected > 1) return stored < expected;
+  return stored < 2;
 }
 
 function DetailRow({ label, children }) {
@@ -76,10 +79,41 @@ export default function BetDetailsDialog({ bet, open, onOpenChange, currency = '
             </div>
           </DialogHeader>
 
-          {isPartialTicket(bet) ? (
+          {missingComboLegs(bet) ? (
             <p className="text-xs text-text-muted bg-white/5 border border-white/10 rounded-md px-3 py-2">
-              Kun første utvalg er lagret. Øvrige bein vises når kupongdetaljer-API er på plass.
+              Kun første utvalg er lagret. Synk på nytt fra Coolbet for å hente øvrige bein.
             </p>
+          ) : null}
+
+          {Array.isArray(bet.legs) && bet.legs.length > 0 ? (
+            <div className="space-y-2" data-testid="bet-details-legs">
+              <p className="text-xs text-text-secondary">Utvalg</p>
+              {bet.legs.map((leg, index) => (
+                <div
+                  key={`${leg.match || 'leg'}-${index}`}
+                  className="rounded-md border border-white/10 bg-white/5 px-3 py-2"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium leading-snug">{leg.match || `Bein ${index + 1}`}</p>
+                    {leg.status ? (
+                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] ${statusClass(leg.status)}`}>
+                        {STATUS_LABELS[leg.status] || leg.status}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-xs text-text-muted mt-1">
+                    {[
+                      leg.sport,
+                      leg.league,
+                      [leg.market, leg.outcome].filter(Boolean).join(' · '),
+                      leg.odds ? Number(leg.odds).toFixed(2) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+              ))}
+            </div>
           ) : null}
 
           <dl className="space-y-0">

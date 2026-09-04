@@ -6,7 +6,10 @@ from coolbet_sync import (
     history_query,
     import_url,
     login_payload,
+    merge_ticket_details,
+    needs_ticket_details,
     should_stop_pagination,
+    ticket_detail_paths,
 )
 
 
@@ -80,3 +83,36 @@ def test_chrome_extension_origin_regex_allows_unpacked_ids():
     assert re.match(CHROME_EXTENSION_ORIGIN_RE, origin)
     assert not re.match(CHROME_EXTENSION_ORIGIN_RE, "https://evil.example")
     assert not re.match(CHROME_EXTENSION_ORIGIN_RE, "chrome-extension://../")
+
+
+def test_combo_tickets_need_details_until_matches_exist():
+    assert needs_ticket_details({"id": "a", "total_matches": 2, "ticket_type": "combo"})
+    assert needs_ticket_details({"id": "b", "ticket_type": "system"})
+    assert not needs_ticket_details({"id": "c", "total_matches": 1, "ticket_type": "single"})
+    assert needs_ticket_details(
+        {"id": "d", "total_matches": 2, "matches": [{"match_name": "A - B"}]}
+    )
+    assert not needs_ticket_details(
+        {
+            "id": "e",
+            "total_matches": 2,
+            "matches": [{"match_name": "A - B"}, {"match_name": "C - D"}],
+        }
+    )
+
+
+def test_ticket_detail_paths_include_id():
+    paths = ticket_detail_paths("26090221-4ce1-4145-b10d-387fb0146ecd", display_id=1949)
+    assert paths[0].startswith("/s/sbgate/bets/26090221-4ce1-4145-b10d-387fb0146ecd")
+    assert "language=eu" in paths[0]
+    assert any("/s/sbgate/bets/ticket/" in path for path in paths)
+    assert any(path.startswith("/s/sbgate/bets/1949?") for path in paths)
+
+
+def test_merge_unwraps_nested_ticket_payload():
+    merged = merge_ticket_details(
+        {"id": "a", "total_matches": 2, "ticket_type": "combo"},
+        {"ticket": {"matches": [{"match_name": "A - B"}, {"match_name": "C - D"}]}},
+    )
+    assert merged["matches"][1]["match_name"] == "C - D"
+    assert not needs_ticket_details(merged)

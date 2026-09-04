@@ -495,6 +495,7 @@ class Bet(BaseModel):
     expected_result_date: Optional[str] = None
     cashout_amount: Optional[float] = None
     display_id: Optional[int] = None
+    legs: Optional[List[dict]] = None
     created_at: datetime
 
 

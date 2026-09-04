@@ -78,7 +78,29 @@
       await sleep(700);
     }
 
-    return { status: "ok", tickets: all };
+    const enriched = [];
+    for (const ticket of all) {
+      if (!CoolbetHistory.needsTicketDetails(ticket)) {
+        enriched.push(ticket);
+        continue;
+      }
+      let merged = ticket;
+      for (const path of CoolbetHistory.ticketDetailPaths(ticket.id, ticket.display_id)) {
+        const detailResponse = await fetch(path, { credentials: "include", headers });
+        if (!detailResponse.ok) continue;
+        try {
+          const detail = await detailResponse.json();
+          merged = CoolbetHistory.mergeTicketDetails(merged, detail);
+          if (!CoolbetHistory.needsTicketDetails(merged)) break;
+        } catch (_err) {
+          /* ignore malformed detail payloads */
+        }
+      }
+      enriched.push(merged);
+      await sleep(250);
+    }
+
+    return { status: "ok", tickets: enriched };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

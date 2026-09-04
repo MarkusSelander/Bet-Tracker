@@ -1,4 +1,4 @@
-from coolbet import map_coolbet_ticket
+from coolbet import extract_legs, map_coolbet_ticket
 
 
 def _ticket(**overrides):
@@ -72,6 +72,8 @@ def test_combo_appends_extra_match_count_to_game():
     assert bet["game"] == "Alcaraz, C - Faria, J (+2)"
     assert bet["ticket_type"] == "combo"
     assert bet["sport"] == "Tennis"
+    assert len(bet["legs"]) == 1
+    assert bet["legs"][0]["match"] == "Alcaraz, C - Faria, J"
 
 
 def test_pending_ticket_has_zero_result_and_keeps_expected_date():
@@ -110,3 +112,68 @@ def test_pushed_and_cancelled_return_stake():
     assert pushed["result"] == 0
     assert cancelled["status"] == "push"
     assert cancelled["result"] == 0
+
+
+def test_extract_legs_from_nested_bets_matches():
+    legs = extract_legs(
+        {
+            "bets": [
+                {
+                    "matches": [
+                        {
+                            "match_name": "Brann - Molde",
+                            "market_name": "Match Result (1X2)",
+                            "outcome_name": "Brann",
+                            "sport_name": "Fotball",
+                            "league_name": "Eliteserien",
+                            "odds": 1.85,
+                            "status": "WON",
+                        },
+                        {
+                            "match_name": "Lakers vs Celtics",
+                            "market_name": "Money Line",
+                            "outcome_name": "Lakers",
+                            "sport_name": "Basketball",
+                            "odds": 1.7,
+                            "status": "LOST",
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
+    assert len(legs) == 2
+    assert legs[0]["match"] == "Brann - Molde"
+    assert legs[0]["market"] == "Match Result (1X2)"
+    assert legs[0]["outcome"] == "Brann"
+    assert legs[0]["sport"] == "Football"
+    assert legs[1]["match"] == "Lakers vs Celtics"
+    assert legs[1]["status"] == "lost"
+
+
+def test_map_combo_stores_legs_from_details():
+    bet = map_coolbet_ticket(
+        _ticket(
+            ticket_type="combo",
+            total_matches=2,
+            matches=[
+                {
+                    "match_name": "Brann - Molde",
+                    "market_name": "1X2",
+                    "outcome_name": "Brann",
+                    "sport_name": "Fotball",
+                },
+                {
+                    "match_name": "Rosenborg - Viking",
+                    "market_name": "Over/Under 2.5",
+                    "outcome_name": "Over",
+                    "sport_name": "Fotball",
+                },
+            ],
+        )
+    )
+
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][1]["match"] == "Rosenborg - Viking"
+    assert bet["total_matches"] == 2

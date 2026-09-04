@@ -20,7 +20,7 @@ Utvidelsen kjører i **din** Chrome-økt. Den kan ikke kjøre på Vercel.
 
 - En content script på `coolbet.com` kaller `GET /s/sbgate/bets/history` first-party (cookies + `cbauth` fanget fra sidens eget kall). Ingen DOM-scrape.
 - Service worker poster `{ "tickets": [...] }` til Bet Tracker med `Authorization: Bearer <session_token>`.
-- Backend upsertet på Coolbet-id. Full historikk første gang; senere stoppes paginering når en side kun inneholder kjente, avgjorte kuponger.
+- Backend upsertet på Coolbet-id. Full historikk første gang; senere stoppes paginering når en side kun inneholder kjente, avgjorte kuponger. Kombi-/systemkuponger hentes i tillegg fra kupongdetaljer slik at alle bein lagres.
 
 ## CORS / auth
 

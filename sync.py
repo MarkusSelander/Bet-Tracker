@@ -15,7 +15,14 @@ from playwright_stealth import Stealth
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "backend"))
 
-from coolbet_sync import auth_headers, history_query, import_url  # noqa: E402
+from coolbet_sync import (  # noqa: E402
+    auth_headers,
+    history_query,
+    import_url,
+    merge_ticket_details,
+    needs_ticket_details,
+    ticket_detail_paths,
+)
 
 STORAGE_DIR = Path.home() / "Library/Application Support/Google/Chrome/CoolbetProfile"
 OUTPUT_FILE = Path("coolbet_bets.json")
@@ -115,6 +122,38 @@ def fetch_all_bets(headers: dict, cookies: dict) -> List[Dict]:
     return all_tickets
 
 
+def enrich_combo_tickets(tickets: List[Dict], headers: dict, cookies: dict) -> List[Dict]:
+    base = "https://www.coolbet.com"
+    enriched = []
+    pending = [ticket for ticket in tickets if needs_ticket_details(ticket)]
+    print(f"→ Fetching details for {len(pending)} combo tickets...")
+
+    for index, ticket in enumerate(tickets, start=1):
+        if not needs_ticket_details(ticket):
+            enriched.append(ticket)
+            continue
+
+        merged = ticket
+        for path in ticket_detail_paths(ticket["id"], ticket.get("display_id")):
+            resp = requests.get(base + path, headers=headers, cookies=cookies, timeout=30)
+            if resp.status_code != 200:
+                continue
+            try:
+                detail = resp.json()
+            except ValueError:
+                continue
+            if isinstance(detail, dict):
+                merged = merge_ticket_details(merged, detail)
+                if not needs_ticket_details(merged):
+                    break
+        enriched.append(merged)
+        time.sleep(0.25)
+        if index % 25 == 0:
+            print(f"Details {index}/{len(tickets)}")
+
+    return enriched
+
+
 def capture_tokens_or_prompt(context: BrowserContext) -> Tuple[dict, dict]:
     print("→ Checking Coolbet session...")
     try:
@@ -172,7 +211,7 @@ def main():
             headers, cookies = capture_tokens_or_prompt(context)
 
             print("→ Fetching all bets...")
-            tickets = fetch_all_bets(headers, cookies)
+            tickets = enrich_combo_tickets(fetch_all_bets(headers, cookies), headers, cookies)
 
             print(f"\nFinished. Total tickets: {len(tickets)}")
             OUTPUT_FILE.write_text(json.dumps(
