@@ -216,3 +216,41 @@ def extract_main_markets(event: Optional[Dict[str, Any]]) -> List[Dict[str, Any]
         }
     order = ["1x2", "over_under", "btts"]
     return [found[key] for key in order if key in found]
+
+
+from urllib.parse import quote_plus
+
+COOLBET_SEARCH_URL = "https://www.coolbet.com/s/sbgate/sports/search"
+COOLBET_HEADERS = {
+    "accept": "application/json",
+    "x-language": "eu",
+}
+
+
+def search_query(home: str, away: str) -> str:
+    return f"{home} {away}".strip()
+
+
+def fetch_coolbet_events(home: str, away: str, client: Any = None) -> List[Dict[str, Any]]:
+    query = search_query(home, away)
+    if not query:
+        return []
+    url = f"{COOLBET_SEARCH_URL}?query={quote_plus(query)}&language=eu&layout=EUROPEAN"
+    http = client
+    close = False
+    if http is None:
+        import httpx
+
+        http = httpx.Client(timeout=10.0)
+        close = True
+    try:
+        response = http.get(url, timeout=10.0, headers=COOLBET_HEADERS)
+        if getattr(response, "status_code", 200) != 200:
+            return []
+        payload = response.json()
+        return flatten_search_payload(payload)
+    except Exception:
+        return []
+    finally:
+        if close:
+            http.close()

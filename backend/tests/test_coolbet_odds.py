@@ -144,3 +144,45 @@ def test_extract_main_markets_keeps_1x2_ou_btts_only():
 def test_extract_main_markets_empty_without_event():
     assert extract_main_markets(None) == []
     assert extract_main_markets({}) == []
+
+
+from coolbet_odds import search_query, fetch_coolbet_events
+
+
+class FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self):
+        return self._payload
+
+
+class FakeClient:
+    def __init__(self, payload):
+        self.payload = payload
+        self.urls = []
+
+    def get(self, url, timeout=10.0, headers=None):
+        self.urls.append(url)
+        return FakeResponse(self.payload)
+
+
+def test_search_query_joins_team_names():
+    assert search_query("Brann", "Viking") == "Brann Viking"
+
+
+def test_fetch_coolbet_events_uses_search_url_and_flattens():
+    client = FakeClient({"matches": [{"id": "9", "name": "Brann - Viking"}]})
+    events = fetch_coolbet_events("Brann", "Viking", client=client)
+    assert events[0]["id"] == "9"
+    assert "s/sbgate/sports/search" in client.urls[0]
+    assert "Brann" in client.urls[0]
+
+
+def test_fetch_coolbet_events_returns_empty_on_http_error():
+    class Boom:
+        def get(self, url, timeout=10.0, headers=None):
+            raise RuntimeError("network")
+
+    assert fetch_coolbet_events("Brann", "Viking", client=Boom()) == []
