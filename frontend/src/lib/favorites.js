@@ -1,3 +1,12 @@
+function favoritesStatus() {
+  return {
+    liveSource: false,
+    subtitle: 'Ingen live datakilde ennå',
+    emptyHint:
+      'Favoritter finnes, men lagsøk og kampfeed er frakoblet inntil en ny datakilde kobles på.',
+  };
+}
+
 function formatKickoff(time) {
   if (!time) return '';
   return String(time).slice(0, 5);
@@ -26,5 +35,6 @@ function buildFavoriteFeed(grouped) {
 }
 
 exports.__esModule = true;
+exports.favoritesStatus = favoritesStatus;
 exports.formatKickoff = formatKickoff;
 exports.buildFavoriteFeed = buildFavoriteFeed;

@@ -1,6 +1,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFavoriteFeed, formatKickoff } = require('./favorites');
+const { buildFavoriteFeed, favoritesStatus, formatKickoff } = require('./favorites');
+
+test('favoritesStatus says live search and feed are disconnected', () => {
+  const status = favoritesStatus();
+  assert.equal(status.liveSource, false);
+  assert.match(status.subtitle, /ingen live datakilde/i);
+  assert.match(status.emptyHint, /datakilde/i);
+});
 
 test('buildFavoriteFeed groups by date then league and keeps 1x2', () => {
   const grouped = {

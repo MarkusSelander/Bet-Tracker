@@ -16,8 +16,8 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from coolbet import map_coolbet_ticket
-from coolbet_odds import enrich_fixtures, fetch_coolbet_events, markets_payload, match_event, extract_main_markets
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
+from favorites_live import match_markets, search_teams, upcoming_matches_grouped
 from mongo import mongo_client_kwargs
 from stats import compute_stats
 
@@ -1379,199 +1379,21 @@ async def get_favorite_teams(request: Request):
 
 @api_router.get("/favorites/upcoming-matches")
 async def get_upcoming_matches(request: Request, days: int = 7):
-    """Get upcoming matches for user's favorite teams"""
-    user_id = await get_current_user(request)
-
-    # Get user's favorite teams
-    favorite_teams = await db.favorite_teams.find(
-        {"user_id": user_id},
-        {"team_id": 1, "team_name": 1}
-    ).to_list(100)
-
-    if not favorite_teams:
-        return {}
-
-    team_ids = [team["team_id"] for team in favorite_teams]
-
-    # Check cache first
-    now = datetime.now(timezone.utc)
-    end_date = now + timedelta(days=days)
-
-    cached_fixtures = await db.cached_fixtures.find({
-        "$or": [
-            {"home_team_id": {"$in": team_ids}},
-            {"away_team_id": {"$in": team_ids}}
-        ],
-        "event_date": {
-            "$gte": now.strftime("%Y-%m-%d"),
-            "$lte": end_date.strftime("%Y-%m-%d")
-        },
-        "expires_at": {"$gt": now}
-    }, {"_id": 0}).to_list(1000)
-
-    # If cache is empty or stale, fetch from API
-    if not cached_fixtures:
-        cached_fixtures = await fetch_and_cache_fixtures(team_ids, days)
-
-    cached_fixtures = enrich_fixtures(cached_fixtures, fetch_events=fetch_coolbet_events)
-
-    grouped = {}
-    for fixture in cached_fixtures:
-        date = fixture["event_date"]
-        if date not in grouped:
-            grouped[date] = []
-        grouped[date].append(fixture)
-
-    return grouped
+    """Upcoming matches have no live source yet; keep an empty, stable payload."""
+    await get_current_user(request)
+    return upcoming_matches_grouped(days=days)
 
 
 @api_router.get("/favorites/matches/{fixture_id}/markets")
 async def get_favorite_match_markets(request: Request, fixture_id: str):
     await get_current_user(request)
-    fixture = await db.cached_fixtures.find_one({"fixture_id": fixture_id}, {"_id": 0})
-    if not fixture:
-        return {"markets": [], "missing": True}
-
-    events = fetch_coolbet_events(
-        fixture.get("home_team_name") or "",
-        fixture.get("away_team_name") or "",
-    )
-    event = match_event(fixture, events)
-    enriched = {
-        **fixture,
-        "coolbet_event_id": event.get("id") if event else None,
-    }
-    if event and event.get("id"):
-        enriched["coolbet_event_id"] = str(event.get("id"))
-    return markets_payload(enriched, event)
-
-
-async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]:
-    """Fetch fixtures from TheSportsDB and cache them"""
-    fixtures = []
-    now = datetime.now(timezone.utc)
-    expires_at = now + timedelta(hours=6)  # 6 hour cache
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for team_id in team_ids:
-            try:
-                # Fetch next 5 events for each team
-                response = await client.get(
-                    f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/eventsnext.php?id={team_id}"
-                )
-
-                if response.status_code != 200:
-                    continue
-
-                data = response.json()
-                events = data.get("events") or []
-
-                for event in events[:5]:  # Limit to next 5 matches
-                    if not event:
-                        continue
-
-                    fixture = {
-                        "fixture_id": event.get("idEvent"),
-                        "home_team_id": event.get("idHomeTeam"),
-                        "away_team_id": event.get("idAwayTeam"),
-                        "home_team_name": event.get("strHomeTeam"),
-                        "away_team_name": event.get("strAwayTeam"),
-                        "home_team_badge": event.get("strHomeTeamBadge"),
-                        "away_team_badge": event.get("strAwayTeamBadge"),
-                        "event_date": event.get("dateEvent"),
-                        "event_time": event.get("strTime"),
-                        "venue": event.get("strVenue"),
-                        "league": event.get("strLeague"),
-                        "sport": event.get("strSport"),
-                        "status": event.get("strStatus", "scheduled").lower(),
-                        "cached_at": now,
-                        "expires_at": expires_at
-                    }
-
-                    # Upsert to cache
-                    await db.cached_fixtures.update_one(
-                        {"fixture_id": fixture["fixture_id"]},
-                        {"$set": fixture},
-                        upsert=True
-                    )
-
-                    fixtures.append(fixture)
-
-            except Exception as e:
-                logging.error(
-                    f"Error fetching fixtures for team {team_id}: {e}")
-                continue
-
-    return fixtures
+    return match_markets(fixture_id)
 
 
 @api_router.get("/teams/search")
-async def search_teams(request: Request, query: str, sport: Optional[str] = None):
-    """Search for teams by name"""
-    if len(query) < 2:
-        return []
-
-    # Check cache first
-    cache_key = f"{sport}:{query.lower()}" if sport else query.lower()
-    cached = await db.teams_cache.find_one(
-        {"search_key": cache_key},
-        {"_id": 0}
-    )
-
-    now = datetime.now(timezone.utc)
-    if cached and cached.get("expires_at") > now:
-        return cached.get("teams", [])
-
-    # Fetch from API
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        try:
-            response = await client.get(
-                f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/searchteams.php?t={query}"
-            )
-
-            if response.status_code != 200:
-                return []
-
-            data = response.json()
-            teams_data = data.get("teams") or []
-
-            teams = []
-            for team in teams_data:
-                if not team:
-                    continue
-
-                team_sport = team.get("strSport", "").lower()
-                if sport and team_sport != sport.lower():
-                    continue
-
-                teams.append({
-                    "team_id": team.get("idTeam"),
-                    "team_name": team.get("strTeam"),
-                    "team_badge": team.get("strTeamBadge"),
-                    "sport": team_sport,
-                    "league": team.get("strLeague"),
-                    "country": team.get("strCountry")
-                })
-
-            # Cache results
-            await db.teams_cache.update_one(
-                {"search_key": cache_key},
-                {
-                    "$set": {
-                        "search_key": cache_key,
-                        "teams": teams,
-                        "cached_at": now,
-                        "expires_at": now + timedelta(hours=24)
-                    }
-                },
-                upsert=True
-            )
-
-            return teams
-
-        except Exception as e:
-            logging.error(f"Error searching teams: {e}")
-            return []
+async def search_teams_route(request: Request, query: str, sport: Optional[str] = None):
+    """Team search has no live source yet."""
+    return search_teams(query, sport)
 
 
 # Chrome extension uses Authorization Bearer (not cookies). unpacked IDs change,
