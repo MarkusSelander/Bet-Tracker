@@ -20,6 +20,7 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { formatCurrency } from '../lib/format';
+import { fetchWithTimeout } from '../lib/fetch';
 import { exportAnalyticsToPDF } from '../utils/pdfExport';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -122,16 +123,16 @@ export default function AnalyticsPage() {
         const sportParam = selectedSport !== 'all' ? `&sport=${selectedSport}` : '';
 
         const [statsRes, chartRes, sportRes, oddsRes] = await Promise.all([
-          fetch(`${BACKEND_URL}/api/analytics/stats?sport=${selectedSport}`, {
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/stats?sport=${selectedSport}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/chart?days=${daysParam}${sportParam}`, {
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/chart?days=${daysParam}${sportParam}`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/sports`, {
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/sports`, {
             credentials: 'include',
           }),
-          fetch(`${BACKEND_URL}/api/analytics/odds-range`, {
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/odds-range`, {
             credentials: 'include',
           }),
         ]);

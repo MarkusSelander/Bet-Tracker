@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -61,7 +62,7 @@ export default function BetsPage() {
 
   const fetchData = async () => {
     try {
-      const betsRes = await fetch(`${BACKEND_URL}/api/bets`, { credentials: 'include' });
+      const betsRes = await fetchWithTimeout(`${BACKEND_URL}/api/bets`, { credentials: 'include' });
       const betsData = await betsRes.json();
       setBets(Array.isArray(betsData) ? betsData : []);
     } catch (error) {
@@ -139,7 +140,7 @@ export default function BetsPage() {
 
     try {
       if (editingBet) {
-        const response = await fetch(`${BACKEND_URL}/api/bets/${editingBet.bet_id}`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/${editingBet.bet_id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -149,7 +150,7 @@ export default function BetsPage() {
         if (!response.ok) throw new Error('Kunne ikke oppdatere spill');
         toast.success('Spill oppdatert');
       } else {
-        const response = await fetch(`${BACKEND_URL}/api/bets`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -195,7 +196,7 @@ export default function BetsPage() {
     if (!window.confirm('Slette dette spillet?')) return false;
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/bets/${betId}`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/${betId}`, {
         method: 'DELETE',
         credentials: 'include',
       });

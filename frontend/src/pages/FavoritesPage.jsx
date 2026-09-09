@@ -6,6 +6,7 @@ import MatchOddsDialog from '../components/MatchOddsDialog';
 import PageHeader from '../components/PageHeader';
 import { Input } from '../components/ui/input';
 import { buildFavoriteFeed, formatKickoff } from '../lib/favorites';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -55,7 +56,7 @@ export default function FavoritesPage() {
       setLoadingTeams(false);
       return [];
     }
-    const response = await fetch(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' });
+    const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' });
     if (!response.ok) throw new Error(`Favoritter ${response.status}`);
     const data = await response.json();
     const list = Array.isArray(data) ? data : [];
@@ -67,7 +68,7 @@ export default function FavoritesPage() {
     if (!BACKEND_URL) return;
     setLoadingFeed(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/favorites/upcoming-matches`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/upcoming-matches`, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Kamper ${response.status}`);
@@ -111,10 +112,13 @@ export default function FavoritesPage() {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        const response = await fetch(`${BACKEND_URL}/api/teams/search?query=${encodeURIComponent(trimmed)}`, {
-          credentials: 'include',
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(
+          `${BACKEND_URL}/api/teams/search?query=${encodeURIComponent(trimmed)}`,
+          {
+            credentials: 'include',
+            signal: controller.signal,
+          }
+        );
         if (!response.ok) throw new Error(`Søk ${response.status}`);
         const data = await response.json();
         setResults(Array.isArray(data) ? data : []);
@@ -145,7 +149,7 @@ export default function FavoritesPage() {
 
   const addTeam = async (team) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/favorites/teams`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -176,7 +180,7 @@ export default function FavoritesPage() {
 
   const removeTeam = async (team) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/favorites/teams/${team.team_id}`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams/${team.team_id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -198,7 +202,7 @@ export default function FavoritesPage() {
     setMarketsMissing(false);
     setMarketsLoading(true);
     try {
-      const response = await fetch(`${BACKEND_URL}/api/favorites/matches/${match.fixture_id}/markets`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/matches/${match.fixture_id}/markets`, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Markeder ${response.status}`);

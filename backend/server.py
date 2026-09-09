@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
 from starlette.middleware.cors import CORSMiddleware
 
+from auth_cookies import use_cross_site_cookies
 from coolbet import map_coolbet_ticket
 from coolbet_odds import enrich_fixtures, fetch_coolbet_events, markets_payload, match_event, extract_main_markets
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
@@ -28,7 +29,7 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url, **mongo_client_kwargs(mongo_url))
 db = client[os.environ['DB_NAME']]
-is_production = os.environ.get('ENVIRONMENT', '').lower() == 'production'
+is_production = use_cross_site_cookies()
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -689,6 +690,10 @@ async def get_me(request: Request):
 @api_router.post("/auth/logout")
 async def logout(request: Request, response: Response):
     session_token = request.cookies.get("session_token")
+    if not session_token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            session_token = auth_header.split(" ")[1]
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
     response.delete_cookie(

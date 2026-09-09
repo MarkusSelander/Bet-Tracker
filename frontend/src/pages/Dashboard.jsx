@@ -18,6 +18,7 @@ import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { fetchWithTimeout } from '../lib/fetch';
 import { exportDashboardToPDF } from '../utils/pdfExport';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -38,10 +39,10 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [statsRes, chartRes, recentBetsRes, pendingRes] = await Promise.all([
-          fetch(`${BACKEND_URL}/api/analytics/stats`, { credentials: 'include' }),
-          fetch(`${BACKEND_URL}/api/analytics/chart?days=30`, { credentials: 'include' }),
-          fetch(`${BACKEND_URL}/api/bets/recent?limit=8`, { credentials: 'include' }),
-          fetch(`${BACKEND_URL}/api/bets?status=pending`, { credentials: 'include' }),
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/stats`),
+          fetchWithTimeout(`${BACKEND_URL}/api/analytics/chart?days=30`),
+          fetchWithTimeout(`${BACKEND_URL}/api/bets/recent?limit=8`),
+          fetchWithTimeout(`${BACKEND_URL}/api/bets?status=pending`),
         ]);
 
         setStats(statsRes.ok ? await statsRes.json() : null);
