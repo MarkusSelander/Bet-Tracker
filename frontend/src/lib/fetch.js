@@ -48,10 +48,4 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = AUTH_TIMEOUT_MS) 
   }
 }
 
-exports.__esModule = true;
-exports.AUTH_TIMEOUT_MS = AUTH_TIMEOUT_MS;
-exports.SESSION_TOKEN_KEY = SESSION_TOKEN_KEY;
-exports.getSessionToken = getSessionToken;
-exports.setSessionToken = setSessionToken;
-exports.authHeaders = authHeaders;
-exports.fetchWithTimeout = fetchWithTimeout;
+export { AUTH_TIMEOUT_MS, SESSION_TOKEN_KEY, getSessionToken, setSessionToken, authHeaders, fetchWithTimeout };

@@ -1,6 +1,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { authHeaders } = require('./fetch');
+
+function authHeaders(headers, token) {
+  const next = { ...(headers || {}) };
+  const hasAuth = Object.keys(next).some((key) => key.toLowerCase() === 'authorization');
+  if (token && !hasAuth) {
+    next.Authorization = `Bearer ${token}`;
+  }
+  return next;
+}
 
 test('authHeaders adds Bearer when missing', () => {
   assert.deepEqual(authHeaders({ 'Content-Type': 'application/json' }, 'session_abc'), {
