@@ -16,9 +16,11 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
+from api_sports import ApiSportsClient, list_sports, parse_entity_id
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
-from favorites_live import match_markets, search_teams, upcoming_matches_grouped
+from favorite_match import attach_linked_bets
+from favorites_live import match_markets, search_teams
 from mongo import mongo_client_kwargs
 from stats import (
     chart_date_bounds,
@@ -565,6 +567,26 @@ class FavoriteTeamCreate(BaseModel):
     sport: str
     league: Optional[str] = None
     badge: Optional[str] = None
+    source: Optional[str] = None
+
+
+class FavoritePlayerCreate(BaseModel):
+    player_id: str
+    player_name: str
+    sport: str
+    photo: Optional[str] = None
+    team_id: Optional[str] = None
+    team_name: Optional[str] = None
+    team_badge: Optional[str] = None
+    league: Optional[str] = None
+    source: Optional[str] = None
+
+
+def api_sports_client(http=None) -> Optional[ApiSportsClient]:
+    key = os.environ.get("API_SPORTS_KEY", "").strip()
+    if not key:
+        return None
+    return ApiSportsClient(key, http=http)
 
 # Auth Helper
 
@@ -1257,10 +1279,12 @@ async def add_favorite_team(
         "team_badge": team_input.badge,
         "sport": team_input.sport,
         "league": team_input.league,
+        "source": team_input.source or ("api-sports" if parse_entity_id(team_input.team_id) else "legacy"),
         "added_at": datetime.now(timezone.utc)
     }
 
     await db.favorite_teams.insert_one(favorite)
+    favorite.pop("_id", None)
     return {"message": "Team added to favorites", "team": favorite}
 
 
@@ -1294,11 +1318,150 @@ async def get_favorite_teams(request: Request):
     return teams
 
 
+@api_router.get("/favorites/sports")
+async def get_favorite_sports():
+    return list_sports()
+
+
+@api_router.post("/favorites/players")
+async def add_favorite_player(request: Request, player_input: FavoritePlayerCreate):
+    user_id = await get_current_user(request)
+    existing = await db.favorite_players.find_one({
+        "user_id": user_id,
+        "player_id": player_input.player_id,
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Player already in favorites")
+    team_id = player_input.team_id
+    team_name = player_input.team_name
+    team_badge = player_input.team_badge
+    client = api_sports_client()
+    if client and not team_id:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            client.http = http
+            current = await client.acurrent_team_for_player(player_input.player_id)
+            if current:
+                team_id = current.get("team_id")
+                team_name = team_name or current.get("team_name")
+                team_badge = team_badge or current.get("team_badge")
+    favorite = {
+        "user_id": user_id,
+        "player_id": player_input.player_id,
+        "player_name": player_input.player_name,
+        "photo": player_input.photo,
+        "sport": player_input.sport,
+        "team_id": team_id,
+        "team_name": team_name,
+        "team_badge": team_badge,
+        "league": player_input.league,
+        "source": player_input.source or "api-sports",
+        "added_at": datetime.now(timezone.utc),
+    }
+    await db.favorite_players.insert_one(favorite)
+    favorite.pop("_id", None)
+    return {"message": "Player added to favorites", "player": favorite}
+
+
+@api_router.delete("/favorites/players/{player_id}")
+async def remove_favorite_player(request: Request, player_id: str):
+    user_id = await get_current_user(request)
+    result = await db.favorite_players.delete_one({
+        "user_id": user_id,
+        "player_id": player_id,
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Player not found in favorites")
+    return {"message": "Player removed from favorites"}
+
+
+@api_router.get("/favorites/players")
+async def get_favorite_players(request: Request):
+    user_id = await get_current_user(request)
+    players = await db.favorite_players.find(
+        {"user_id": user_id},
+        {"_id": 0},
+    ).sort("added_at", -1).to_list(100)
+    return players
+
+
+@api_router.get("/favorites/search")
+async def search_favorites(query: str, kind: str = "all", sport: Optional[str] = None):
+    trimmed = (query or "").strip()
+    if len(trimmed) < 3:
+        return {"items": []}
+    client = api_sports_client()
+    items = []
+    if client:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            client.http = http
+            if kind in {"all", "team"}:
+                items.extend(await client.asearch_teams(trimmed, sport))
+            if kind in {"all", "player"}:
+                items.extend(await client.asearch_players(trimmed, sport))
+    return {"items": items}
+
+
 @api_router.get("/favorites/upcoming-matches")
-async def get_upcoming_matches(request: Request, days: int = 7):
-    """Upcoming matches have no live source yet; keep an empty, stable payload."""
-    await get_current_user(request)
-    return upcoming_matches_grouped(days=days)
+async def get_upcoming_matches(request: Request, days: int = 14, sport: Optional[str] = None):
+    """Upcoming matches for the user's favorite teams and players via API-Sports."""
+    user_id = await get_current_user(request)
+
+    favorite_teams = await db.favorite_teams.find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).to_list(100)
+    favorite_players = await db.favorite_players.find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).to_list(100)
+
+    if sport:
+        favorite_teams = [team for team in favorite_teams if (team.get("sport") or "").lower() == sport.lower()]
+        favorite_players = [player for player in favorite_players if (player.get("sport") or "").lower() == sport.lower()]
+
+    if not favorite_teams and not favorite_players:
+        return {}
+
+    now = datetime.now(timezone.utc)
+    end_date = now + timedelta(days=days)
+    team_ids = await resolve_schedule_team_ids(favorite_teams, favorite_players)
+
+    cached_fixtures = []
+    if team_ids:
+        cached_fixtures = await db.cached_fixtures.find({
+            "$or": [
+                {"home_team_id": {"$in": team_ids}},
+                {"away_team_id": {"$in": team_ids}}
+            ],
+            "event_date": {
+                "$gte": now.strftime("%Y-%m-%d"),
+                "$lte": end_date.strftime("%Y-%m-%d")
+            },
+            "expires_at": {"$gt": now}
+        }, {"_id": 0}).to_list(1000)
+
+    has_api_ids = any(parse_entity_id(team_id) for team_id in team_ids)
+    cache_is_api = bool(cached_fixtures) and all(item.get("source") == "api-sports" for item in cached_fixtures)
+    if not cached_fixtures or (has_api_ids and not cache_is_api):
+        fetched = await fetch_and_cache_fixtures(team_ids, days)
+        if fetched:
+            cached_fixtures = fetched
+
+    cached_fixtures = [
+        fixture for fixture in cached_fixtures
+        if not sport or (fixture.get("sport") or "").lower() == sport.lower()
+    ]
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+    cached_fixtures = attach_linked_bets(cached_fixtures, bets)
+
+    grouped = {}
+    for fixture in cached_fixtures:
+        date = fixture.get("event_date")
+        if not date:
+            continue
+        grouped.setdefault(date, []).append(fixture)
+
+    return grouped
 
 
 @api_router.get("/favorites/matches/{fixture_id}/markets")
@@ -1307,10 +1470,102 @@ async def get_favorite_match_markets(request: Request, fixture_id: str):
     return match_markets(fixture_id)
 
 
+async def resolve_schedule_team_ids(favorite_teams: List[dict], favorite_players: List[dict]) -> List[str]:
+    ids = []
+    for team in favorite_teams:
+        team_id = team.get("provider_team_id") or team.get("team_id")
+        if team_id:
+            ids.append(team_id)
+    client = api_sports_client()
+    unresolved_players = [player for player in favorite_players if not player.get("team_id")]
+    if client and unresolved_players:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            client.http = http
+            for player in unresolved_players:
+                current = await client.acurrent_team_for_player(player.get("player_id"))
+                if not current:
+                    continue
+                player["team_id"] = current.get("team_id")
+                player["team_name"] = current.get("team_name")
+                player["team_badge"] = current.get("team_badge")
+                await db.favorite_players.update_one(
+                    {"user_id": player.get("user_id"), "player_id": player.get("player_id")},
+                    {"$set": {
+                        "team_id": current.get("team_id"),
+                        "team_name": current.get("team_name"),
+                        "team_badge": current.get("team_badge"),
+                    }},
+                )
+    for player in favorite_players:
+        team_id = player.get("team_id")
+        if team_id:
+            ids.append(team_id)
+
+    unresolved = [team for team in favorite_teams if not parse_entity_id(team.get("team_id"))]
+    if client and unresolved:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            client.http = http
+            for team in unresolved:
+                name = team.get("team_name") or ""
+                if len(name) < 3:
+                    continue
+                hits = await client.asearch_teams(name, team.get("sport"))
+                if hits:
+                    ids.append(hits[0]["team_id"])
+                    await db.favorite_teams.update_one(
+                        {"user_id": team.get("user_id"), "team_id": team.get("team_id")},
+                        {"$set": {"provider_team_id": hits[0]["team_id"], "source": "api-sports"}},
+                    )
+    return list(dict.fromkeys(ids))
+
+
+async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]:
+    """Fetch upcoming fixtures from API-Sports."""
+    fixtures = []
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=6)
+    cutoff = (now + timedelta(days=days)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+
+    sports_client = api_sports_client()
+    api_ids = [team_id for team_id in team_ids if parse_entity_id(team_id)]
+    if not sports_client or not api_ids:
+        return fixtures
+
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        sports_client.http = http
+        for team_id in api_ids:
+            try:
+                upcoming = await sports_client.aupcoming_for_team(team_id)
+                for fixture in upcoming:
+                    if fixture.get("event_date") and (fixture["event_date"] < today or fixture["event_date"] > cutoff):
+                        continue
+                    fixture["cached_at"] = now
+                    fixture["expires_at"] = expires_at
+                    await db.cached_fixtures.update_one(
+                        {"fixture_id": fixture["fixture_id"]},
+                        {"$set": fixture},
+                        upsert=True,
+                    )
+                    fixtures.append(fixture)
+            except Exception as e:
+                logging.error(f"Error fetching API-Sports fixtures for {team_id}: {e}")
+    return fixtures
+
+
 @api_router.get("/teams/search")
 async def search_teams_route(request: Request, query: str, sport: Optional[str] = None):
-    """Team search has no live source yet."""
-    return search_teams(query, sport)
+    trimmed = (query or "").strip()
+    if len(trimmed) < 3:
+        return search_teams(trimmed, sport)
+    client = api_sports_client()
+    if client:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            client.http = http
+            found = await client.asearch_teams(trimmed, sport)
+            if found:
+                return found
+    return search_teams(trimmed, sport)
 
 
 # Chrome extension uses Authorization Bearer (not cookies). unpacked IDs change,

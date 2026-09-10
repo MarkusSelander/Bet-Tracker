@@ -1,9 +1,8 @@
 function favoritesStatus() {
   return {
-    liveSource: false,
-    subtitle: 'Ingen live datakilde ennå',
-    emptyHint:
-      'Favoritter finnes, men lagsøk og kampfeed er frakoblet inntil en ny datakilde kobles på.',
+    liveSource: true,
+    subtitle: 'Kommende kamper for lag og spillere',
+    emptyHint: 'Søk opp lag eller spillere du vil følge.',
   };
 }
 
@@ -34,7 +33,23 @@ function buildFavoriteFeed(grouped) {
   });
 }
 
+function filterFeedBySport(feed, sport) {
+  if (!sport || sport === 'all') return feed || [];
+  return (feed || [])
+    .map((day) => ({
+      ...day,
+      leagues: (day.leagues || [])
+        .map((league) => ({
+          ...league,
+          matches: (league.matches || []).filter((match) => (match.sport || '') === sport),
+        }))
+        .filter((league) => league.matches.length > 0),
+    }))
+    .filter((day) => day.leagues.length > 0);
+}
+
 exports.__esModule = true;
 exports.favoritesStatus = favoritesStatus;
 exports.formatKickoff = formatKickoff;
 exports.buildFavoriteFeed = buildFavoriteFeed;
+exports.filterFeedBySport = filterFeedBySport;

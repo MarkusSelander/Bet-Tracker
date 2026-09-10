@@ -1,12 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFavoriteFeed, favoritesStatus, formatKickoff } = require('./favorites');
+const { buildFavoriteFeed, favoritesStatus, filterFeedBySport, formatKickoff } = require('./favorites');
 
-test('favoritesStatus says live search and feed are disconnected', () => {
+test('favoritesStatus says API-Sports feed is live', () => {
   const status = favoritesStatus();
-  assert.equal(status.liveSource, false);
-  assert.match(status.subtitle, /ingen live datakilde/i);
-  assert.match(status.emptyHint, /datakilde/i);
+  assert.equal(status.liveSource, true);
+  assert.match(status.subtitle, /kommende kamper/i);
+  assert.match(status.emptyHint, /søk/i);
 });
 
 test('buildFavoriteFeed groups by date then league and keeps 1x2', () => {
@@ -61,4 +61,17 @@ test('formatKickoff slices to HH:MM', () => {
 test('buildFavoriteFeed treats empty payload as empty list', () => {
   assert.deepEqual(buildFavoriteFeed({}), []);
   assert.deepEqual(buildFavoriteFeed(null), []);
+});
+
+test('filterFeedBySport keeps only matching sports', () => {
+  const feed = buildFavoriteFeed({
+    '2026-09-06': [
+      { fixture_id: '1', event_date: '2026-09-06', event_time: '18:00:00', league: 'Eliteserien', sport: 'football', home_team_name: 'Brann', away_team_name: 'Viking' },
+      { fixture_id: '2', event_date: '2026-09-06', event_time: '20:00:00', league: 'NBA', sport: 'basketball', home_team_name: 'Celtics', away_team_name: 'Lakers' },
+    ],
+  });
+  const football = filterFeedBySport(feed, 'football');
+  assert.equal(football[0].leagues.length, 1);
+  assert.equal(football[0].leagues[0].matches[0].home_team_name, 'Brann');
+  assert.equal(filterFeedBySport(feed, 'all').length, 1);
 });
