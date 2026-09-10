@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
+import { analyticsPath, betsPath } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
 import { exportDashboardToPDF } from '../utils/pdfExport';
 
@@ -123,28 +124,32 @@ export default function Dashboard() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className={cardClass} data-testid="total-bets-card">
+        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="total-bets-card">
           <p className="text-xs text-text-secondary mb-1">Spill totalt</p>
           <p className="text-2xl font-bold font-mono">{stats?.total_bets || 0}</p>
-        </div>
-        <div className={cardClass} data-testid="roi-card">
+        </Link>
+        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="roi-card">
           <p className="text-xs text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${(stats?.roi || 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {(stats?.roi || 0).toFixed(1)}%
           </p>
-        </div>
-        <div className={cardClass} data-testid="profit-loss-card">
+        </Link>
+        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="profit-loss-card">
           <p className="text-xs text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${pl >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {pl >= 0 ? '+' : ''}
             {formatCurrency(pl, currency)}
           </p>
-        </div>
-        <div className={cardClass} data-testid="win-rate-card">
+        </Link>
+        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="win-rate-card">
           <p className="text-xs text-text-secondary mb-1">Treffprosent</p>
           <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
-        </div>
-        <div className={`${cardClass} col-span-2 lg:col-span-1`} data-testid="streak-card">
+        </Link>
+        <Link
+          to={analyticsPath({ period: '30' })}
+          className={`${cardClass} col-span-2 lg:col-span-1`}
+          data-testid="streak-card"
+        >
           <p className="text-xs text-text-secondary mb-1">Streak</p>
           <p
             className={`text-2xl font-bold font-mono ${
@@ -158,7 +163,7 @@ export default function Dashboard() {
             {stats?.current_streak || 0}
             {stats?.current_streak_type === 'won' ? ' V' : stats?.current_streak_type === 'lost' ? ' T' : ''}
           </p>
-        </div>
+        </Link>
       </div>
 
       {pendingBets.length > 0 ? (
@@ -168,9 +173,13 @@ export default function Dashboard() {
               <Clock className="w-4 h-4 text-accent" />
               Åpne spill
             </h2>
-            <p className="text-sm text-text-secondary">
+            <Link
+              to={betsPath({ status: 'pending' })}
+              className="text-sm text-primary hover:underline"
+              data-testid="dashboard-pending-link"
+            >
               {pendingBets.length} stk · {formatCurrency(pendingStake, currency)} eksponert
-            </p>
+            </Link>
           </div>
           <div className="space-y-2">
             {pendingBets.slice(0, 6).map((bet) => (
@@ -200,7 +209,16 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className={`lg:col-span-8 ${cardClass} p-6`}>
-          <h2 className="text-base font-bold mb-4">Utvikling siste 30 dager</h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h2 className="text-base font-bold">Utvikling siste 30 dager</h2>
+            <Link
+              to={analyticsPath({ period: '30' })}
+              className="text-sm text-primary hover:underline"
+              data-testid="dashboard-chart-link"
+            >
+              Se analyse →
+            </Link>
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
@@ -250,7 +268,7 @@ export default function Dashboard() {
       <div className={`${cardClass} p-6`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold">Siste spill</h2>
-          <Link to="/bets" className="text-sm text-primary hover:underline">
+          <Link to={betsPath({ period: '30' })} className="text-sm text-primary hover:underline">
             Se alle
           </Link>
         </div>

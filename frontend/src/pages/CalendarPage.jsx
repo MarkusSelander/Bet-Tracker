@@ -1,12 +1,13 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { buildCalendarModel, localDateKey, monthRange } from '../lib/calendar';
 import { fetchWithTimeout } from '../lib/fetch';
+import { betsPath, parseFilters, toSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -46,26 +47,37 @@ function formatKpiDate(dateStr) {
   return parsed.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' });
 }
 
+function monthKeyFromParts(year, monthIndex) {
+  return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+}
+
 export default function CalendarPage() {
   const { user } = useOutletContext();
-  const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => localDateKey());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = parseFilters(searchParams);
   const [bets, setBets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detailBet, setDetailBet] = useState(null);
   const currency = user?.currency || 'NOK';
-  const year = currentDate.getFullYear();
-  const monthIndex = currentDate.getMonth();
   const todayKey = localDateKey();
+  const month = filters.month || (filters.date ? filters.date.slice(0, 7) : todayKey.slice(0, 7));
+  const [year, monthPart] = month.split('-').map(Number);
+  const monthIndex = Number.isFinite(monthPart) ? monthPart - 1 : new Date().getMonth();
+  const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+  const { dateFrom, dateTo } = monthRange(safeYear, monthIndex);
+  const selectedDate =
+    filters.date && filters.date >= dateFrom && filters.date <= dateTo
+      ? filters.date
+      : todayKey >= dateFrom && todayKey <= dateTo
+        ? todayKey
+        : dateFrom;
 
-  const model = useMemo(() => buildCalendarModel(year, monthIndex, bets), [year, monthIndex, bets]);
+  const model = useMemo(() => buildCalendarModel(safeYear, monthIndex, bets), [safeYear, monthIndex, bets]);
   const selectedDay = model.byDate[selectedDate] || { bets: [], profit: 0, won: 0, lost: 0, pending: 0, count: 0 };
 
-  useEffect(() => {
-    const { dateFrom, dateTo } = monthRange(year, monthIndex);
-    if (selectedDate >= dateFrom && selectedDate <= dateTo) return;
-    setSelectedDate(todayKey >= dateFrom && todayKey <= dateTo ? todayKey : dateFrom);
-  }, [year, monthIndex, selectedDate, todayKey]);
+  const writeCalendar = (next) => {
+    setSearchParams(toSearch({ date: next.date || '', month: next.month || '' }), { replace: true });
+  };
 
   useEffect(() => {
     const loadMonth = async () => {
@@ -75,7 +87,7 @@ export default function CalendarPage() {
         return;
       }
 
-      const { dateFrom, dateTo } = monthRange(year, monthIndex);
+      const { dateFrom, dateTo } = monthRange(safeYear, monthIndex);
       setBets([]);
       setLoading(true);
       try {
@@ -97,12 +109,18 @@ export default function CalendarPage() {
     };
 
     loadMonth();
-  }, [year, monthIndex]);
+  }, [safeYear, monthIndex]);
 
   const goToToday = () => {
-    const now = new Date();
-    setCurrentDate(now);
-    setSelectedDate(localDateKey(now));
+    writeCalendar({ date: todayKey, month: todayKey.slice(0, 7) });
+  };
+
+  const goMonth = (delta) => {
+    const next = new Date(safeYear, monthIndex + delta, 1);
+    const nextMonth = monthKeyFromParts(next.getFullYear(), next.getMonth());
+    const range = monthRange(next.getFullYear(), next.getMonth());
+    const nextDate = todayKey >= range.dateFrom && todayKey <= range.dateTo ? todayKey : range.dateFrom;
+    writeCalendar({ month: nextMonth, date: nextDate });
   };
 
   const openBetDetails = (bet) => setDetailBet(bet);
@@ -118,7 +136,7 @@ export default function CalendarPage() {
   const handleCellKeyDown = (event, date) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      setSelectedDate(date);
+      writeCalendar({ date, month: date.slice(0, 7) });
     }
   };
 
@@ -156,17 +174,17 @@ export default function CalendarPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className={cardClass} data-testid="calendar-profit-card">
+        <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-profit-card">
           <p className="text-xs text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
             {kpis.profit > 0 ? '+' : ''}
             {formatCurrency(kpis.profit, currency)}
           </p>
-        </div>
-        <div className={cardClass} data-testid="calendar-bets-card">
+        </Link>
+        <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-bets-card">
           <p className="text-xs text-text-secondary mb-1">Spill</p>
           <p className="text-2xl font-bold font-mono">{kpis.bets}</p>
-        </div>
+        </Link>
         <div className={cardClass} data-testid="calendar-winrate-card">
           <p className="text-xs text-text-secondary mb-1">Treff</p>
           <p className="text-2xl font-bold font-mono">{kpis.winRate.toFixed(1)}%</p>
@@ -205,19 +223,19 @@ export default function CalendarPage() {
               data-testid="prev-month-btn"
               variant="secondary"
               size="sm"
-              onClick={() => setCurrentDate(new Date(year, monthIndex - 1, 1))}
+              onClick={() => goMonth(-1)}
               className="bg-white/5 hover:bg-white/10"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <h2 className="text-lg sm:text-xl font-bold capitalize">
-              {MONTHS[monthIndex]} {year}
+              {MONTHS[monthIndex]} {safeYear}
             </h2>
             <Button
               data-testid="next-month-btn"
               variant="secondary"
               size="sm"
-              onClick={() => setCurrentDate(new Date(year, monthIndex + 1, 1))}
+              onClick={() => goMonth(1)}
               className="bg-white/5 hover:bg-white/10"
             >
               <ChevronRight className="w-4 h-4" />
@@ -235,7 +253,7 @@ export default function CalendarPage() {
           <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
             {model.cells.map((cell, index) => {
               if (cell.empty) {
-                return <div key={`pad-${year}-${monthIndex}-${index}`} className="min-h-[64px] sm:min-h-[76px]" />;
+                return <div key={`pad-${safeYear}-${monthIndex}-${index}`} className="min-h-[64px] sm:min-h-[76px]" />;
               }
 
               const isToday = cell.date === todayKey;
@@ -255,7 +273,7 @@ export default function CalendarPage() {
                   key={cell.date}
                   type="button"
                   data-testid={`calendar-day-${cell.day}`}
-                  onClick={() => setSelectedDate(cell.date)}
+                  onClick={() => writeCalendar({ date: cell.date, month: cell.date.slice(0, 7) })}
                   onKeyDown={(event) => handleCellKeyDown(event, cell.date)}
                   className={`min-h-[64px] sm:min-h-[76px] text-left border rounded-lg p-1.5 sm:p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${tone} ${
                     isSelected ? 'ring-2 ring-primary' : ''
@@ -284,8 +302,19 @@ export default function CalendarPage() {
         </div>
 
         <div className={`lg:col-span-4 ${cardClass} p-6`} data-testid="calendar-day-panel">
-          <p className="text-[11px] uppercase tracking-wide text-text-muted mb-1">Valgt dag</p>
-          <h2 className="text-base font-bold capitalize">{formatDayHeading(selectedDate)}</h2>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-text-muted mb-1">Valgt dag</p>
+              <h2 className="text-base font-bold capitalize">{formatDayHeading(selectedDate)}</h2>
+            </div>
+            <Link
+              to={betsPath({ from: selectedDate, to: selectedDate })}
+              className="text-sm text-primary hover:underline shrink-0"
+              data-testid="calendar-view-bets"
+            >
+              Vis spill →
+            </Link>
+          </div>
           <p className={`text-sm font-mono font-bold mt-1 ${signedClass(selectedDay.profit)}`}>
             {selectedDay.profit > 0 ? '+' : ''}
             {formatCurrency(selectedDay.profit, currency)}

@@ -1,10 +1,11 @@
 import { Search, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
 import { Input } from '../components/ui/input';
 import { favoritesStatus } from '../lib/favorites';
+import { betsPath } from '../lib/filters';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -99,6 +100,13 @@ export default function FavoritesPage() {
               >
                 <TeamBadge src={team.team_badge || team.badge} alt="" />
                 <span>{team.team_name}</span>
+                <Link
+                  to={betsPath({ q: team.team_name })}
+                  className="px-1.5 text-xs text-primary hover:underline"
+                  data-testid={`favorite-history-${team.team_id}`}
+                >
+                  Historikk
+                </Link>
                 <button
                   type="button"
                   onClick={() => removeTeam(team)}

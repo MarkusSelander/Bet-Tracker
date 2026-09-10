@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Filter, Pencil, Plus, Search, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
@@ -9,28 +9,48 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { ODDS_RANGES, filterBets, parseFilters, toBetsApiSearch, toSearch } from '../lib/filters';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency, statusClass } from '../lib/format';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
+const PERIODS = [
+  { value: 'all', label: 'Alle' },
+  { value: '7', label: '7 d' },
+  { value: '30', label: '30 d' },
+  { value: '90', label: '90 d' },
+  { value: '365', label: 'År' },
+  { value: 'custom', label: 'Periode' },
+];
+
+function uniqueValues(rows, key, extra) {
+  const values = new Set(rows.map((row) => row[key]).filter(Boolean));
+  if (extra) values.add(extra);
+  return [...values].sort();
+}
+
 export default function BetsPage() {
   const { user } = useOutletContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = parseFilters(searchParams);
   const [bets, setBets] = useState([]);
-  const [filteredBets, setFilteredBets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBet, setEditingBet] = useState(null);
   const [detailBet, setDetailBet] = useState(null);
-  const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({
-    status: 'all',
-    sport: 'all',
-    dateFrom: '',
-    dateTo: '',
-  });
-  const [datePreset, setDatePreset] = useState('all');
   const currency = user?.currency || 'NOK';
-  const availableSports = [...new Set(bets.map((bet) => bet.sport).filter(Boolean))].sort();
+  const period = filters.period || 'all';
+  const apiSearch = toBetsApiSearch(filters);
+  const filteredBets = useMemo(() => filterBets(bets, filters), [bets, filters]);
+  const availableSports = uniqueValues(bets, 'sport', filters.sport);
+  const availableBookies = uniqueValues(bets, 'bookie', filters.bookie);
+  const availableTipsters = uniqueValues(bets, 'tipster', filters.tipster);
+  const availableLeagues = uniqueValues(bets, 'league', filters.league);
+  const availableTypes = [
+    ...new Set(
+      [...Object.keys(TICKET_TYPE_LABELS), ...bets.map((bet) => bet.ticket_type), filters.ticketType].filter(Boolean)
+    ),
+  ].sort();
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,18 +70,20 @@ export default function BetsPage() {
     notes: '',
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const patchFilters = (patch) => {
+    const next = { ...filters, ...patch };
+    if (patch.period && patch.period !== 'custom') {
+      next.from = '';
+      next.to = '';
+    }
+    setSearchParams(toSearch(next), { replace: true });
+    setCurrentPage(1);
+  };
 
-  useEffect(() => {
-    applyFilters();
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [bets, filters, search]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const betsRes = await fetch(`${BACKEND_URL}/api/bets`, { credentials: 'include' });
+      const query = apiSearch ? `?${apiSearch}` : '';
+      const betsRes = await fetch(`${BACKEND_URL}/api/bets${query}`, { credentials: 'include' });
       const betsData = await betsRes.json();
       setBets(Array.isArray(betsData) ? betsData : []);
     } catch (error) {
@@ -70,69 +92,15 @@ export default function BetsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiSearch]);
 
-  const applyFilters = () => {
-    let filtered = [...bets];
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    if (filters.dateFrom) {
-      filtered = filtered.filter((bet) => bet.date >= filters.dateFrom);
-    }
-    if (filters.dateTo) {
-      filtered = filtered.filter((bet) => bet.date <= filters.dateTo);
-    }
-    if (filters.status && filters.status !== 'all') {
-      filtered = filtered.filter((bet) => bet.status === filters.status);
-    }
-    if (filters.sport && filters.sport !== 'all') {
-      filtered = filtered.filter((bet) => bet.sport === filters.sport);
-    }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      filtered = filtered.filter((bet) =>
-        [bet.game, bet.bet, bet.sport, bet.league, bet.bookie].some((field) =>
-          String(field || '')
-            .toLowerCase()
-            .includes(q)
-        )
-      );
-    }
-
-    setFilteredBets(filtered);
-  };
-
-  const handleDatePreset = (preset) => {
-    setDatePreset(preset);
-    const today = new Date();
-    let dateFrom = '';
-    let dateTo = today.toISOString().split('T')[0];
-
-    switch (preset) {
-      case 'today': {
-        dateFrom = dateTo;
-        break;
-      }
-      case 'week': {
-        const weekAgo = new Date(today);
-        weekAgo.setDate(today.getDate() - 7);
-        dateFrom = weekAgo.toISOString().split('T')[0];
-        break;
-      }
-      case 'month': {
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(today.getMonth() - 1);
-        dateFrom = monthAgo.toISOString().split('T')[0];
-        break;
-      }
-      case 'custom':
-        return;
-      default:
-        dateFrom = '';
-        dateTo = '';
-    }
-
-    setFilters({ ...filters, dateFrom, dateTo });
-  };
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [apiSearch, filters.q]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -445,50 +413,21 @@ export default function BetsPage() {
         <div className="flex items-center space-x-4">
           <Filter className="w-5 h-5 text-text-secondary" />
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant={datePreset === 'all' ? 'default' : 'secondary'}
-              onClick={() => handleDatePreset('all')}
-              className={datePreset === 'all' ? 'bg-primary text-black' : 'bg-white/5'}
-            >
-              Alle
-            </Button>
-            <Button
-              size="sm"
-              variant={datePreset === 'today' ? 'default' : 'secondary'}
-              onClick={() => handleDatePreset('today')}
-              className={datePreset === 'today' ? 'bg-primary text-black' : 'bg-white/5'}
-            >
-              I dag
-            </Button>
-            <Button
-              size="sm"
-              variant={datePreset === 'week' ? 'default' : 'secondary'}
-              onClick={() => handleDatePreset('week')}
-              className={datePreset === 'week' ? 'bg-primary text-black' : 'bg-white/5'}
-            >
-              Uke
-            </Button>
-            <Button
-              size="sm"
-              variant={datePreset === 'month' ? 'default' : 'secondary'}
-              onClick={() => handleDatePreset('month')}
-              className={datePreset === 'month' ? 'bg-primary text-black' : 'bg-white/5'}
-            >
-              Måned
-            </Button>
-            <Button
-              size="sm"
-              variant={datePreset === 'custom' ? 'default' : 'secondary'}
-              onClick={() => handleDatePreset('custom')}
-              className={datePreset === 'custom' ? 'bg-primary text-black' : 'bg-white/5'}
-            >
-              Periode
-            </Button>
+            {PERIODS.map((item) => (
+              <Button
+                key={item.value}
+                size="sm"
+                variant={period === item.value ? 'default' : 'secondary'}
+                onClick={() => patchFilters({ period: item.value === 'all' ? '' : item.value })}
+                className={period === item.value ? 'bg-primary text-black' : 'bg-white/5'}
+              >
+                {item.label}
+              </Button>
+            ))}
           </div>
         </div>
 
-        {datePreset === 'custom' && (
+        {period === 'custom' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="dateFrom" className="text-sm text-text-secondary mb-2 block">
@@ -497,8 +436,8 @@ export default function BetsPage() {
               <Input
                 id="dateFrom"
                 type="date"
-                value={filters.dateFrom}
-                onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                value={filters.from}
+                onChange={(e) => patchFilters({ period: 'custom', from: e.target.value })}
                 className="input-enhanced bg-black/20 border-white/10"
               />
             </div>
@@ -509,26 +448,29 @@ export default function BetsPage() {
               <Input
                 id="dateTo"
                 type="date"
-                value={filters.dateTo}
-                onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                value={filters.to}
+                onChange={(e) => patchFilters({ period: 'custom', to: e.target.value })}
                 className="input-enhanced bg-black/20 border-white/10"
               />
             </div>
           </div>
-        )}
+        ) : null}
 
         <div className="relative">
           <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
           <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={filters.q}
+            onChange={(e) => patchFilters({ q: e.target.value })}
             placeholder="Søk kamp, marked, sport..."
             className="pl-9 bg-black/20 border-white/10"
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Select value={filters.status} onValueChange={(value) => setFilters({ ...filters, status: value })}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <Select
+            value={filters.status || 'all'}
+            onValueChange={(value) => patchFilters({ status: value === 'all' ? '' : value })}
+          >
             <SelectTrigger className="bg-black/20 border-white/10">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -542,7 +484,10 @@ export default function BetsPage() {
             </SelectContent>
           </Select>
 
-          <Select value={filters.sport} onValueChange={(value) => setFilters({ ...filters, sport: value })}>
+          <Select
+            value={filters.sport || 'all'}
+            onValueChange={(value) => patchFilters({ sport: value === 'all' ? '' : value })}
+          >
             <SelectTrigger className="bg-black/20 border-white/10">
               <SelectValue placeholder="Sport" />
             </SelectTrigger>
@@ -551,6 +496,91 @@ export default function BetsPage() {
               {availableSports.map((sport) => (
                 <SelectItem key={sport} value={sport}>
                   {sport}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.bookie || 'all'}
+            onValueChange={(value) => patchFilters({ bookie: value === 'all' ? '' : value })}
+          >
+            <SelectTrigger className="bg-black/20 border-white/10">
+              <SelectValue placeholder="Bookie" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle bookier</SelectItem>
+              {availableBookies.map((bookie) => (
+                <SelectItem key={bookie} value={bookie}>
+                  {bookie}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.tipster || 'all'}
+            onValueChange={(value) => patchFilters({ tipster: value === 'all' ? '' : value })}
+          >
+            <SelectTrigger className="bg-black/20 border-white/10">
+              <SelectValue placeholder="Tipster" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle tipstere</SelectItem>
+              {availableTipsters.map((tipster) => (
+                <SelectItem key={tipster} value={tipster}>
+                  {tipster}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.league || 'all'}
+            onValueChange={(value) => patchFilters({ league: value === 'all' ? '' : value })}
+          >
+            <SelectTrigger className="bg-black/20 border-white/10">
+              <SelectValue placeholder="Liga" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle ligaer</SelectItem>
+              {availableLeagues.map((league) => (
+                <SelectItem key={league} value={league}>
+                  {league}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.ticketType || 'all'}
+            onValueChange={(value) => patchFilters({ ticketType: value === 'all' ? '' : value })}
+          >
+            <SelectTrigger className="bg-black/20 border-white/10">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle typer</SelectItem>
+              {availableTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {TICKET_TYPE_LABELS[type] || type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={filters.oddsRange || 'all'}
+            onValueChange={(value) => patchFilters({ oddsRange: value === 'all' ? '' : value })}
+          >
+            <SelectTrigger className="bg-black/20 border-white/10">
+              <SelectValue placeholder="Odds" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle odds</SelectItem>
+              {ODDS_RANGES.map((range) => (
+                <SelectItem key={range} value={range}>
+                  {range}
                 </SelectItem>
               ))}
             </SelectContent>

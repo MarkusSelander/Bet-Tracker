@@ -451,17 +451,21 @@ export const exportAnalyticsToPDF = async (stats, currency, extra = {}) => {
 
   y = drawLineChart(pdf, extra.chartData, y, 'cumulative_pl', 'Akkumulert resultat');
 
-  const sports = breakdownRows(extra.sportStats, currency);
-  if (sports.length) {
-    y = sectionTitle(pdf, 'Per sport', y);
-    y = addTable(pdf, y, BREAKDOWN_COLUMNS, sports, { colorColumn: 'result' });
-  }
-
-  const odds = breakdownRows(extra.oddsRangeStats, currency);
-  if (odds.length) {
-    y = sectionTitle(pdf, 'Per oddsintervall', y);
-    addTable(pdf, y, BREAKDOWN_COLUMNS, odds, { colorColumn: 'result' });
-  }
+  const breakdowns = [
+    ['Per sport', extra.sportStats],
+    ['Per liga', extra.leagueStats],
+    ['Per oddsintervall', extra.oddsRangeStats],
+    ['Per bookie', extra.bookieStats],
+    ['Per tipster', extra.tipsterStats],
+    ['Per type', extra.ticketTypeStats],
+  ];
+  breakdowns.forEach(([title, rows], index) => {
+    const tableRows = breakdownRows(rows, currency);
+    if (!tableRows.length) return;
+    y = sectionTitle(pdf, title, y);
+    const nextY = addTable(pdf, y, BREAKDOWN_COLUMNS, tableRows, { colorColumn: 'result' });
+    if (index < breakdowns.length - 1) y = nextY;
+  });
 
   drawFooters(pdf, generatedAt);
   pdf.save(`bet-tracker-analyse-${new Date().toISOString().split('T')[0]}.pdf`);

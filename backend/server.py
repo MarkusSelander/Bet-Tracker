@@ -9,7 +9,7 @@ from typing import List, Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict
 from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
@@ -19,7 +19,13 @@ from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
 from favorites_live import match_markets, search_teams, upcoming_matches_grouped
 from mongo import mongo_client_kwargs
-from stats import compute_stats
+from stats import (
+    chart_date_bounds,
+    compute_breakdown,
+    compute_odds_range_breakdown,
+    compute_stats,
+    filter_bets,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -590,6 +596,27 @@ def _unavailable_db() -> HTTPException:
     return HTTPException(status_code=503, detail="Database unavailable")
 
 
+def analytics_filters(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    sport: Optional[str] = None,
+    bookie: Optional[str] = None,
+    tipster: Optional[str] = None,
+) -> dict:
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "sport": sport,
+        "bookie": bookie,
+        "tipster": tipster,
+    }
+
+
+async def filtered_user_bets(user_id: str, **filters) -> list:
+    all_bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
+    return filter_bets(all_bets, **filters)
+
+
 # Auth Routes
 
 
@@ -692,26 +719,35 @@ async def update_currency(request: Request):
 
 
 @api_router.get("/bets", response_model=List[Bet])
-async def get_bets(request: Request, date_from: Optional[str] = None, date_to: Optional[str] = None,
-                   bookie: Optional[str] = None, tipster: Optional[str] = None, status: Optional[str] = None):
+async def get_bets(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    bookie: Optional[str] = None,
+    tipster: Optional[str] = None,
+    status: Optional[str] = None,
+    sport: Optional[str] = None,
+    league: Optional[str] = None,
+    ticket_type: Optional[str] = None,
+    odds_min: Optional[float] = None,
+    odds_max: Optional[float] = None,
+):
     user_id = await get_current_user(request)
 
-    query = {"user_id": user_id}
-    if date_from or date_to:
-        query["date"] = {}
-        if date_from:
-            query["date"]["$gte"] = date_from
-        if date_to:
-            query["date"]["$lte"] = date_to
-    if bookie:
-        query["bookie"] = bookie
-    if tipster:
-        query["tipster"] = tipster
-    if status:
-        query["status"] = status
-
-    bets = await db.bets.find(query, {"_id": 0}).sort("date", -1).to_list(10000)
-    return bets
+    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", -1).to_list(10000)
+    return filter_bets(
+        bets,
+        date_from=date_from,
+        date_to=date_to,
+        bookie=bookie,
+        tipster=tipster,
+        status=status,
+        sport=sport,
+        league=league,
+        ticket_type=ticket_type,
+        odds_min=odds_min,
+        odds_max=odds_max,
+    )
 
 
 @api_router.post("/bets", response_model=Bet)
@@ -784,27 +820,35 @@ async def delete_bet(request: Request, bet_id: str):
 
 
 @api_router.get("/analytics/stats")
-async def get_stats(request: Request):
+async def get_stats(request: Request, filters: dict = Depends(analytics_filters)):
     user_id = await get_current_user(request)
-
-    all_bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
-    return compute_stats(all_bets)
+    return compute_stats(await filtered_user_bets(user_id, **filters))
 
 
 @api_router.get("/analytics/chart")
-async def get_chart_data(request: Request, days: int = 30):
+async def get_chart_data(
+    request: Request,
+    days: Optional[str] = None,
+    filters: dict = Depends(analytics_filters),
+):
     user_id = await get_current_user(request)
+    try:
+        start_date, end_date = chart_date_bounds(
+            days=days,
+            date_from=filters.get("date_from"),
+            date_to=filters.get("date_to"),
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid days") from None
 
-    # Calculate the date range for the last N days
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=days)
-    start_date_str = start_date.strftime("%Y-%m-%d")
-
-    # Fetch only bets within the date range
-    bets = await db.bets.find({
-        "user_id": user_id,
-        "date": {"$gte": start_date_str}
-    }, {"_id": 0}).sort("date", 1).to_list(10000)
+    bets = await filtered_user_bets(
+        user_id,
+        date_from=start_date,
+        date_to=end_date,
+        sport=filters.get("sport"),
+        bookie=filters.get("bookie"),
+        tipster=filters.get("tipster"),
+    )
 
     daily_data = {}
     chart_data = []
@@ -817,6 +861,7 @@ async def get_chart_data(request: Request, days: int = 30):
                                 "daily_pl": 0, "cumulative_pl": 0, "bets": 0}
 
         daily_data[date]["daily_pl"] += bet["result"]
+        daily_data[date]["bets"] += 1
     for date in sorted(daily_data.keys()):
         cumulative_pl += daily_data[date]["daily_pl"]
         daily_data[date]["cumulative_pl"] = cumulative_pl
@@ -826,7 +871,12 @@ async def get_chart_data(request: Request, days: int = 30):
 
 
 @api_router.get("/analytics/calendar")
-async def get_calendar_data(request: Request, year: int, month: int):
+async def get_calendar_data(
+    request: Request,
+    year: int,
+    month: int,
+    filters: dict = Depends(analytics_filters),
+):
     user_id = await get_current_user(request)
 
     start_date = f"{year}-{month:02d}-01"
@@ -839,6 +889,7 @@ async def get_calendar_data(request: Request, year: int, month: int):
         "user_id": user_id,
         "date": {"$gte": start_date, "$lt": end_date}
     }, {"_id": 0}).to_list(10000)
+    bets = filter_bets(bets, **filters)
 
     daily_data = {}
     for bet in bets:
@@ -858,212 +909,45 @@ async def get_calendar_data(request: Request, year: int, month: int):
 
 
 @api_router.get("/analytics/bookmakers")
-async def get_bookmaker_analytics(request: Request):
+async def get_bookmaker_analytics(request: Request, filters: dict = Depends(analytics_filters)):
     user_id = await get_current_user(request)
-
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
-
-    bookie_stats = {}
-    for bet in bets:
-        bookie = bet.get("bookie", "Unknown")
-        if bookie not in bookie_stats:
-            bookie_stats[bookie] = {
-                "name": bookie,
-                "bets": 0,
-                "stake": 0,
-                "profit_loss": 0,
-                "won": 0,
-                "lost": 0,
-                "push": 0,
-                "pending": 0
-            }
-
-        bookie_stats[bookie]["bets"] += 1
-        bookie_stats[bookie]["stake"] += bet["stake"]
-        bookie_stats[bookie]["profit_loss"] += bet["result"]
-
-        status = bet["status"]
-        if status == "won":
-            bookie_stats[bookie]["won"] += 1
-        elif status == "lost":
-            bookie_stats[bookie]["lost"] += 1
-        elif status == "push":
-            bookie_stats[bookie]["push"] += 1
-        elif status == "pending":
-            bookie_stats[bookie]["pending"] += 1
-
-    # Calculate win rate and ROI for each bookie
-    result = []
-    for bookie, stats in bookie_stats.items():
-        total_settled = stats["won"] + stats["lost"]
-        stats["win_rate"] = (stats["won"] / total_settled *
-                             100) if total_settled > 0 else 0
-        stats["roi"] = (stats["profit_loss"] / stats["stake"]
-                        * 100) if stats["stake"] > 0 else 0
-        result.append(stats)
-
-    return sorted(result, key=lambda x: x["profit_loss"], reverse=True)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_breakdown(bets, "bookie")
 
 
 @api_router.get("/analytics/tipsters")
-async def get_tipster_analytics(request: Request):
+async def get_tipster_analytics(request: Request, filters: dict = Depends(analytics_filters)):
     user_id = await get_current_user(request)
-
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
-
-    tipster_stats = {}
-    for bet in bets:
-        tipster = bet.get("tipster", "")
-        if not tipster:
-            continue
-
-        if tipster not in tipster_stats:
-            tipster_stats[tipster] = {
-                "name": tipster,
-                "bets": 0,
-                "stake": 0,
-                "profit_loss": 0,
-                "won": 0,
-                "lost": 0,
-                "push": 0,
-                "pending": 0
-            }
-
-        tipster_stats[tipster]["bets"] += 1
-        tipster_stats[tipster]["stake"] += bet["stake"]
-        tipster_stats[tipster]["profit_loss"] += bet["result"]
-
-        status = bet["status"]
-        if status == "won":
-            tipster_stats[tipster]["won"] += 1
-        elif status == "lost":
-            tipster_stats[tipster]["lost"] += 1
-        elif status == "push":
-            tipster_stats[tipster]["push"] += 1
-        elif status == "pending":
-            tipster_stats[tipster]["pending"] += 1
-
-    # Calculate win rate and ROI for each tipster
-    result = []
-    for tipster, stats in tipster_stats.items():
-        total_settled = stats["won"] + stats["lost"]
-        stats["win_rate"] = (stats["won"] / total_settled *
-                             100) if total_settled > 0 else 0
-        stats["roi"] = (stats["profit_loss"] / stats["stake"]
-                        * 100) if stats["stake"] > 0 else 0
-        result.append(stats)
-
-    return sorted(result, key=lambda x: x["profit_loss"], reverse=True)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_breakdown(bets, "tipster", skip_empty=True)
 
 
 @api_router.get("/analytics/sports")
-async def get_sport_analytics(request: Request):
+async def get_sport_analytics(request: Request, filters: dict = Depends(analytics_filters)):
     user_id = await get_current_user(request)
-
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
-
-    sport_stats = {}
-    for bet in bets:
-        sport = bet.get("sport", "Unknown")
-        if not sport:
-            sport = "Unknown"
-
-        if sport not in sport_stats:
-            sport_stats[sport] = {
-                "name": sport,
-                "bets": 0,
-                "stake": 0,
-                "profit_loss": 0,
-                "won": 0,
-                "lost": 0,
-                "push": 0,
-                "pending": 0
-            }
-
-        sport_stats[sport]["bets"] += 1
-        sport_stats[sport]["stake"] += bet["stake"]
-        sport_stats[sport]["profit_loss"] += bet["result"]
-
-        status = bet["status"]
-        if status == "won":
-            sport_stats[sport]["won"] += 1
-        elif status == "lost":
-            sport_stats[sport]["lost"] += 1
-        elif status == "push":
-            sport_stats[sport]["push"] += 1
-        elif status == "pending":
-            sport_stats[sport]["pending"] += 1
-
-    result = []
-    for sport, stats in sport_stats.items():
-        total_settled = stats["won"] + stats["lost"]
-        stats["win_rate"] = (stats["won"] / total_settled *
-                             100) if total_settled > 0 else 0
-        stats["roi"] = (stats["profit_loss"] / stats["stake"]
-                        * 100) if stats["stake"] > 0 else 0
-        result.append(stats)
-
-    return sorted(result, key=lambda x: x["profit_loss"], reverse=True)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_breakdown(bets, "sport")
 
 
 @api_router.get("/analytics/odds-range")
-async def get_odds_range_analytics(request: Request):
+async def get_odds_range_analytics(request: Request, filters: dict = Depends(analytics_filters)):
     user_id = await get_current_user(request)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_odds_range_breakdown(bets)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
 
-    ranges = [
-        {"name": "1.00-1.50", "min": 1.0, "max": 1.5},
-        {"name": "1.51-2.00", "min": 1.51, "max": 2.0},
-        {"name": "2.01-3.00", "min": 2.01, "max": 3.0},
-        {"name": "3.01-5.00", "min": 3.01, "max": 5.0},
-        {"name": "5.01+", "min": 5.01, "max": float('inf')}
-    ]
+@api_router.get("/analytics/leagues")
+async def get_league_analytics(request: Request, filters: dict = Depends(analytics_filters)):
+    user_id = await get_current_user(request)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_breakdown(bets, "league")
 
-    odds_stats = {}
-    for range_info in ranges:
-        odds_stats[range_info["name"]] = {
-            "name": range_info["name"],
-            "bets": 0,
-            "stake": 0,
-            "profit_loss": 0,
-            "won": 0,
-            "lost": 0,
-            "push": 0,
-            "pending": 0
-        }
 
-    for bet in bets:
-        odds = bet["odds"]
-        for range_info in ranges:
-            if range_info["min"] <= odds <= range_info["max"]:
-                range_name = range_info["name"]
-                odds_stats[range_name]["bets"] += 1
-                odds_stats[range_name]["stake"] += bet["stake"]
-                odds_stats[range_name]["profit_loss"] += bet["result"]
-
-                status = bet["status"]
-                if status == "won":
-                    odds_stats[range_name]["won"] += 1
-                elif status == "lost":
-                    odds_stats[range_name]["lost"] += 1
-                elif status == "push":
-                    odds_stats[range_name]["push"] += 1
-                elif status == "pending":
-                    odds_stats[range_name]["pending"] += 1
-                break
-
-    result = []
-    for range_name, stats in odds_stats.items():
-        if stats["bets"] > 0:  # Only include ranges with bets
-            total_settled = stats["won"] + stats["lost"]
-            stats["win_rate"] = (
-                stats["won"] / total_settled * 100) if total_settled > 0 else 0
-            stats["roi"] = (stats["profit_loss"] / stats["stake"]
-                            * 100) if stats["stake"] > 0 else 0
-            result.append(stats)
-
-    return result
+@api_router.get("/analytics/ticket-types")
+async def get_ticket_type_analytics(request: Request, filters: dict = Depends(analytics_filters)):
+    user_id = await get_current_user(request)
+    bets = await filtered_user_bets(user_id, **filters)
+    return compute_breakdown(bets, "ticket_type")
 
 
 @api_router.get("/bets/recent")
