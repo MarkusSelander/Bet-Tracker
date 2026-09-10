@@ -48,8 +48,4 @@ function filterFeedBySport(feed, sport) {
     .filter((day) => day.leagues.length > 0);
 }
 
-exports.__esModule = true;
-exports.favoritesStatus = favoritesStatus;
-exports.formatKickoff = formatKickoff;
-exports.buildFavoriteFeed = buildFavoriteFeed;
-exports.filterFeedBySport = filterFeedBySport;
+export { favoritesStatus, formatKickoff, buildFavoriteFeed, filterFeedBySport };

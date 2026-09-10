@@ -1,6 +1,12 @@
-const { test } = require('node:test');
+const { before, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildCalendarModel, monthRange } = require('./calendar');
+
+let buildCalendarModel;
+let monthRange;
+
+before(async () => {
+  ({ buildCalendarModel, monthRange } = await import('./calendar.js'));
+});
 
 test('monthRange is inclusive for the whole month', () => {
   assert.deepEqual(monthRange(2026, 8), { dateFrom: '2026-09-01', dateTo: '2026-09-30' });

@@ -1,20 +1,37 @@
 const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const {
-  parseFilters,
-  toSearch,
-  periodToRange,
-  oddsRangeToBounds,
-  betsPath,
-  analyticsPath,
-  calendarPath,
-  toAnalyticsApiSearch,
-  chartQuery,
-  toBetsApiSearch,
-  filterBets,
-  pickInsight,
-  pieStatus,
-} = require('./filters');
+const { before, test } = require('node:test');
+
+let parseFilters;
+let toSearch;
+let periodToRange;
+let oddsRangeToBounds;
+let betsPath;
+let analyticsPath;
+let calendarPath;
+let toAnalyticsApiSearch;
+let chartQuery;
+let toBetsApiSearch;
+let filterBets;
+let pickInsight;
+let pieStatus;
+
+before(async () => {
+  ({
+    parseFilters,
+    toSearch,
+    periodToRange,
+    oddsRangeToBounds,
+    betsPath,
+    analyticsPath,
+    calendarPath,
+    toAnalyticsApiSearch,
+    chartQuery,
+    toBetsApiSearch,
+    filterBets,
+    pickInsight,
+    pieStatus,
+  } = await import('./filters.js'));
+});
 
 const NOW = new Date(2026, 8, 10);
 

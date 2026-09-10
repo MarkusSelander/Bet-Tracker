@@ -1,6 +1,14 @@
-const { test } = require('node:test');
+const { before, test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildFavoriteFeed, favoritesStatus, filterFeedBySport, formatKickoff } = require('./favorites');
+
+let buildFavoriteFeed;
+let favoritesStatus;
+let filterFeedBySport;
+let formatKickoff;
+
+before(async () => {
+  ({ buildFavoriteFeed, favoritesStatus, filterFeedBySport, formatKickoff } = await import('./favorites.js'));
+});
 
 test('favoritesStatus says API-Sports feed is live', () => {
   const status = favoritesStatus();

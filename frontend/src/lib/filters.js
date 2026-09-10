@@ -47,6 +47,7 @@ const PIE_STATUS = {
   Cashout: 'cashed',
   Åpne: 'pending',
 };
+const ODDS_RANGES = Object.keys(ODDS_BOUNDS);
 
 function pad(value) {
   return String(value).padStart(2, '0');
@@ -224,23 +225,24 @@ function pieStatus(name) {
   return PIE_STATUS[name] || '';
 }
 
-exports.__esModule = true;
-exports.VALID_PERIODS = VALID_PERIODS;
-exports.ODDS_RANGES = Object.keys(ODDS_BOUNDS);
-exports.EMPTY_FILTERS = EMPTY_FILTERS;
-exports.parseFilters = parseFilters;
-exports.toSearch = toSearch;
-exports.periodToRange = periodToRange;
-exports.resolvedRange = resolvedRange;
-exports.oddsRangeToBounds = oddsRangeToBounds;
-exports.betsPath = betsPath;
-exports.analyticsPath = analyticsPath;
-exports.calendarPath = calendarPath;
-exports.toAnalyticsApiSearch = toAnalyticsApiSearch;
-exports.chartQuery = chartQuery;
-exports.toBetsApiSearch = toBetsApiSearch;
-exports.filterBets = filterBets;
-exports.pickInsight = pickInsight;
-exports.pieStatus = pieStatus;
-exports.emptyToAll = emptyToAll;
-exports.localDateKey = localDateKey;
+export {
+  VALID_PERIODS,
+  ODDS_RANGES,
+  EMPTY_FILTERS,
+  parseFilters,
+  toSearch,
+  periodToRange,
+  resolvedRange,
+  oddsRangeToBounds,
+  betsPath,
+  analyticsPath,
+  calendarPath,
+  toAnalyticsApiSearch,
+  chartQuery,
+  toBetsApiSearch,
+  filterBets,
+  pickInsight,
+  pieStatus,
+  emptyToAll,
+  localDateKey,
+};
