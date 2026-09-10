@@ -5,8 +5,8 @@ import { toast } from 'sonner';
 import PageHeader from '../components/PageHeader';
 import { Input } from '../components/ui/input';
 import { buildFavoriteFeed, favoritesStatus, filterFeedBySport, formatKickoff } from '../lib/favorites';
-import { betsPath } from '../lib/filters';
 import { fetchWithTimeout } from '../lib/fetch';
+import { betsPath } from '../lib/filters';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -52,7 +52,10 @@ export default function FavoritesPage() {
     [teams, players]
   );
   const hasFavorites = teams.length + players.length > 0;
-  const visibleFeed = useMemo(() => filterFeedBySport(feed, sportFilter === 'all' ? 'all' : sportFilter), [feed, sportFilter]);
+  const visibleFeed = useMemo(
+    () => filterFeedBySport(feed, sportFilter === 'all' ? 'all' : sportFilter),
+    [feed, sportFilter]
+  );
 
   const loadFavorites = useCallback(async () => {
     if (!BACKEND_URL) {
@@ -163,36 +166,33 @@ export default function FavoritesPage() {
   const addFavorite = async (item) => {
     try {
       const isPlayer = item.kind === 'player';
-      const response = await fetchWithTimeout(
-        `${BACKEND_URL}/api/favorites/${isPlayer ? 'players' : 'teams'}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(
-            isPlayer
-              ? {
-                  player_id: item.player_id,
-                  player_name: item.player_name,
-                  sport: item.sport,
-                  photo: item.photo,
-                  team_id: item.team_id,
-                  team_name: item.team_name,
-                  team_badge: item.team_badge,
-                  league: item.league,
-                  source: item.source || 'api-sports',
-                }
-              : {
-                  team_id: item.team_id,
-                  team_name: item.team_name,
-                  sport: item.sport,
-                  league: item.league,
-                  badge: item.team_badge,
-                  source: item.source || 'api-sports',
-                }
-          ),
-        }
-      );
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/${isPlayer ? 'players' : 'teams'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(
+          isPlayer
+            ? {
+                player_id: item.player_id,
+                player_name: item.player_name,
+                sport: item.sport,
+                photo: item.photo,
+                team_id: item.team_id,
+                team_name: item.team_name,
+                team_badge: item.team_badge,
+                league: item.league,
+                source: item.source || 'api-sports',
+              }
+            : {
+                team_id: item.team_id,
+                team_name: item.team_name,
+                sport: item.sport,
+                league: item.league,
+                badge: item.team_badge,
+                source: item.source || 'api-sports',
+              }
+        ),
+      });
       if (response.status === 400) {
         toast.error(isPlayer ? 'Spilleren er allerede i favoritter' : 'Laget er allerede i favoritter');
         return;
@@ -212,10 +212,13 @@ export default function FavoritesPage() {
 
   const removeTeam = async (team) => {
     try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams/${encodeURIComponent(team.team_id)}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
+      const response = await fetchWithTimeout(
+        `${BACKEND_URL}/api/favorites/teams/${encodeURIComponent(team.team_id)}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        }
+      );
       if (!response.ok) throw new Error(`Slett ${response.status}`);
       toast.success(`${team.team_name} fjernet`);
       const remaining = teams.filter((item) => item.team_id !== team.team_id);
@@ -274,9 +277,10 @@ export default function FavoritesPage() {
               const key = resultKey(item);
               const already = favoriteIds.has(key);
               const name = item.kind === 'player' ? item.player_name : item.team_name;
-              const meta = item.kind === 'player'
-                ? [item.team_name, item.sport].filter(Boolean).join(' · ')
-                : item.league || item.sport;
+              const meta =
+                item.kind === 'player'
+                  ? [item.team_name, item.sport].filter(Boolean).join(' · ')
+                  : item.league || item.sport;
               return (
                 <button
                   key={`${item.kind}-${key}`}
