@@ -3,13 +3,18 @@ const assert = require("node:assert/strict");
 const {
   HISTORY_PATH,
   authHeaders,
+  betsUrl,
+  collectKnownIdsFromBets,
+  collectPendingIdsFromBets,
   historyQuery,
   importUrl,
   loginPayload,
   mergeTicketDetails,
   needsTicketDetails,
+  shouldFetchTicketDetails,
   shouldStopPagination,
   ticketDetailPaths,
+  ticketsToImport,
 } = require("./history.js");
 
 test("history query matches Coolbet API contract", () => {
@@ -76,6 +81,79 @@ test("continues when unknown or pending tickets remain", () => {
       knownIds: new Set(["a"]),
     }),
     false
+  );
+});
+
+test("keeps paging while Bet Tracker still has unseen pending tickets", () => {
+  assert.equal(
+    shouldStopPagination({
+      tickets: [
+        { id: "a", status: "LOST" },
+        { id: "b", status: "LOST" },
+      ],
+      hasNextPage: true,
+      knownIds: new Set(["a", "b"]),
+      pendingIds: new Set(["older-open"]),
+    }),
+    false
+  );
+});
+
+test("collectPendingIdsFromBets keeps only open tracker bets", () => {
+  assert.deepEqual(
+    collectPendingIdsFromBets([
+      { source_id: "open", status: "pending" },
+      { source_id: "done", status: "lost" },
+      { status: "pending" },
+    ]),
+    ["open"]
+  );
+});
+
+test("collectKnownIdsFromBets uses backend source_id", () => {
+  assert.deepEqual(
+    collectKnownIdsFromBets([
+      { bet_id: "1", source_id: "ticket-a" },
+      { bet_id: "2" },
+      { source_id: "ticket-b" },
+    ]),
+    ["ticket-a", "ticket-b"]
+  );
+});
+
+test("bets url can filter by bookie", () => {
+  assert.equal(
+    betsUrl("https://api.example.com/", "Coolbet"),
+    "https://api.example.com/api/bets?bookie=Coolbet"
+  );
+});
+
+test("reimports known tickets that settled after we stored them as pending", () => {
+  const tickets = [
+    { id: "old-won", status: "WON" },
+    { id: "was-open", status: "LOST" },
+  ];
+  const imported = ticketsToImport(
+    tickets,
+    new Set(["old-won", "was-open"]),
+    new Set(["was-open"])
+  );
+  assert.deepEqual(
+    imported.map((ticket) => ticket.id),
+    ["was-open"]
+  );
+});
+
+test("fetches combo details when a known ticket is still pending in Bet Tracker", () => {
+  const combo = {
+    id: "was-open",
+    total_matches: 2,
+    ticket_type: "combo",
+    status: "LOST",
+  };
+  assert.equal(
+    shouldFetchTicketDetails(combo, new Set(["was-open"]), new Set(["was-open"])),
+    true
   );
 });
 

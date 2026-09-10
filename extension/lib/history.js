@@ -42,6 +42,12 @@
     return `${String(apiBase).replace(/\/$/, "")}/api/auth/me`;
   }
 
+  function betsUrl(apiBase, bookie) {
+    const base = `${String(apiBase).replace(/\/$/, "")}/api/bets`;
+    if (!bookie) return base;
+    return `${base}?bookie=${encodeURIComponent(bookie)}`;
+  }
+
   function authHeaders(token) {
     return {
       Authorization: `Bearer ${token}`,
@@ -53,20 +59,54 @@
     return { ...userDoc, session_token: sessionToken };
   }
 
-  function shouldStopPagination({ tickets, hasNextPage, knownIds }) {
+  function collectTicketIds(tickets) {
+    return (tickets || []).map((ticket) => ticket.id).filter(Boolean);
+  }
+
+  function collectKnownIdsFromBets(bets) {
+    return (bets || []).map((bet) => bet && bet.source_id).filter(Boolean);
+  }
+
+  function collectPendingIdsFromBets(bets) {
+    return (bets || [])
+      .filter((bet) => bet && bet.source_id && bet.status === "pending")
+      .map((bet) => bet.source_id);
+  }
+
+  function isOpenTicket(ticket) {
+    const status = String((ticket && ticket.status) || "").toUpperCase();
+    return Boolean(OPEN_STATUSES[status]);
+  }
+
+  function shouldRefreshKnownTicket(ticket, pendingIds) {
+    return Boolean(pendingIds && ticket && pendingIds.has(ticket.id));
+  }
+
+  function shouldStopPagination({ tickets, hasNextPage, knownIds, pendingIds }) {
     if (!hasNextPage || !tickets || tickets.length === 0) return true;
+    if (pendingIds && pendingIds.size > 0) return false;
     if (!knownIds || knownIds.size === 0) return false;
     const allKnown = tickets.every((ticket) => knownIds.has(ticket.id));
     if (!allKnown) return false;
-    const anyOpen = tickets.some((ticket) => {
-      const status = String(ticket.status || "").toUpperCase();
-      return Boolean(OPEN_STATUSES[status]);
-    });
-    return !anyOpen;
+    return !tickets.some((ticket) => isOpenTicket(ticket));
   }
 
-  function collectTicketIds(tickets) {
-    return (tickets || []).map((ticket) => ticket.id).filter(Boolean);
+  function shouldFetchTicketDetails(ticket, knownIds, pendingIds) {
+    if (!needsTicketDetails(ticket)) return false;
+    if (shouldRefreshKnownTicket(ticket, pendingIds)) return true;
+    if (!knownIds || knownIds.size === 0) return true;
+    if (!knownIds.has(ticket.id)) return true;
+    return isOpenTicket(ticket);
+  }
+
+  function ticketsToImport(tickets, knownIds, pendingIds) {
+    if (!knownIds || knownIds.size === 0) return tickets || [];
+    return (tickets || []).filter(
+      (ticket) =>
+        !knownIds.has(ticket.id) ||
+        isOpenTicket(ticket) ||
+        shouldRefreshKnownTicket(ticket, pendingIds)
+    );
   }
 
   function ticketDetailPaths(ticketId, displayId) {
@@ -148,6 +188,9 @@
     TICKET_STATUS,
     PAGE_SIZE,
     authHeaders,
+    betsUrl,
+    collectKnownIdsFromBets,
+    collectPendingIdsFromBets,
     collectTicketIds,
     historyQuery,
     historyUrl,
@@ -157,7 +200,9 @@
     meUrl,
     mergeTicketDetails,
     needsTicketDetails,
+    shouldFetchTicketDetails,
     shouldStopPagination,
     ticketDetailPaths,
+    ticketsToImport,
   };
 });

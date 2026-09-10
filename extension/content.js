@@ -25,7 +25,7 @@
     return pageAuth;
   }
 
-  async function fetchTickets(auth, knownIds) {
+  async function fetchTickets(auth, knownIds, pendingIds) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
       accept: "*/*",
@@ -40,6 +40,7 @@
     }
 
     const known = new Set(knownIds || []);
+    const remainingPending = new Set(pendingIds || []);
     const all = [];
     let page = 1;
 
@@ -63,12 +64,14 @@
       const data = await response.json();
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
       all.push(...tickets);
+      for (const ticket of tickets) remainingPending.delete(ticket.id);
 
       if (
         CoolbetHistory.shouldStopPagination({
           tickets,
           hasNextPage: Boolean(data.hasNextPage),
           knownIds: known,
+          pendingIds: remainingPending,
         })
       ) {
         break;
@@ -78,9 +81,10 @@
       await sleep(700);
     }
 
+    const pending = new Set(pendingIds || []);
     const enriched = [];
     for (const ticket of all) {
-      if (!CoolbetHistory.needsTicketDetails(ticket)) {
+      if (!CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending)) {
         enriched.push(ticket);
         continue;
       }
@@ -105,7 +109,7 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "FETCH_TICKETS") return undefined;
-    fetchTickets(message.auth, message.knownIds)
+    fetchTickets(message.auth, message.knownIds, message.pendingIds)
       .then(sendResponse)
       .catch((err) => sendResponse({ status: "error", error: String(err.message || err), tickets: [] }));
     return true;

@@ -78,6 +78,15 @@ def test_should_continue_when_unknown_or_open_tickets_remain():
     )
 
 
+def test_should_continue_when_tracker_still_has_unseen_pending_tickets():
+    assert not should_stop_pagination(
+        tickets=[{"id": "a", "status": "LOST"}, {"id": "b", "status": "LOST"}],
+        has_next_page=True,
+        known_ids={"a", "b"},
+        pending_ids={"older-open"},
+    )
+
+
 def test_chrome_extension_origin_regex_allows_unpacked_ids():
     origin = "chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef"
     assert re.match(CHROME_EXTENSION_ORIGIN_RE, origin)

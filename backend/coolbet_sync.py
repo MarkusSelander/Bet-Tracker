@@ -122,10 +122,13 @@ def should_stop_pagination(
     tickets: Iterable[Dict[str, Any]],
     has_next_page: bool,
     known_ids: Optional[Set[str]] = None,
+    pending_ids: Optional[Set[str]] = None,
 ) -> bool:
     tickets = list(tickets)
     if not has_next_page or len(tickets) == 0:
         return True
+    if pending_ids:
+        return False
     if not known_ids:
         return False
     if not all(ticket.get("id") in known_ids for ticket in tickets):

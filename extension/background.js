@@ -126,12 +126,28 @@ async function runSync(reason) {
         throw new Error(`Bet Tracker /auth/me ${meResponse.status}`);
       }
 
+      let knownIds = Array.isArray(config.knownIds) ? config.knownIds : [];
+      let pendingIds = [];
+      const betsResponse = await fetch(CoolbetHistory.betsUrl(config.apiUrl, "Coolbet"), {
+        headers: CoolbetHistory.authHeaders(config.sessionToken),
+        credentials: "omit",
+      });
+      if (betsResponse.ok) {
+        const bets = await betsResponse.json();
+        pendingIds = CoolbetHistory.collectPendingIdsFromBets(bets);
+        if (knownIds.length === 0) {
+          knownIds = CoolbetHistory.collectKnownIdsFromBets(bets);
+          if (knownIds.length) await setState({ knownIds });
+        }
+      }
+
       const tabId = await ensureCoolbetTab();
       const auth = await waitForAuth(10000);
       const result = await sendToTab(tabId, {
         type: "FETCH_TICKETS",
         auth,
-        knownIds: config.knownIds || [],
+        knownIds,
+        pendingIds,
       });
 
       if (!result || result.status === "need_coolbet") {
@@ -147,44 +163,53 @@ async function runSync(reason) {
         return { ok: false, status: "error", error: result.error };
       }
 
-      const tickets = result.tickets || [];
-      const importResponse = await fetch(CoolbetHistory.importUrl(config.apiUrl), {
-        method: "POST",
-        headers: CoolbetHistory.authHeaders(config.sessionToken),
-        credentials: "omit",
-        body: JSON.stringify({ tickets }),
-      });
-
-      if (importResponse.status === 401) {
-        await setState({ lastStatus: "need_bet_tracker", sessionToken: "" });
-        return { ok: false, status: "need_bet_tracker" };
-      }
-
-      if (!importResponse.ok) {
-        const text = await importResponse.text();
-        throw new Error(`Import ${importResponse.status}: ${text.slice(0, 180)}`);
-      }
-
-      const summary = await importResponse.json();
-      const knownIds = Array.from(
-        new Set([...(config.knownIds || []), ...CoolbetHistory.collectTicketIds(tickets)])
+      const fetched = result.tickets || [];
+      const tickets = CoolbetHistory.ticketsToImport(
+        fetched,
+        new Set(knownIds),
+        new Set(pendingIds)
+      );
+      const nextKnownIds = Array.from(
+        new Set([...knownIds, ...CoolbetHistory.collectTicketIds(fetched)])
       ).slice(-4000);
+
+      let summary = { imported: 0, updated: 0, skipped: fetched.length - tickets.length };
+      if (tickets.length > 0) {
+        const importResponse = await fetch(CoolbetHistory.importUrl(config.apiUrl), {
+          method: "POST",
+          headers: CoolbetHistory.authHeaders(config.sessionToken),
+          credentials: "omit",
+          body: JSON.stringify({ tickets }),
+        });
+
+        if (importResponse.status === 401) {
+          await setState({ lastStatus: "need_bet_tracker", sessionToken: "" });
+          return { ok: false, status: "need_bet_tracker" };
+        }
+
+        if (!importResponse.ok) {
+          const text = await importResponse.text();
+          throw new Error(`Import ${importResponse.status}: ${text.slice(0, 180)}`);
+        }
+
+        summary = await importResponse.json();
+      }
 
       await setState({
         lastStatus: "ok",
         lastError: "",
         lastSyncAt: Date.now(),
         lastResult: {
-          fetched: tickets.length,
+          fetched: fetched.length,
           imported: summary.imported || 0,
           updated: summary.updated || 0,
           skipped: summary.skipped || 0,
           reason,
         },
-        knownIds,
+        knownIds: nextKnownIds,
       });
 
-      return { ok: true, status: "ok", summary, fetched: tickets.length };
+      return { ok: true, status: "ok", summary, fetched: fetched.length };
     } catch (err) {
       await setState({
         lastStatus: "error",
