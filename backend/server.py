@@ -16,11 +16,12 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
-from api_sports import ApiSportsClient, list_sports, parse_entity_id
+from api_sports import ApiSportsClient, list_sports, parse_entity_id, SPORTS as API_SPORTS
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from favorite_match import attach_linked_bets
 from favorites_live import match_markets, search_teams
+from tennis_api import TennisApiClient, parse_tennis_id, tennis_sport
 from mongo import mongo_client_kwargs
 from stats import (
     chart_date_bounds,
@@ -587,6 +588,19 @@ def api_sports_client(http=None) -> Optional[ApiSportsClient]:
     if not key:
         return None
     return ApiSportsClient(key, http=http)
+
+
+def tennis_api_client(http=None) -> Optional[TennisApiClient]:
+    key = (
+        os.environ.get("TENNIS_API_KEY")
+        or os.environ.get("SPORTSAPI365_KEY")
+        or os.environ.get("RAPIDAPI_KEY")
+        or ""
+    ).strip()
+    if not key:
+        return None
+    host = os.environ.get("TENNIS_API_HOST", "").strip() or None
+    return TennisApiClient(key, host=host, http=http)
 
 # Auth Helper
 
@@ -1320,7 +1334,7 @@ async def get_favorite_teams(request: Request):
 
 @api_router.get("/favorites/sports")
 async def get_favorite_sports():
-    return list_sports()
+    return list_sports() + [tennis_sport()]
 
 
 @api_router.post("/favorites/players")
@@ -1336,7 +1350,7 @@ async def add_favorite_player(request: Request, player_input: FavoritePlayerCrea
     team_name = player_input.team_name
     team_badge = player_input.team_badge
     client = api_sports_client()
-    if client and not team_id:
+    if client and not team_id and parse_entity_id(player_input.player_id):
         async with httpx.AsyncClient(timeout=8.0) as http:
             client.http = http
             current = await client.acurrent_team_for_player(player_input.player_id)
@@ -1389,15 +1403,21 @@ async def search_favorites(query: str, kind: str = "all", sport: Optional[str] =
     trimmed = (query or "").strip()
     if len(trimmed) < 3:
         return {"items": []}
-    client = api_sports_client()
+    sport_key = (sport or "").lower() or None
     items = []
-    if client:
+    client = api_sports_client()
+    if client and (not sport_key or sport_key in API_SPORTS):
         async with httpx.AsyncClient(timeout=8.0) as http:
             client.http = http
             if kind in {"all", "team"}:
-                items.extend(await client.asearch_teams(trimmed, sport))
+                items.extend(await client.asearch_teams(trimmed, sport_key))
             if kind in {"all", "player"}:
-                items.extend(await client.asearch_players(trimmed, sport))
+                items.extend(await client.asearch_players(trimmed, sport_key))
+    tennis = tennis_api_client()
+    if tennis and (not sport_key or sport_key == "tennis") and kind in {"all", "player", "team"}:
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            tennis.http = http
+            items.extend(await tennis.asearch(trimmed, kind))
     return {"items": items}
 
 
@@ -1425,13 +1445,15 @@ async def get_upcoming_matches(request: Request, days: int = 14, sport: Optional
     now = datetime.now(timezone.utc)
     end_date = now + timedelta(days=days)
     team_ids = await resolve_schedule_team_ids(favorite_teams, favorite_players)
+    tennis_ids = tennis_schedule_ids(favorite_teams, favorite_players)
+    lookup_ids = list(dict.fromkeys([*team_ids, *tennis_ids]))
 
     cached_fixtures = []
-    if team_ids:
+    if lookup_ids:
         cached_fixtures = await db.cached_fixtures.find({
             "$or": [
-                {"home_team_id": {"$in": team_ids}},
-                {"away_team_id": {"$in": team_ids}}
+                {"home_team_id": {"$in": lookup_ids}},
+                {"away_team_id": {"$in": lookup_ids}}
             ],
             "event_date": {
                 "$gte": now.strftime("%Y-%m-%d"),
@@ -1442,10 +1464,17 @@ async def get_upcoming_matches(request: Request, days: int = 14, sport: Optional
 
     has_api_ids = any(parse_entity_id(team_id) for team_id in team_ids)
     cache_is_api = bool(cached_fixtures) and all(item.get("source") == "api-sports" for item in cached_fixtures)
-    if not cached_fixtures or (has_api_ids and not cache_is_api):
+    if has_api_ids and (not cached_fixtures or not cache_is_api):
         fetched = await fetch_and_cache_fixtures(team_ids, days)
         if fetched:
-            cached_fixtures = fetched
+            cached_fixtures = [item for item in cached_fixtures if item.get("source") != "api-sports"] + fetched
+
+    has_tennis_ids = bool(tennis_ids)
+    cache_is_tennis = any(item.get("source") == "tennis-api" for item in cached_fixtures)
+    if has_tennis_ids and not cache_is_tennis:
+        tennis_fetched = await fetch_and_cache_tennis_fixtures(favorite_teams, favorite_players, days)
+        if tennis_fetched:
+            cached_fixtures = cached_fixtures + tennis_fetched
 
     cached_fixtures = [
         fixture for fixture in cached_fixtures
@@ -1470,14 +1499,30 @@ async def get_favorite_match_markets(request: Request, fixture_id: str):
     return match_markets(fixture_id)
 
 
+def tennis_schedule_ids(favorite_teams: List[dict], favorite_players: List[dict]) -> List[str]:
+    ids = []
+    for team in favorite_teams:
+        if parse_tennis_id(team.get("team_id")):
+            ids.append(team["team_id"])
+    for player in favorite_players:
+        if parse_tennis_id(player.get("player_id")):
+            ids.append(player["player_id"])
+    return list(dict.fromkeys(ids))
+
+
 async def resolve_schedule_team_ids(favorite_teams: List[dict], favorite_players: List[dict]) -> List[str]:
     ids = []
     for team in favorite_teams:
+        if parse_tennis_id(team.get("team_id")):
+            continue
         team_id = team.get("provider_team_id") or team.get("team_id")
         if team_id:
             ids.append(team_id)
     client = api_sports_client()
-    unresolved_players = [player for player in favorite_players if not player.get("team_id")]
+    unresolved_players = [
+        player for player in favorite_players
+        if not player.get("team_id") and parse_entity_id(player.get("player_id"))
+    ]
     if client and unresolved_players:
         async with httpx.AsyncClient(timeout=8.0) as http:
             client.http = http
@@ -1501,7 +1546,10 @@ async def resolve_schedule_team_ids(favorite_teams: List[dict], favorite_players
         if team_id:
             ids.append(team_id)
 
-    unresolved = [team for team in favorite_teams if not parse_entity_id(team.get("team_id"))]
+    unresolved = [
+        team for team in favorite_teams
+        if not parse_entity_id(team.get("team_id")) and not parse_tennis_id(team.get("team_id"))
+    ]
     if client and unresolved:
         async with httpx.AsyncClient(timeout=8.0) as http:
             client.http = http
@@ -1553,18 +1601,79 @@ async def fetch_and_cache_fixtures(team_ids: List[str], days: int) -> List[dict]
     return fixtures
 
 
+async def fetch_and_cache_tennis_fixtures(
+    favorite_teams: List[dict],
+    favorite_players: List[dict],
+    days: int,
+) -> List[dict]:
+    client = tennis_api_client()
+    if not client:
+        return []
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=6)
+    cutoff = (now + timedelta(days=days)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+    fixtures = []
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        client.http = http
+        for player in favorite_players:
+            player_id = player.get("player_id")
+            if not parse_tennis_id(player_id):
+                continue
+            try:
+                upcoming = await client.aupcoming_for_player(player_id)
+                fixtures.extend(upcoming)
+            except Exception as e:
+                logging.error(f"Error fetching tennis fixtures for {player_id}: {e}")
+        for team in favorite_teams:
+            team_id = team.get("team_id")
+            if not parse_tennis_id(team_id) or parse_tennis_id(team_id).get("kind") != "tournament":
+                continue
+            try:
+                upcoming = await client.aupcoming_for_tournament(team_id)
+                fixtures.extend(upcoming)
+            except Exception as e:
+                logging.error(f"Error fetching tennis tournament fixtures for {team_id}: {e}")
+
+    stored = []
+    seen = set()
+    for fixture in fixtures:
+        fixture_id = fixture.get("fixture_id")
+        if not fixture_id or fixture_id in seen:
+            continue
+        if fixture.get("event_date") and (fixture["event_date"] < today or fixture["event_date"] > cutoff):
+            continue
+        seen.add(fixture_id)
+        fixture["cached_at"] = now
+        fixture["expires_at"] = expires_at
+        await db.cached_fixtures.update_one(
+            {"fixture_id": fixture_id},
+            {"$set": fixture},
+            upsert=True,
+        )
+        stored.append(fixture)
+    return stored
+
+
 @api_router.get("/teams/search")
 async def search_teams_route(request: Request, query: str, sport: Optional[str] = None):
     trimmed = (query or "").strip()
     if len(trimmed) < 3:
         return search_teams(trimmed, sport)
+    sport_key = (sport or "").lower() or None
+    found = []
     client = api_sports_client()
-    if client:
+    if client and (not sport_key or sport_key in API_SPORTS):
         async with httpx.AsyncClient(timeout=8.0) as http:
             client.http = http
-            found = await client.asearch_teams(trimmed, sport)
-            if found:
-                return found
+            found.extend(await client.asearch_teams(trimmed, sport_key))
+    tennis = tennis_api_client()
+    if tennis and (not sport_key or sport_key == "tennis"):
+        async with httpx.AsyncClient(timeout=8.0) as http:
+            tennis.http = http
+            found.extend(await tennis.asearch(trimmed, "team"))
+    if found:
+        return found
     return search_teams(trimmed, sport)
 
 
