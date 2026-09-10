@@ -118,6 +118,17 @@ def login_payload(user_doc: Dict[str, Any], session_token: str) -> Dict[str, Any
     return {**user_doc, "session_token": session_token}
 
 
+def resolve_last_coolbet_sync_at(
+    user_doc: Optional[Dict[str, Any]],
+    latest_bet_created_at: Optional[Any] = None,
+) -> Optional[Any]:
+    if user_doc:
+        stored = user_doc.get("last_coolbet_sync_at")
+        if stored:
+            return stored
+    return latest_bet_created_at
+
+
 def should_stop_pagination(
     tickets: Iterable[Dict[str, Any]],
     has_next_page: bool,

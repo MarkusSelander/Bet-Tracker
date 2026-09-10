@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader';
 import { Input } from '../components/ui/input';
 import { favoritesStatus } from '../lib/favorites';
 import { betsPath } from '../lib/filters';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -27,7 +28,7 @@ export default function FavoritesPage() {
       setLoadingTeams(false);
       return [];
     }
-    const response = await fetch(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' });
+    const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' });
     if (!response.ok) throw new Error(`Favoritter ${response.status}`);
     const data = await response.json();
     const list = Array.isArray(data) ? data : [];
@@ -52,7 +53,7 @@ export default function FavoritesPage() {
 
   const removeTeam = async (team) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/favorites/teams/${team.team_id}`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams/${team.team_id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

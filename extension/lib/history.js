@@ -183,6 +183,99 @@
     return merged;
   }
 
+  function parseTimestamp(value) {
+    if (value == null || value === "") return null;
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) && ms > 0 ? ms : null;
+    }
+    if (typeof value === "string") {
+      const asNum = Number(value);
+      if (Number.isFinite(asNum) && asNum > 0) return asNum;
+      const parsed = Date.parse(value);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    return null;
+  }
+
+  function resolveLastSyncAt(state) {
+    if (!state || typeof state !== "object") return null;
+    return parseTimestamp(state.lastSyncAt) || parseTimestamp(state.last_coolbet_sync_at);
+  }
+
+  function latestBetCreatedAt(bets) {
+    let latest = null;
+    for (const bet of bets || []) {
+      const ts = parseTimestamp(bet && bet.created_at);
+      if (ts && (latest == null || ts > latest)) latest = ts;
+    }
+    return latest;
+  }
+
+  function formatLastSync(ts) {
+    const resolved = parseTimestamp(ts);
+    if (!resolved) return "Sist synket: aldri";
+    return `Sist synket: ${new Date(resolved).toLocaleString("nb-NO")}`;
+  }
+
+  function clampPercent(value) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  function historyPercent(page, totalPages, hasNextPage) {
+    const safePage = Math.max(1, Number(page) || 1);
+    if (totalPages && totalPages > 0) {
+      return 12 + 56 * (safePage / totalPages);
+    }
+    if (hasNextPage === false) return 68;
+    return 12 + 56 * (1 - 1 / (safePage + 1));
+  }
+
+  function computeSyncProgress(input) {
+    const state = input && typeof input === "object" ? input : {};
+    if (Number.isFinite(state.percent) && state.label && state.phase) {
+      return {
+        phase: state.phase,
+        percent: clampPercent(state.percent),
+        label: String(state.label),
+      };
+    }
+    const phase = state.phase || "auth";
+    const tickets = Number(state.tickets) || 0;
+    const page = Number(state.page) || 1;
+    const totalPages = Number(state.totalPages) || 0;
+    const detailsDone = Number(state.detailsDone) || 0;
+    const detailsTotal = Number(state.detailsTotal) || 0;
+
+    if (phase === "done") {
+      return { phase, percent: 100, label: "Ferdig" };
+    }
+    if (phase === "import") {
+      return { phase, percent: 95, label: "Sender til Bet Tracker…" };
+    }
+    if (phase === "coolbet") {
+      return { phase, percent: 10, label: "Åpner Coolbet…" };
+    }
+    if (phase === "details") {
+      const ratio = detailsTotal > 0 ? detailsDone / detailsTotal : 0;
+      return {
+        phase,
+        percent: clampPercent(70 + 20 * ratio),
+        label: `Henter kupongdetaljer · ${detailsDone}/${detailsTotal}`,
+      };
+    }
+    if (phase === "history") {
+      const percent = clampPercent(historyPercent(page, totalPages, state.hasNextPage));
+      return {
+        phase,
+        percent,
+        label: `Henter historikk · side ${page} · ${tickets} kuponger`,
+      };
+    }
+    return { phase: "auth", percent: 4, label: "Sjekker Bet Tracker…" };
+  }
+
   return {
     HISTORY_PATH,
     TICKET_STATUS,
@@ -192,14 +285,19 @@
     collectKnownIdsFromBets,
     collectPendingIdsFromBets,
     collectTicketIds,
+    computeSyncProgress,
+    formatLastSync,
     historyQuery,
     historyUrl,
     importUrl,
+    latestBetCreatedAt,
     loginPayload,
     loginUrl,
     meUrl,
     mergeTicketDetails,
     needsTicketDetails,
+    parseTimestamp,
+    resolveLastSyncAt,
     shouldFetchTicketDetails,
     shouldStopPagination,
     ticketDetailPaths,

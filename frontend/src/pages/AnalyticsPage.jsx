@@ -32,6 +32,7 @@ import {
   toSearch,
 } from '../lib/filters';
 import { formatCurrency } from '../lib/format';
+import { fetchWithTimeout } from '../lib/fetch';
 import { exportAnalyticsToPDF } from '../utils/pdfExport';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -207,17 +208,17 @@ export default function AnalyticsPage() {
           bookieOptRes,
           tipsterOptRes,
         ] = await Promise.all([
-          fetch(apiUrl('/api/analytics/stats', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/chart', chartQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/sports', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/leagues', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/odds-range', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/bookmakers', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/tipsters', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/ticket-types', dataQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/sports', optionQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/bookmakers', optionQs), { credentials: 'include' }),
-          fetch(apiUrl('/api/analytics/tipsters', optionQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/stats', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/chart', chartQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/sports', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/leagues', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/odds-range', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/bookmakers', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/tipsters', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/ticket-types', dataQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/sports', optionQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/bookmakers', optionQs), { credentials: 'include' }),
+          fetchWithTimeout(apiUrl('/api/analytics/tipsters', optionQs), { credentials: 'include' }),
         ]);
 
         const statsData = await readJson(statsRes, null);

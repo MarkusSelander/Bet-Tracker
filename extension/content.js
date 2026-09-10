@@ -25,6 +25,20 @@
     return pageAuth;
   }
 
+  function reportProgress(partial) {
+    try {
+      chrome.runtime.sendMessage({ type: "SYNC_PROGRESS", ...partial });
+    } catch (_err) {
+      /* extension context may be invalidated */
+    }
+  }
+
+  function historyTotalPages(data) {
+    const value = data && (data.totalPages ?? data.total_pages ?? data.pageCount ?? data.numberOfPages);
+    const total = Number(value);
+    return total > 0 ? total : 0;
+  }
+
   async function fetchTickets(auth, knownIds, pendingIds) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
@@ -65,11 +79,19 @@
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
       all.push(...tickets);
       for (const ticket of tickets) remainingPending.delete(ticket.id);
+      const hasNextPage = Boolean(data.hasNextPage);
+      reportProgress({
+        phase: "history",
+        page,
+        totalPages: historyTotalPages(data),
+        hasNextPage,
+        tickets: all.length,
+      });
 
       if (
         CoolbetHistory.shouldStopPagination({
           tickets,
-          hasNextPage: Boolean(data.hasNextPage),
+          hasNextPage,
           knownIds: known,
           pendingIds: remainingPending,
         })
@@ -82,11 +104,20 @@
     }
 
     const pending = new Set(pendingIds || []);
+    const detailsTotal = all.filter((ticket) => CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending)).length;
     const enriched = [];
+    let detailsDone = 0;
     for (const ticket of all) {
       if (!CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending)) {
         enriched.push(ticket);
         continue;
+      }
+      if (detailsTotal > 0) {
+        reportProgress({
+          phase: "details",
+          detailsDone,
+          detailsTotal,
+        });
       }
       let merged = ticket;
       for (const path of CoolbetHistory.ticketDetailPaths(ticket.id, ticket.display_id)) {
@@ -101,6 +132,12 @@
         }
       }
       enriched.push(merged);
+      detailsDone += 1;
+      reportProgress({
+        phase: "details",
+        detailsDone,
+        detailsTotal,
+      });
       await sleep(250);
     }
 

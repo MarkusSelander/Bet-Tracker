@@ -2,6 +2,9 @@ const statusEl = document.getElementById("status");
 const lastSyncEl = document.getElementById("last-sync");
 const resultEl = document.getElementById("result");
 const errorEl = document.getElementById("error");
+const progressEl = document.getElementById("progress");
+const progressBarEl = document.getElementById("progress-bar");
+const progressLabelEl = document.getElementById("progress-label");
 const syncBtn = document.getElementById("sync-now");
 
 const STATUS_TEXT = {
@@ -12,16 +15,23 @@ const STATUS_TEXT = {
   error: "Feil under synk",
 };
 
-function formatTime(ts) {
-  if (!ts) return "Sist synket: aldri";
-  return `Sist synket: ${new Date(ts).toLocaleString("nb-NO")}`;
-}
-
 function render(state) {
+  const lastSyncAt = CoolbetHistory.resolveLastSyncAt(state);
   const status = state.lastStatus || (state.sessionToken ? "ok" : "need_bet_tracker");
   statusEl.textContent = STATUS_TEXT[status] || STATUS_TEXT.error;
   statusEl.className = `status ${status === "ok" ? "ok" : status === "need_coolbet" || status === "need_bet_tracker" ? "warn" : status === "syncing" ? "" : "error"}`;
-  lastSyncEl.textContent = formatTime(state.lastSyncAt);
+  lastSyncEl.textContent = CoolbetHistory.formatLastSync(lastSyncAt);
+  const progress = status === "syncing" ? CoolbetHistory.computeSyncProgress(state.syncProgress || { phase: "auth" }) : null;
+  if (progress) {
+    progressEl.hidden = false;
+    progressBarEl.style.width = `${progress.percent}%`;
+    progressLabelEl.textContent = `${progress.label} · ${progress.percent}%`;
+    progressEl.setAttribute("aria-valuenow", String(progress.percent));
+  } else {
+    progressEl.hidden = true;
+    progressBarEl.style.width = "0%";
+    progressLabelEl.textContent = "";
+  }
   if (state.lastResult && status === "ok") {
     const r = state.lastResult;
     resultEl.textContent = `${r.fetched || 0} hentet · ${r.imported || 0} nye · ${r.updated || 0} oppdatert`;
@@ -38,20 +48,69 @@ function render(state) {
   syncBtn.disabled = status === "syncing";
 }
 
+async function readState() {
+  const local = await chrome.storage.local.get(null);
+  const fromMessage = await chrome.runtime.sendMessage({ type: "GET_STATE" }).catch(() => null);
+  return { ...(fromMessage || {}), ...local };
+}
+
+async function hydrateLastSync(state) {
+  const existing = CoolbetHistory.resolveLastSyncAt(state);
+  if (existing || !state.apiUrl || !state.sessionToken) return state;
+
+  const headers = CoolbetHistory.authHeaders(state.sessionToken);
+  try {
+    const meResponse = await fetch(CoolbetHistory.meUrl(state.apiUrl), {
+      headers,
+      credentials: "omit",
+    });
+    if (meResponse.ok) {
+      const remoteTs = CoolbetHistory.resolveLastSyncAt(await meResponse.json());
+      if (remoteTs) {
+        await chrome.storage.local.set({ lastSyncAt: remoteTs });
+        return { ...state, lastSyncAt: remoteTs };
+      }
+    }
+
+    const betsResponse = await fetch(CoolbetHistory.betsUrl(state.apiUrl, "Coolbet"), {
+      headers,
+      credentials: "omit",
+    });
+    if (!betsResponse.ok) return state;
+    const remoteTs = CoolbetHistory.latestBetCreatedAt(await betsResponse.json());
+    if (!remoteTs) return state;
+    await chrome.storage.local.set({ lastSyncAt: remoteTs });
+    return { ...state, lastSyncAt: remoteTs };
+  } catch (_err) {
+    return state;
+  }
+}
+
 async function refresh() {
-  const state = await chrome.runtime.sendMessage({ type: "GET_STATE" });
+  const state = await hydrateLastSync(await readState());
   render(state || {});
 }
 
 syncBtn.addEventListener("click", async () => {
   syncBtn.disabled = true;
   statusEl.textContent = STATUS_TEXT.syncing;
+  const start = CoolbetHistory.computeSyncProgress({ phase: "auth" });
+  progressEl.hidden = false;
+  progressBarEl.style.width = `${start.percent}%`;
+  progressLabelEl.textContent = `${start.label} · ${start.percent}%`;
   await chrome.runtime.sendMessage({ type: "RUN_SYNC" });
   await refresh();
 });
 
 document.getElementById("open-options").addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes.lastSyncAt || changes.lastStatus || changes.lastResult || changes.lastError || changes.syncProgress) {
+    refresh();
+  }
 });
 
 refresh();

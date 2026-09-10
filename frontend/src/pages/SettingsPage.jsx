@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -19,7 +20,7 @@ export default function SettingsPage() {
 
   const handleCurrencyChange = async (newCurrency) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/currency`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/currency`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -39,7 +40,7 @@ export default function SettingsPage() {
 
   const handleExport = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/bets/export`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/export`, {
         credentials: 'include',
       });
 
@@ -75,7 +76,7 @@ export default function SettingsPage() {
       try {
         const csvData = e.target.result;
 
-        const response = await fetch(`${BACKEND_URL}/api/bets/import`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -120,7 +121,7 @@ export default function SettingsPage() {
           throw new Error('JSON must be an array of tickets');
         }
 
-        const response = await fetch(`${BACKEND_URL}/api/bets/import/coolbet`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/import/coolbet`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

@@ -35,6 +35,13 @@ async function setState(partial) {
   await chrome.storage.local.set(partial);
 }
 
+async function setProgress(partial) {
+  await setState({
+    lastStatus: "syncing",
+    syncProgress: CoolbetHistory.computeSyncProgress(partial),
+  });
+}
+
 async function waitForTabComplete(tabId, timeoutMs = 25000) {
   const existing = await chrome.tabs.get(tabId);
   if (existing.status === "complete") return;
@@ -100,17 +107,18 @@ async function runSync(reason) {
   if (syncInFlight) return syncInFlight;
 
   syncInFlight = (async () => {
-    await setState({ lastStatus: "syncing", lastError: "" });
+    await setState({ lastStatus: "syncing", lastError: "", syncProgress: CoolbetHistory.computeSyncProgress({ phase: "auth" }) });
 
     try {
       const config = await chrome.storage.local.get([
         "apiUrl",
         "sessionToken",
         "knownIds",
+        "lastSyncAt",
       ]);
 
       if (!config.apiUrl || !config.sessionToken) {
-        await setState({ lastStatus: "need_bet_tracker" });
+        await setState({ lastStatus: "need_bet_tracker", syncProgress: null });
         return { ok: false, status: "need_bet_tracker" };
       }
 
@@ -119,11 +127,17 @@ async function runSync(reason) {
         credentials: "omit",
       });
       if (meResponse.status === 401) {
-        await setState({ lastStatus: "need_bet_tracker", sessionToken: "" });
+        await setState({ lastStatus: "need_bet_tracker", sessionToken: "", syncProgress: null });
         return { ok: false, status: "need_bet_tracker" };
       }
       if (!meResponse.ok) {
         throw new Error(`Bet Tracker /auth/me ${meResponse.status}`);
+      }
+      const me = await meResponse.json().catch(() => ({}));
+      const remoteSyncAt = CoolbetHistory.resolveLastSyncAt(me);
+      if (remoteSyncAt && !config.lastSyncAt) {
+        await setState({ lastSyncAt: remoteSyncAt });
+        config.lastSyncAt = remoteSyncAt;
       }
 
       let knownIds = Array.isArray(config.knownIds) ? config.knownIds : [];
@@ -141,6 +155,7 @@ async function runSync(reason) {
         }
       }
 
+      await setProgress({ phase: "coolbet" });
       const tabId = await ensureCoolbetTab();
       const auth = await waitForAuth(10000);
       const result = await sendToTab(tabId, {
@@ -151,7 +166,7 @@ async function runSync(reason) {
       });
 
       if (!result || result.status === "need_coolbet") {
-        await setState({ lastStatus: "need_coolbet" });
+        await setState({ lastStatus: "need_coolbet", syncProgress: null });
         return { ok: false, status: "need_coolbet" };
       }
 
@@ -159,6 +174,7 @@ async function runSync(reason) {
         await setState({
           lastStatus: "error",
           lastError: result.error || "Ukjent feil fra Coolbet",
+          syncProgress: null,
         });
         return { ok: false, status: "error", error: result.error };
       }
@@ -175,6 +191,7 @@ async function runSync(reason) {
 
       let summary = { imported: 0, updated: 0, skipped: fetched.length - tickets.length };
       if (tickets.length > 0) {
+        await setProgress({ phase: "import" });
         const importResponse = await fetch(CoolbetHistory.importUrl(config.apiUrl), {
           method: "POST",
           headers: CoolbetHistory.authHeaders(config.sessionToken),
@@ -183,7 +200,7 @@ async function runSync(reason) {
         });
 
         if (importResponse.status === 401) {
-          await setState({ lastStatus: "need_bet_tracker", sessionToken: "" });
+          await setState({ lastStatus: "need_bet_tracker", sessionToken: "", syncProgress: null });
           return { ok: false, status: "need_bet_tracker" };
         }
 
@@ -195,10 +212,13 @@ async function runSync(reason) {
         summary = await importResponse.json();
       }
 
+      const lastSyncAt = Date.now();
+      await setState({ lastSyncAt });
       await setState({
         lastStatus: "ok",
         lastError: "",
-        lastSyncAt: Date.now(),
+        lastSyncAt,
+        syncProgress: CoolbetHistory.computeSyncProgress({ phase: "done" }),
         lastResult: {
           fetched: fetched.length,
           imported: summary.imported || 0,
@@ -214,6 +234,7 @@ async function runSync(reason) {
       await setState({
         lastStatus: "error",
         lastError: String(err.message || err),
+        syncProgress: null,
       });
       return { ok: false, status: "error", error: String(err.message || err) };
     } finally {
@@ -241,9 +262,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return undefined;
   }
 
-  if (message.type === "COOLBET_HISTORY_OPEN") {
-    maybeAutoSync("history-page");
+  if (message.type === "SYNC_PROGRESS") {
+    setProgress(message);
     return undefined;
+  }
+
+  if (message.type === "COOLBET_HISTORY_OPEN") {
+    Promise.resolve(maybeAutoSync("history-page")).finally(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (message.type === "RUN_SYNC") {
@@ -252,7 +278,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "GET_STATE") {
-    chrome.storage.local.get(null).then(sendResponse);
+    chrome.storage.local
+      .get([
+        "lastSyncAt",
+        "lastStatus",
+        "lastResult",
+        "lastError",
+        "syncProgress",
+        "sessionToken",
+        "apiUrl",
+      ])
+      .then((state) => {
+        sendResponse({
+          ...state,
+          lastSyncAt: CoolbetHistory.resolveLastSyncAt(state),
+        });
+      });
     return true;
   }
 
@@ -263,6 +304,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === ALARM_NAME) maybeAutoSync("alarm");
 });
 
+async function recoverInterruptedSync() {
+  const current = await chrome.storage.local.get(["lastStatus", "lastSyncAt"]);
+  if (current.lastStatus === "syncing") {
+    await chrome.storage.local.set({
+      lastStatus: current.lastSyncAt ? "ok" : "",
+      lastError: "",
+      syncProgress: null,
+    });
+  }
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   const current = await chrome.storage.local.get(["autoOnHistory", "autoAlarm"]);
   if (current.autoOnHistory === undefined) {
@@ -271,7 +323,10 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (current.autoAlarm) {
     chrome.alarms.create(ALARM_NAME, { periodInMinutes: 360 });
   }
+  await recoverInterruptedSync();
 });
+
+recoverInterruptedSync();
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.autoAlarm) return;

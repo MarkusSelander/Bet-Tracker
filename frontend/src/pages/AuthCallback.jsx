@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -22,7 +23,7 @@ export default function AuthCallback() {
       }
 
       try {
-        const response = await fetch(`${BACKEND_URL}/api/auth/session`, {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/session`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { fetchWithTimeout } from '../lib/fetch';
+import { fetchWithTimeout, setSessionToken } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -34,6 +34,7 @@ export const AuthProvider = ({ children }) => {
         if (authCheckId.current !== checkId) return;
 
         if (!response.ok) {
+          if (response.status === 401) setSessionToken(null);
           setUser(null);
           return;
         }
@@ -87,6 +88,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     const userData = await response.json();
+    if (userData.session_token) setSessionToken(userData.session_token);
     delete userData.session_token;
     setUser(userData);
     return userData;
@@ -104,6 +106,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      setSessionToken(null);
       setUser(null);
       setLoading(false);
     }
