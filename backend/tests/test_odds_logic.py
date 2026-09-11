@@ -1,4 +1,4 @@
-from odds_logic import best_h2h, map_event_markets
+from odds_logic import best_h2h, filter_matches, map_event_markets
 
 
 def test_best_h2h_picks_highest_price_per_outcome_and_bookmaker():
@@ -174,3 +174,40 @@ def test_map_event_markets_omits_missing_btts():
     }
     keys = [item["key"] for item in map_event_markets(payload)]
     assert keys == ["h2h"]
+
+
+def _match(**overrides):
+    row = {
+        "id": "1",
+        "sport_key": "soccer_norway_eliteserien",
+        "sport_title": "Eliteserien",
+        "commence_time": "2026-09-11T16:00:00Z",
+        "home_team": "Brann",
+        "away_team": "Molde",
+        "completed": False,
+        "scores": None,
+        "odds_1x2": {"home": 1.7, "draw": 3.8, "away": 4.5},
+    }
+    row.update(overrides)
+    return row
+
+
+def test_filter_matches_by_local_date():
+    rows = [
+        _match(id="on", commence_time="2026-09-11T16:00:00Z"),
+        _match(id="off", commence_time="2026-09-12T16:00:00Z"),
+    ]
+    ids = [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="all")]
+    assert ids == ["on"]
+
+
+def test_filter_matches_live_finished_scheduled_odds():
+    live = _match(id="live", scores=[{"name": "Brann", "score": "1"}, {"name": "Molde", "score": "0"}], completed=False)
+    done = _match(id="done", completed=True, scores=[{"name": "Brann", "score": "2"}])
+    soon = _match(id="soon", scores=None, completed=False, odds_1x2=None)
+    priced = _match(id="priced")
+    rows = [live, done, soon, priced]
+    assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="live")] == ["live"]
+    assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="finished")] == ["done"]
+    assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="scheduled")] == ["soon", "priced"]
+    assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="odds")] == ["live", "done", "priced"]

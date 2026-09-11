@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+
+
 def _h2h_market(bookmaker):
     for market in bookmaker.get("markets") or []:
         if market.get("key") == "h2h":
@@ -103,3 +106,33 @@ def map_event_markets(event):
     if btts:
         mapped.append({"key": "btts", "outcomes": btts})
     return mapped
+
+
+def match_date(commence_time):
+    if not commence_time:
+        return None
+    text = str(commence_time).replace("Z", "+00:00")
+    try:
+        value = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.date().isoformat()
+
+
+def match_status(match):
+    if match.get("completed"):
+        return "finished"
+    if match.get("scores"):
+        return "live"
+    return "scheduled"
+
+
+def filter_matches(matches, date, status_filter="all"):
+    filtered = [row for row in matches if match_date(row.get("commence_time")) == date]
+    if status_filter in {"live", "finished", "scheduled"}:
+        filtered = [row for row in filtered if match_status(row) == status_filter]
+    if status_filter == "odds":
+        filtered = [row for row in filtered if row.get("odds_1x2")]
+    return filtered
