@@ -31,8 +31,12 @@ function oddsValue(odds, key) {
 }
 
 function apiErrorMessage(status, data, fallback) {
+  const detail = typeof data?.detail === 'string' ? data.detail : '';
+  if (status === 429) {
+    return detail || 'Odds API-kvote brukt opp';
+  }
   if (status === 502 || status === 503) {
-    return typeof data?.detail === 'string' ? data.detail : 'Odds API utilgjengelig';
+    return detail || 'Odds API utilgjengelig';
   }
   return fallback;
 }
@@ -83,12 +87,14 @@ export default function FavoritesPage() {
 
   const loadMatches = useCallback(async () => {
     setError(null);
+    setMatches([]);
     const response = await fetchWithTimeout(
       `${BACKEND_URL}/api/odds/matches?date=${encodeURIComponent(date)}&tab=${encodeURIComponent(tab)}&filter=${encodeURIComponent(filter)}`,
       { credentials: 'include' }
     );
     const data = await response.json().catch(() => []);
     if (!response.ok) {
+      setMatches([]);
       setError(apiErrorMessage(response.status, data, 'Kunne ikke hente kamper'));
       return;
     }
@@ -341,7 +347,7 @@ export default function FavoritesPage() {
                   Legg til lag
                 </Button>
               </div>
-            ) : groups.length === 0 ? (
+            ) : error ? null : groups.length === 0 ? (
               <p className="p-6 text-sm text-text-secondary">Ingen kamper for valgt dag.</p>
             ) : (
               <div>

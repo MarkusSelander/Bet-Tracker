@@ -20,12 +20,14 @@ from auth_cookies import use_cross_site_cookies
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
-from odds_client import OddsApiError, OddsClient, TTL_MARKETS, TTL_ODDS, TTL_SCORES, TTL_SPORTS, default_http_get
+from odds_client import OddsApiError, OddsClient, TTL_MARKETS, TTL_ODDS, TTL_SCORES, TTL_SPORTS, default_http_get, preferred_odds_fetch_error
 from odds_logic import (
     best_h2h,
     favorite_matches,
+    favorite_sport_keys,
     filter_matches,
     map_event_markets,
+    merge_sport_fetch_results,
     normalize_event,
     search_event_sport_keys,
     search_leagues_and_teams,
@@ -1279,28 +1281,77 @@ def _merge_score_and_odds(score_event, odds_event, sport_key, sport_title):
     return normalize_event(combined, best_h2h(combined))
 
 
-async def _matches_for_sport_keys(sport_keys, sports):
-    titles = _sport_title_map(sports)
-    matches = []
-    for key in sport_keys:
-        scores_rows = await odds_client.get_json(
+SPORT_FETCH_CONCURRENCY = 3
+MATCHES_FETCH_BUDGET_SECONDS = 22.0
+
+
+async def _sport_endpoint_rows(path, params, ttl_seconds):
+    try:
+        return await odds_client.get_json(path, params, ttl_seconds=ttl_seconds), None
+    except OddsApiError as err:
+        logger.warning("Odds API feilet for %s: %s", path, err.detail)
+        return [], err
+
+
+async def _matches_for_one_sport(key, titles):
+    (scores_rows, scores_err), (odds_rows, odds_err) = await asyncio.gather(
+        _sport_endpoint_rows(
             f"/sports/{key}/scores",
             {"daysFrom": "3"},
-            ttl_seconds=TTL_SCORES,
-        )
-        odds_rows = await odds_client.get_json(
+            TTL_SCORES,
+        ),
+        _sport_endpoint_rows(
             f"/sports/{key}/odds",
             {"regions": "eu", "markets": "h2h", "oddsFormat": "decimal"},
-            ttl_seconds=TTL_ODDS,
-        )
-        scores_map = {row["id"]: row for row in scores_rows or [] if row.get("id")}
-        odds_map = {row["id"]: row for row in odds_rows or [] if row.get("id")}
-        title = titles.get(key) or key
-        for event_id in dict.fromkeys([*scores_map, *odds_map]):
-            matches.append(
-                _merge_score_and_odds(scores_map.get(event_id), odds_map.get(event_id), key, title)
-            )
-    return matches
+            TTL_ODDS,
+        ),
+    )
+    errors = [err for err in (scores_err, odds_err) if err]
+    if not scores_rows and not odds_rows:
+        return preferred_odds_fetch_error(errors) if errors else []
+    scores_map = {row["id"]: row for row in scores_rows or [] if row.get("id")}
+    odds_map = {row["id"]: row for row in odds_rows or [] if row.get("id")}
+    title = titles.get(key) or key
+    return [
+        _merge_score_and_odds(scores_map.get(event_id), odds_map.get(event_id), key, title)
+        for event_id in dict.fromkeys([*scores_map, *odds_map])
+    ]
+
+
+async def _matches_for_sport_keys(sport_keys, sports):
+    titles = _sport_title_map(sports)
+    unique_keys = [key for key in dict.fromkeys(sport_keys or []) if key]
+    if not unique_keys:
+        return []
+    sem = asyncio.Semaphore(SPORT_FETCH_CONCURRENCY)
+
+    async def guarded(key):
+        async with sem:
+            try:
+                return await _matches_for_one_sport(key, titles)
+            except OddsApiError as err:
+                logger.warning("Odds API feilet for sport_key=%s: %s", key, err.detail)
+                return err
+
+    tasks = [asyncio.create_task(guarded(key)) for key in unique_keys]
+    done, pending = await asyncio.wait(tasks, timeout=MATCHES_FETCH_BUDGET_SECONDS)
+    timed_out = []
+    for task in pending:
+        task.cancel()
+        timed_out.append(OddsApiError(502, "Odds API utilgjengelig (timeout)"))
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    results = []
+    for task in done:
+        try:
+            results.append(task.result())
+        except OddsApiError as err:
+            results.append(err)
+        except Exception:
+            results.append(OddsApiError(502, "Odds API utilgjengelig"))
+    results.extend(timed_out)
+    return merge_sport_fetch_results(results)
 
 
 async def _favorite_state(user_id: str):
@@ -1308,16 +1359,13 @@ async def _favorite_state(user_id: str):
     teams = await _user_docs(db.favorite_teams, user_id)
     events = await _user_docs(db.favorite_events, user_id)
     league_keys = [row.get("sport_key") for row in leagues if row.get("sport_key")]
-    team_keys = [row.get("sport_key") for row in teams if row.get("sport_key")]
-    event_keys = [row.get("sport_key") for row in events if row.get("sport_key")]
     event_ids = [row.get("event_id") for row in events if row.get("event_id")]
-    sport_keys = list(dict.fromkeys([*league_keys, *team_keys, *event_keys]))
     return {
         "leagues": leagues,
         "teams": teams,
         "event_ids": event_ids,
         "league_keys": league_keys,
-        "sport_keys": sport_keys,
+        "sport_keys": favorite_sport_keys(league_keys, teams, events),
     }
 
 

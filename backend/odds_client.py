@@ -8,6 +8,7 @@ TTL_SPORTS = 12 * 60 * 60
 TTL_SCORES = 2 * 60
 TTL_ODDS = 3 * 60
 TTL_MARKETS = 3 * 60
+HTTP_TIMEOUT = httpx.Timeout(8.0, connect=5.0)
 
 
 class OddsApiError(Exception):
@@ -17,12 +18,40 @@ class OddsApiError(Exception):
         self.detail = detail
 
 
+def odds_error_from_http_status(status_code):
+    if status_code == 429:
+        return OddsApiError(429, "Odds API-kvote brukt opp (429)")
+    if status_code in (401, 403):
+        return OddsApiError(502, f"Odds API avvist ({status_code})")
+    return OddsApiError(502, f"Odds API utilgjengelig ({status_code})")
+
+
+def preferred_odds_fetch_error(errors):
+    if not errors:
+        return OddsApiError(502, "Odds API utilgjengelig")
+    for err in errors:
+        if err.status_code == 429:
+            return err
+    for err in errors:
+        if err.status_code in (401, 403):
+            return err
+    err = errors[0]
+    if err.status_code in (401, 403, 429, 502, 503) and err.detail:
+        return err
+    return OddsApiError(502, err.detail or "Odds API utilgjengelig")
+
+
 async def default_http_get(url, params):
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(url, params=params)
-        if response.status_code >= 400:
-            raise OddsApiError(502, "Odds API utilgjengelig")
-        return response.json()
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(url, params=params)
+    except httpx.TimeoutException as exc:
+        raise OddsApiError(502, "Odds API utilgjengelig (timeout)") from exc
+    except httpx.HTTPError as exc:
+        raise OddsApiError(502, "Odds API utilgjengelig") from exc
+    if response.status_code >= 400:
+        raise odds_error_from_http_status(response.status_code)
+    return response.json()
 
 
 class OddsClient:
