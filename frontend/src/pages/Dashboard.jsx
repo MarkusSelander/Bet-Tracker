@@ -14,7 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import BetDetailsDialog from '../components/BetDetailsDialog';
+import BetTicketDialog from '../components/BetTicketDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { analyticsPath, betsPath } from '../lib/filters';
@@ -324,11 +324,12 @@ export default function Dashboard() {
         )}
       </div>
 
-      <BetDetailsDialog
+      <BetTicketDialog
         bet={detailBet}
+        mode="view"
         open={Boolean(detailBet)}
-        onOpenChange={(open) => {
-          if (!open) setDetailBet(null);
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setDetailBet(null);
         }}
         currency={currency}
       />
