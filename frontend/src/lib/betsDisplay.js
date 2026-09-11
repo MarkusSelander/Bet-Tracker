@@ -34,7 +34,7 @@ export function formatBetDate(date, time) {
 export function isComboBet(bet) {
   const total = Number(bet?.total_matches) || 0;
   const legs = Array.isArray(bet?.legs) ? bet.legs.length : 0;
-  const extra = parseGameExtras(bet?.game).extra;
+  const { extra } = parseGameExtras(bet?.game);
   return total > 1 || legs > 1 || extra > 0 || ['combo', 'system', 'betbuilder'].includes(bet?.ticket_type);
 }
 
@@ -57,11 +57,7 @@ export function getBetSports(bet) {
 export function getMatchSummary(bet) {
   const parsed = parseGameExtras(bet?.game);
   const legs = Array.isArray(bet?.legs) ? bet.legs.filter((leg) => leg?.match) : [];
-  const totalMatches = Math.max(
-    Number(bet?.total_matches) || 0,
-    legs.length,
-    parsed.extra + (parsed.name ? 1 : 0)
-  );
+  const totalMatches = Math.max(Number(bet?.total_matches) || 0, legs.length, parsed.extra + (parsed.name ? 1 : 0));
   const combo = isComboBet(bet);
   const primary = (legs[0]?.match || parsed.name || bet?.game || '').trim();
   const extraCount = Math.max(0, totalMatches - 1, parsed.extra, Math.max(0, legs.length - 1));
@@ -115,6 +111,7 @@ export function sortBets(bets, key, dir = 'desc') {
 export function nextSortState(currentKey, currentDir, clickedKey) {
   if (currentKey !== clickedKey) return { key: clickedKey, dir: 'asc' };
   if (currentDir === 'asc') return { key: clickedKey, dir: 'desc' };
+  if (clickedKey === 'date') return { key: 'date', dir: 'asc' };
   return { key: 'date', dir: 'desc' };
 }
 

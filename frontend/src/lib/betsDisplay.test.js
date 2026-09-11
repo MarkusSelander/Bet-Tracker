@@ -88,6 +88,8 @@ test('sortBets orders by date and toggles through nextSortState', () => {
   assert.equal(desc[0].date, '2026-06-10');
   assert.deepEqual(nextSortState('date', 'desc', 'match'), { key: 'match', dir: 'asc' });
   assert.deepEqual(nextSortState('match', 'asc', 'match'), { key: 'match', dir: 'desc' });
+  assert.deepEqual(nextSortState('date', 'desc', 'date'), { key: 'date', dir: 'asc' });
+  assert.deepEqual(nextSortState('match', 'desc', 'match'), { key: 'date', dir: 'desc' });
 });
 
 test('formatStatusLine includes result for settled bets', () => {

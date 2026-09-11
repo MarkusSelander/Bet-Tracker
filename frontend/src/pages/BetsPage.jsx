@@ -38,9 +38,9 @@ import {
   statusDotClass,
   statusTextClass,
 } from '../lib/betsDisplay';
+import { fetchWithTimeout } from '../lib/fetch';
 import { ODDS_RANGES, filterBets, parseFilters, toBetsApiSearch, toSearch } from '../lib/filters';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency } from '../lib/format';
-import { fetchWithTimeout } from '../lib/fetch';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -65,7 +65,7 @@ const SORT_COLUMNS = [
 ];
 
 const filterTriggerClass =
-  'h-10 min-w-[148px] rounded-xl border-white/10 bg-[#12151c] text-sm text-text-secondary hover:bg-white/5 hover:text-white';
+  'h-10 w-auto min-w-[148px] max-w-[220px] shrink-0 rounded-xl border-white/10 bg-[#12151c] text-sm text-text-secondary hover:bg-white/5 hover:text-white';
 
 function uniqueValues(rows, key, extra) {
   const values = new Set(rows.map((row) => row[key]).filter(Boolean));
@@ -77,7 +77,9 @@ function SortHeader({ column, sortKey, sortDir, onSort }) {
   const active = sortKey === column.key;
   const tooltip = sortTooltip(sortKey, sortDir, column.key);
   return (
-    <th className={`py-3 px-3 text-[12px] font-medium text-text-secondary whitespace-nowrap ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
+    <th
+      className={`py-3 px-3 text-[12px] font-medium text-text-secondary whitespace-nowrap ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -97,9 +99,7 @@ function SortHeader({ column, sortKey, sortDir, onSort }) {
             )}
           </button>
         </TooltipTrigger>
-        <TooltipContent className="bg-[#1c1f26] text-white border border-white/10 text-xs">
-          {tooltip}
-        </TooltipContent>
+        <TooltipContent className="bg-[#1c1f26] text-white border border-white/10 text-xs">{tooltip}</TooltipContent>
       </Tooltip>
     </th>
   );
@@ -126,9 +126,7 @@ function MatchCell({ bet }) {
     <div className="min-w-0 max-w-[240px]" title={summary.primary}>
       {summary.prefix ? <div className="text-[12px] text-white/90">{summary.prefix}:</div> : null}
       <div className="text-[13px] text-white truncate">{summary.primary || '—'}</div>
-      {summary.extraCount > 0 ? (
-        <div className="text-[12px] text-accent">og {summary.extraCount} mer</div>
-      ) : null}
+      {summary.extraCount > 0 ? <div className="text-[12px] text-accent">og {summary.extraCount} mer</div> : null}
     </div>
   );
 }
@@ -431,7 +429,9 @@ export default function BetsPage() {
             <Layers className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-[22px] leading-none font-semibold tracking-tight">{formatCurrency(kpis.stake, currency)}</p>
+            <p className="text-[22px] leading-none font-semibold tracking-tight">
+              {formatCurrency(kpis.stake, currency)}
+            </p>
             <p className="text-xs text-text-secondary mt-1.5">Total aktiv innsats</p>
           </div>
         </button>
@@ -608,7 +608,7 @@ export default function BetsPage() {
         ) : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1">
+          <div className="relative min-w-[220px] w-full sm:w-auto sm:flex-1 sm:max-w-md">
             <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
               value={filters.q}
@@ -783,7 +783,8 @@ export default function BetsPage() {
 
               <div className="flex items-center space-x-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  const showPage = page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
+                  const showPage =
+                    page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
                   const showEllipsisBefore = page === currentPage - 2 && currentPage > 3;
                   const showEllipsisAfter = page === currentPage + 2 && currentPage < totalPages - 2;
 
