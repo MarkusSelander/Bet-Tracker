@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from stats import (
+    build_chart_data,
     chart_date_bounds,
     compute_breakdown,
     compute_odds_range_breakdown,
@@ -244,6 +245,25 @@ def test_chart_date_bounds_days_all_has_no_cap():
 
     assert start is None
     assert end is None
+
+
+def test_build_chart_data_includes_settled_stake_as_turnover():
+    rows = build_chart_data(
+        [
+            _bet(date="2026-03-02", status="lost", stake=50, result=-50),
+            _bet(date="2026-03-01", status="won", stake=100, result=80),
+            _bet(date="2026-03-02", status="pending", stake=200, result=0),
+        ]
+    )
+
+    assert [row["date"] for row in rows] == ["2026-03-01", "2026-03-02"]
+    assert rows[0]["daily_stake"] == 100
+    assert rows[0]["cumulative_stake"] == 100
+    assert rows[0]["daily_pl"] == 80
+    assert rows[1]["daily_stake"] == 50
+    assert rows[1]["cumulative_stake"] == 150
+    assert rows[1]["bets"] == 2
+    assert rows[1]["cumulative_pl"] == 30
 
 
 def test_chart_omitted_days_uses_range_or_defaults_to_30():

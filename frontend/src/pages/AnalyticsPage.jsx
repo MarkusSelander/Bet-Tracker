@@ -16,6 +16,8 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import DailyResultChart from '../components/DailyResultChart';
+import DailyTurnoverChart from '../components/DailyTurnoverChart';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -629,25 +631,25 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      <div className={`${cardClass} p-6`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold">Daglig resultat</h2>
-          {chartData.length > 40 ? <p className="text-xs text-text-muted">Siste 40 dager med aktivitet</p> : null}
-        </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={dailyData} onClick={goToChartDate} style={{ cursor: 'pointer' }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-            <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-            <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
-            <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
-            <Bar dataKey="daily_pl" name="P/L" radius={[3, 3, 0, 0]}>
-              {dailyData.map((entry) => (
-                <Cell key={entry.date} fill={entry.daily_pl >= 0 ? '#10B981' : '#EF4444'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <DailyResultChart
+        data={dailyData}
+        currency={currency}
+        truncated={chartData.length > 40}
+        onDateSelect={(date) => {
+          if (!date) return;
+          navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
+        }}
+      />
+
+      <DailyTurnoverChart
+        data={dailyData}
+        currency={currency}
+        truncated={chartData.length > 40}
+        onDateSelect={(date) => {
+          if (!date) return;
+          navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
+        }}
+      />
 
       <Tabs defaultValue="sport">
         <TabsList className="bg-white/5 h-auto flex-wrap justify-start gap-1 p-1">

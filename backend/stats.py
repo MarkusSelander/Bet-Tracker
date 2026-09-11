@@ -163,6 +163,40 @@ def chart_date_bounds(
     return (start, None)
 
 
+def build_chart_data(bets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    daily_data: Dict[str, Dict[str, Any]] = {}
+
+    for bet in bets:
+        date = bet.get("date")
+        if not date:
+            continue
+        if date not in daily_data:
+            daily_data[date] = {
+                "date": date,
+                "daily_pl": 0,
+                "cumulative_pl": 0,
+                "bets": 0,
+                "daily_stake": 0,
+                "cumulative_stake": 0,
+            }
+        daily_data[date]["daily_pl"] += bet.get("result", 0) or 0
+        daily_data[date]["bets"] += 1
+        if bet.get("status") in SETTLED_STATUSES:
+            daily_data[date]["daily_stake"] += bet.get("stake", 0) or 0
+
+    chart_data = []
+    cumulative_pl = 0
+    cumulative_stake = 0
+    for date in sorted(daily_data.keys()):
+        row = daily_data[date]
+        cumulative_pl += row["daily_pl"]
+        cumulative_stake += row["daily_stake"]
+        row["cumulative_pl"] = cumulative_pl
+        row["cumulative_stake"] = cumulative_stake
+        chart_data.append(row)
+    return chart_data
+
+
 def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
     settled = [bet for bet in all_bets if bet.get("status") in SETTLED_STATUSES]
     total_stake = sum(bet.get("stake", 0) for bet in settled)

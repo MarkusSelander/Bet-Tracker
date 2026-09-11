@@ -148,6 +148,8 @@ def test_chart_filters_by_date_range_when_days_omitted():
 
     assert response.status_code == 200
     assert [row["date"] for row in response.json()] == ["2026-02-10"]
+    assert response.json()[0]["daily_stake"] == 10
+    assert response.json()[0]["cumulative_stake"] == 10
 
 
 def test_bets_list_filters_sport_league_ticket_and_odds():

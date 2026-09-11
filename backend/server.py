@@ -24,6 +24,7 @@ from favorites_live import match_markets, search_teams
 from tennis_api import TennisApiClient, parse_tennis_id, tennis_sport
 from mongo import mongo_client_kwargs
 from stats import (
+    build_chart_data,
     chart_date_bounds,
     compute_breakdown,
     compute_odds_range_breakdown,
@@ -914,24 +915,7 @@ async def get_chart_data(
         tipster=filters.get("tipster"),
     )
 
-    daily_data = {}
-    chart_data = []
-    cumulative_pl = 0
-
-    for bet in bets:
-        date = bet["date"]
-        if date not in daily_data:
-            daily_data[date] = {"date": date,
-                                "daily_pl": 0, "cumulative_pl": 0, "bets": 0}
-
-        daily_data[date]["daily_pl"] += bet["result"]
-        daily_data[date]["bets"] += 1
-    for date in sorted(daily_data.keys()):
-        cumulative_pl += daily_data[date]["daily_pl"]
-        daily_data[date]["cumulative_pl"] = cumulative_pl
-        chart_data.append(daily_data[date])
-
-    return chart_data
+    return build_chart_data(bets)
 
 
 @api_router.get("/analytics/calendar")
