@@ -55,6 +55,25 @@ def test_best_h2h_returns_none_without_h2h_market():
     assert best_h2h({"home_team": "A", "away_team": "B", "bookmakers": []}) is None
 
 
+def test_best_h2h_returns_none_when_outcome_names_do_not_match_teams():
+    event = {
+        "home_team": "Brann",
+        "away_team": "Molde",
+        "bookmakers": [{
+            "title": "Unibet",
+            "markets": [{
+                "key": "h2h",
+                "outcomes": [
+                    {"name": "Team A", "price": 1.70},
+                    {"name": "Team B", "price": 3.80},
+                    {"name": "Team C", "price": 4.50},
+                ],
+            }],
+        }],
+    }
+    assert best_h2h(event) is None
+
+
 def test_best_h2h_allows_missing_draw_for_two_way_markets():
     event = {
         "home_team": "Djokovic",

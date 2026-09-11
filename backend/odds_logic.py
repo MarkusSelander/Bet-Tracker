@@ -16,7 +16,6 @@ def best_h2h(event):
         "draw_bookmaker": None,
         "away_bookmaker": None,
     }
-    found = False
     for bookmaker in event.get("bookmakers") or []:
         market = _h2h_market(bookmaker)
         if not market:
@@ -27,7 +26,6 @@ def best_h2h(event):
             price = outcome.get("price")
             if price is None:
                 continue
-            found = True
             if name == home and (best["home"] is None or price > best["home"]):
                 best["home"] = price
                 best["home_bookmaker"] = title
@@ -37,6 +35,6 @@ def best_h2h(event):
             elif name == "Draw" and (best["draw"] is None or price > best["draw"]):
                 best["draw"] = price
                 best["draw_bookmaker"] = title
-    if not found:
+    if best["home"] is None and best["draw"] is None and best["away"] is None:
         return None
     return best
