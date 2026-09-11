@@ -28,3 +28,10 @@ test('sportTabs starts with Favoritter', () => {
   assert.equal(sportTabs[0].id, 'favorites');
   assert.equal(sportTabs[1].id, 'soccer');
 });
+
+test('marketHeading maps known keys', async () => {
+  const { marketHeading } = await import('./oddsFavorites.js');
+  assert.equal(marketHeading('h2h'), '1X2');
+  assert.equal(marketHeading('totals'), 'Over/under');
+  assert.equal(marketHeading('btts'), 'Begge lag scorer');
+});

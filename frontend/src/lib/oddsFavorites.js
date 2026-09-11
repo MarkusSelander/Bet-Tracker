@@ -41,4 +41,11 @@ function formatKickoff(iso) {
   return date.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
 }
 
-export { MATCH_FILTERS, formatKickoff, groupByLeague, sportTabs };
+function marketHeading(key) {
+  if (key === 'h2h') return '1X2';
+  if (key === 'totals') return 'Over/under';
+  if (key === 'btts') return 'Begge lag scorer';
+  return key;
+}
+
+export { MATCH_FILTERS, formatKickoff, groupByLeague, marketHeading, sportTabs };
