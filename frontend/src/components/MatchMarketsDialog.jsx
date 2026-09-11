@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { formatKickoff, marketHeading } from '../lib/oddsFavorites';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 
 function formatPrice(value) {
   const number = Number(value);

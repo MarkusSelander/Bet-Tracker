@@ -132,7 +132,9 @@ export default function FavoritesPage() {
     const key = league.key || league.sport_key;
     const pinned = leagueKeys.has(key);
     await fetchWithTimeout(
-      pinned ? `${BACKEND_URL}/api/favorites/leagues/${encodeURIComponent(key)}` : `${BACKEND_URL}/api/favorites/leagues`,
+      pinned
+        ? `${BACKEND_URL}/api/favorites/leagues/${encodeURIComponent(key)}`
+        : `${BACKEND_URL}/api/favorites/leagues`,
       {
         method: pinned ? 'DELETE' : 'POST',
         credentials: 'include',
@@ -257,7 +259,10 @@ export default function FavoritesPage() {
               ) : (
                 <ul className="space-y-1">
                   {teams.map((team) => (
-                    <li key={`${team.sport_key}-${team.name}`} className="flex items-center justify-between gap-2 text-sm">
+                    <li
+                      key={`${team.sport_key}-${team.name}`}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
                       <span className="truncate">{team.name}</span>
                       <button
                         type="button"
@@ -324,7 +329,9 @@ export default function FavoritesPage() {
                         type="button"
                         aria-label={leagueKeys.has(group.sport_key) ? 'Fjern liga' : 'Fest liga'}
                         onClick={() => toggleLeague({ key: group.sport_key, title: group.title, group: '' })}
-                        className={leagueKeys.has(group.sport_key) ? 'text-amber-400' : 'text-text-muted hover:text-amber-300'}
+                        className={
+                          leagueKeys.has(group.sport_key) ? 'text-amber-400' : 'text-text-muted hover:text-amber-300'
+                        }
                       >
                         <Star className={`h-4 w-4 ${leagueKeys.has(group.sport_key) ? 'fill-current' : ''}`} />
                       </button>
