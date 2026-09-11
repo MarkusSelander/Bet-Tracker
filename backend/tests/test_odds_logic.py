@@ -1,4 +1,4 @@
-from odds_logic import best_h2h, favorite_matches, filter_matches, map_event_markets, sport_tab_keys
+from odds_logic import best_h2h, favorite_matches, filter_matches, map_event_markets, search_leagues_and_teams, sport_tab_keys
 
 
 def test_best_h2h_picks_highest_price_per_outcome_and_bookmaker():
@@ -237,3 +237,19 @@ def test_sport_tab_keys_groups_soccer_keys():
     ]
     assert sport_tab_keys(sports, "soccer") == ["soccer_epl", "soccer_norway_eliteserien"]
     assert sport_tab_keys(sports, "basketball") == ["basketball_nba"]
+
+
+def test_search_finds_leagues_and_teams_by_substring():
+    sports = [
+        {"key": "soccer_norway_eliteserien", "title": "Eliteserien", "group": "Soccer", "active": True},
+        {"key": "soccer_epl", "title": "Premier League", "group": "Soccer", "active": True},
+    ]
+    events = [
+        {"sport_key": "soccer_norway_eliteserien", "home_team": "Brann", "away_team": "Molde"},
+        {"sport_key": "soccer_epl", "home_team": "Arsenal", "away_team": "Chelsea"},
+    ]
+    result = search_leagues_and_teams(sports, events, "bran")
+    assert result["leagues"] == []
+    assert result["teams"] == [{"name": "Brann", "sport_key": "soccer_norway_eliteserien"}]
+    leagues = search_leagues_and_teams(sports, events, "elite")
+    assert leagues["leagues"][0]["key"] == "soccer_norway_eliteserien"

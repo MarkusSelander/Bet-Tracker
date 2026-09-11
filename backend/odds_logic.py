@@ -180,3 +180,35 @@ def sport_tab_keys(sports, tab):
         if any(prefix in blob for prefix in prefixes):
             keys.append(sport["key"])
     return keys
+
+
+def search_leagues_and_teams(sports, events, query, limit=8):
+    needle = _norm(query)
+    leagues = []
+    teams = []
+    if needle:
+        for sport in sports:
+            hay = _norm(f"{sport.get('title', '')} {sport.get('key', '')}")
+            if needle in hay and sport.get("active", True):
+                leagues.append({
+                    "key": sport["key"],
+                    "title": sport.get("title") or sport["key"],
+                    "group": sport.get("group") or "",
+                })
+            if len(leagues) >= limit:
+                break
+        seen = set()
+        for event in events:
+            for name in (event.get("home_team"), event.get("away_team")):
+                if not name or needle not in _norm(name):
+                    continue
+                item = (name, event.get("sport_key"))
+                if item in seen:
+                    continue
+                seen.add(item)
+                teams.append({"name": name, "sport_key": event.get("sport_key")})
+                if len(teams) >= limit:
+                    break
+            if len(teams) >= limit:
+                break
+    return {"leagues": leagues, "teams": teams}
