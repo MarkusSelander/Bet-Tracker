@@ -136,3 +136,47 @@ def filter_matches(matches, date, status_filter="all"):
     if status_filter == "odds":
         filtered = [row for row in filtered if row.get("odds_1x2")]
     return filtered
+
+
+def _norm(value):
+    return " ".join(str(value or "").lower().split())
+
+
+def favorite_matches(matches, league_keys, teams, event_ids):
+    leagues = set(league_keys or [])
+    events = set(event_ids or [])
+    team_pairs = {(_norm(team.get("name")), team.get("sport_key")) for team in teams or []}
+    selected = []
+    for match in matches:
+        home = _norm(match.get("home_team"))
+        away = _norm(match.get("away_team"))
+        key = match.get("sport_key")
+        if match.get("id") in events or key in leagues:
+            selected.append(match)
+            continue
+        if (home, key) in team_pairs or (away, key) in team_pairs:
+            selected.append(match)
+    return selected
+
+
+TAB_GROUPS = {
+    "soccer": ("soccer",),
+    "tennis": ("tennis",),
+    "basketball": ("basketball",),
+    "icehockey": ("icehockey", "hockey"),
+    "golf": ("golf",),
+}
+
+
+def sport_tab_keys(sports, tab):
+    prefixes = TAB_GROUPS.get(tab)
+    if not prefixes:
+        return []
+    keys = []
+    for sport in sports:
+        if not sport.get("active", True):
+            continue
+        blob = f"{sport.get('key', '')} {sport.get('group', '')}".lower()
+        if any(prefix in blob for prefix in prefixes):
+            keys.append(sport["key"])
+    return keys

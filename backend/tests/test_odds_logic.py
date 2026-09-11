@@ -1,4 +1,4 @@
-from odds_logic import best_h2h, filter_matches, map_event_markets
+from odds_logic import best_h2h, favorite_matches, filter_matches, map_event_markets, sport_tab_keys
 
 
 def test_best_h2h_picks_highest_price_per_outcome_and_bookmaker():
@@ -211,3 +211,29 @@ def test_filter_matches_live_finished_scheduled_odds():
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="finished")] == ["done"]
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="scheduled")] == ["soon", "priced"]
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="odds")] == ["live", "done", "priced"]
+
+
+def test_favorite_matches_is_union_of_league_team_and_event():
+    rows = [
+        _match(id="league", sport_key="soccer_epl", home_team="Arsenal", away_team="Chelsea"),
+        _match(id="team", sport_key="soccer_norway_eliteserien", home_team="Brann", away_team="Molde"),
+        _match(id="star", sport_key="soccer_france_ligue_one", home_team="Rennes", away_team="Marseille"),
+        _match(id="other", sport_key="soccer_germany_bundesliga", home_team="Schalke", away_team="Union Berlin"),
+    ]
+    selected = favorite_matches(
+        rows,
+        league_keys=["soccer_epl"],
+        teams=[{"name": "Brann", "sport_key": "soccer_norway_eliteserien"}],
+        event_ids=["star"],
+    )
+    assert [row["id"] for row in selected] == ["league", "team", "star"]
+
+
+def test_sport_tab_keys_groups_soccer_keys():
+    sports = [
+        {"key": "soccer_epl", "group": "Soccer", "title": "EPL", "active": True},
+        {"key": "basketball_nba", "group": "Basketball", "title": "NBA", "active": True},
+        {"key": "soccer_norway_eliteserien", "group": "Soccer", "title": "Eliteserien", "active": True},
+    ]
+    assert sport_tab_keys(sports, "soccer") == ["soccer_epl", "soccer_norway_eliteserien"]
+    assert sport_tab_keys(sports, "basketball") == ["basketball_nba"]
