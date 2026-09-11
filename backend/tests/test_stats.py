@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
 from stats import (
+    bets_mongo_query,
+    build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
     compute_breakdown,
@@ -276,4 +278,46 @@ def test_chart_omitted_days_uses_range_or_defaults_to_30():
     assert ranged == ("2026-02-01", "2026-02-28")
     assert defaulted == ("2026-08-11", None)
     assert numeric == ("2026-08-11", None)
+
+
+def test_bets_mongo_query_builds_match_for_hot_filters():
+    query = bets_mongo_query(
+        "user_1",
+        date_from="2026-01-01",
+        date_to="2026-01-31",
+        status="pending",
+        bookie="Coolbet",
+        sport="Football",
+        odds_min=1.5,
+        odds_max=2.0,
+    )
+
+    assert query["user_id"] == "user_1"
+    assert query["date"] == {"$gte": "2026-01-01", "$lte": "2026-01-31"}
+    assert query["status"] == "pending"
+    assert query["bookie"] == "Coolbet"
+    assert query["sport"] == "Football"
+    assert query["odds"] == {"$gte": 1.5, "$lte": 2.0}
+
+
+def test_bets_mongo_query_omits_empty_filters():
+    query = bets_mongo_query("user_1", sport="", bookie=None, status="won")
+    assert query == {"user_id": "user_1", "status": "won"}
+
+
+def test_analytics_summary_reuses_existing_aggregates():
+    bets = [
+        _bet(sport="Football", bookie="Coolbet", tipster="Anna", league="Eliteserien"),
+        _bet(sport="Tennis", bookie="Unibet", tipster="Bo", league="ATP", status="lost", stake=50, result=-50),
+    ]
+    football = [bets[0]]
+    summary = build_analytics_summary(football, bets, football)
+
+    assert summary["stats"]["total_bets"] == 1
+    assert summary["stats"] == compute_stats(football)
+    assert summary["sports"] == compute_breakdown(football, "sport")
+    assert "Football" in summary["sport_options"]
+    assert "Tennis" in summary["sport_options"]
+    assert summary["chart"] == build_chart_data(football)
+
 

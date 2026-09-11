@@ -41,6 +41,8 @@ import {
 import { fetchWithTimeout } from '../lib/fetch';
 import { ODDS_RANGES, filterBets, parseFilters, toBetsApiSearch, toSearch } from '../lib/filters';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency } from '../lib/format';
+import { useBets } from '../lib/queries';
+import { invalidateTrackerData } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -192,8 +194,6 @@ export default function BetsPage() {
   const { user } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseFilters(searchParams);
-  const [bets, setBets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBet, setEditingBet] = useState(null);
   const [detailBet, setDetailBet] = useState(null);
@@ -203,13 +203,15 @@ export default function BetsPage() {
   const currency = user?.currency || 'NOK';
   const period = filters.period || 'all';
   const apiSearch = toBetsApiSearch(filters);
+  const { data: bets = [], isPending, isError } = useBets(apiSearch);
+  const [searchInput, setSearchInput] = useState(filters.q);
   const filteredBets = useMemo(() => filterBets(bets, filters), [bets, filters]);
   const sortedBets = useMemo(() => sortBets(filteredBets, sortKey, sortDir), [filteredBets, sortKey, sortDir]);
   const kpis = useMemo(() => computeActiveKpis(bets), [bets]);
-  const availableSports = uniqueValues(bets, 'sport', filters.sport);
-  const availableBookies = uniqueValues(bets, 'bookie', filters.bookie);
-  const availableTipsters = uniqueValues(bets, 'tipster', filters.tipster);
-  const availableLeagues = uniqueValues(bets, 'league', filters.league);
+  const availableSports = useMemo(() => uniqueValues(bets, 'sport', filters.sport), [bets, filters.sport]);
+  const availableBookies = useMemo(() => uniqueValues(bets, 'bookie', filters.bookie), [bets, filters.bookie]);
+  const availableTipsters = useMemo(() => uniqueValues(bets, 'tipster', filters.tipster), [bets, filters.tipster]);
+  const availableLeagues = useMemo(() => uniqueValues(bets, 'league', filters.league), [bets, filters.league]);
   const availableTypes = [
     ...new Set(
       [...Object.keys(TICKET_TYPE_LABELS), ...bets.map((bet) => bet.ticket_type), filters.ticketType].filter(Boolean)
@@ -243,23 +245,30 @@ export default function BetsPage() {
     setCurrentPage(1);
   };
 
-  const fetchData = useCallback(async () => {
-    try {
-      const query = apiSearch ? `?${apiSearch}` : '';
-      const betsRes = await fetchWithTimeout(`${BACKEND_URL}/api/bets${query}`, { credentials: 'include' });
-      const betsData = await betsRes.json();
-      setBets(Array.isArray(betsData) ? betsData : []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Kunne ikke laste spill');
-    } finally {
-      setLoading(false);
-    }
-  }, [apiSearch]);
+  const fetchData = useCallback(() => invalidateTrackerData(), []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    setSearchInput(filters.q);
+  }, [filters.q]);
+
+  useEffect(() => {
+    if (searchInput === filters.q) return undefined;
+    const timer = setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          const current = parseFilters(prev);
+          return toSearch({ ...current, q: searchInput });
+        },
+        { replace: true }
+      );
+      setCurrentPage(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchInput, filters.q, setSearchParams]);
+
+  useEffect(() => {
+    if (isError) toast.error('Kunne ikke laste spill');
+  }, [isError]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -297,7 +306,7 @@ export default function BetsPage() {
 
       setIsDialogOpen(false);
       resetForm();
-      fetchData();
+      await fetchData();
     } catch (error) {
       console.error('Error saving bet:', error);
       toast.error('Kunne ikke lagre spill');
@@ -333,7 +342,7 @@ export default function BetsPage() {
 
       if (!response.ok) throw new Error('Kunne ikke slette spill');
       toast.success('Spill slettet');
-      fetchData();
+      await fetchData();
       return true;
     } catch (error) {
       console.error('Error deleting bet:', error);
@@ -392,7 +401,7 @@ export default function BetsPage() {
 
   const periodLabel = PERIODS.find((item) => item.value === (period || 'all'))?.label || 'Dato';
 
-  if (loading) {
+  if (isPending && bets.length === 0) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -611,8 +620,8 @@ export default function BetsPage() {
           <div className="relative min-w-[220px] w-full sm:w-auto sm:flex-1 sm:max-w-md">
             <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
             <Input
-              value={filters.q}
-              onChange={(e) => patchFilters({ q: e.target.value })}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Søk kamp, marked, sport..."
               className="pl-9 h-10 bg-[#12151c] border-white/10 rounded-xl"
             />

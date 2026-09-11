@@ -23,21 +23,9 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import {
-  betsPath,
-  calendarPath,
-  chartQuery,
-  parseFilters,
-  pickInsight,
-  pieStatus,
-  toAnalyticsApiSearch,
-  toSearch,
-} from '../lib/filters';
+import { betsPath, calendarPath, chartQuery, parseFilters, pickInsight, pieStatus, toSearch } from '../lib/filters';
 import { formatCurrency } from '../lib/format';
-import { fetchWithTimeout } from '../lib/fetch';
-import { exportAnalyticsToPDF } from '../utils/pdfExport';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+import { useAnalyticsSummary } from '../lib/queries';
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 const PERIODS = [
   { value: '7', label: '7 d' },
@@ -68,16 +56,6 @@ function signedClass(value) {
   return '';
 }
 
-function apiUrl(path, qs) {
-  return qs ? `${BACKEND_URL}${path}?${qs}` : `${BACKEND_URL}${path}`;
-}
-
-async function readJson(response, fallback) {
-  if (!response.ok) return fallback;
-  const data = await response.json();
-  return data == null ? fallback : data;
-}
-
 function periodLabel(filters) {
   if (filters.period === 'custom' && (filters.from || filters.to)) {
     return `${filters.from || '…'} – ${filters.to || '…'}`;
@@ -88,7 +66,8 @@ function periodLabel(filters) {
 function uniqueNames(rows, extra) {
   const names = new Set();
   (rows || []).forEach((row) => {
-    if (row?.name) names.add(row.name);
+    if (typeof row === 'string' && row) names.add(row);
+    else if (row?.name) names.add(row.name);
   });
   if (extra) names.add(extra);
   return [...names].sort();
@@ -157,27 +136,29 @@ export default function AnalyticsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseFilters(searchParams);
-  const [stats, setStats] = useState(null);
-  const [chartData, setChartData] = useState([]);
-  const [sportStats, setSportStats] = useState([]);
-  const [leagueStats, setLeagueStats] = useState([]);
-  const [oddsRangeStats, setOddsRangeStats] = useState([]);
-  const [bookieStats, setBookieStats] = useState([]);
-  const [tipsterStats, setTipsterStats] = useState([]);
-  const [ticketTypeStats, setTicketTypeStats] = useState([]);
-  const [sportOptions, setSportOptions] = useState([]);
-  const [bookieOptions, setBookieOptions] = useState([]);
-  const [tipsterOptions, setTipsterOptions] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState('line');
   const currency = user?.currency || 'NOK';
   const period = filters.period || 'all';
-  const dataQs = toAnalyticsApiSearch(filters);
-  const chartQs = chartQuery(filters);
-  const optionQs = toAnalyticsApiSearch({ period: filters.period, from: filters.from, to: filters.to });
+  const summarySearch = chartQuery(filters);
+  const { data: summary, isPending, isError } = useAnalyticsSummary(summarySearch);
+  const stats = summary?.stats && !Array.isArray(summary.stats) ? summary.stats : null;
+  const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
+  const sportStats = Array.isArray(summary?.sports) ? summary.sports : [];
+  const leagueStats = Array.isArray(summary?.leagues) ? summary.leagues : [];
+  const oddsRangeStats = Array.isArray(summary?.odds_range) ? summary.odds_range : [];
+  const bookieStats = Array.isArray(summary?.bookmakers) ? summary.bookmakers : [];
+  const tipsterStats = Array.isArray(summary?.tipsters) ? summary.tipsters : [];
+  const ticketTypeStats = Array.isArray(summary?.ticket_types) ? summary.ticket_types : [];
+  const sportOptions = uniqueNames(summary?.sport_options, filters.sport);
+  const bookieOptions = uniqueNames(summary?.bookie_options, filters.bookie);
+  const tipsterOptions = uniqueNames(summary?.tipster_options, filters.tipster);
   const spillPath = betsPath(filters);
   const settledPath = betsPath(filters);
   const streakPath = betsPath({ ...filters, period: '', from: '', to: '' });
+
+  useEffect(() => {
+    if (isError && !summary) toast.error('Kunne ikke laste analyse');
+  }, [isError, summary]);
 
   const patchFilters = (patch) => {
     const next = { ...filters, ...patch };
@@ -188,82 +169,13 @@ export default function AnalyticsPage() {
     setSearchParams(toSearch(next), { replace: true });
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!BACKEND_URL) {
-        toast.error('Backend-URL mangler');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const [
-          statsRes,
-          chartRes,
-          sportRes,
-          leagueRes,
-          oddsRes,
-          bookieRes,
-          tipsterRes,
-          typeRes,
-          sportOptRes,
-          bookieOptRes,
-          tipsterOptRes,
-        ] = await Promise.all([
-          fetchWithTimeout(apiUrl('/api/analytics/stats', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/chart', chartQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/sports', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/leagues', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/odds-range', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/bookmakers', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/tipsters', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/ticket-types', dataQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/sports', optionQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/bookmakers', optionQs), { credentials: 'include' }),
-          fetchWithTimeout(apiUrl('/api/analytics/tipsters', optionQs), { credentials: 'include' }),
-        ]);
-
-        const statsData = await readJson(statsRes, null);
-        const chartDataRes = await readJson(chartRes, []);
-        const sportData = await readJson(sportRes, []);
-        const leagueData = await readJson(leagueRes, []);
-        const oddsData = await readJson(oddsRes, []);
-        const bookieData = await readJson(bookieRes, []);
-        const tipsterData = await readJson(tipsterRes, []);
-        const typeData = await readJson(typeRes, []);
-        const sportOptData = await readJson(sportOptRes, []);
-        const bookieOptData = await readJson(bookieOptRes, []);
-        const tipsterOptData = await readJson(tipsterOptRes, []);
-
-        setStats(statsData && !Array.isArray(statsData) ? statsData : null);
-        setChartData(Array.isArray(chartDataRes) ? chartDataRes : []);
-        setSportStats(Array.isArray(sportData) ? sportData : []);
-        setLeagueStats(Array.isArray(leagueData) ? leagueData : []);
-        setOddsRangeStats(Array.isArray(oddsData) ? oddsData : []);
-        setBookieStats(Array.isArray(bookieData) ? bookieData : []);
-        setTipsterStats(Array.isArray(tipsterData) ? tipsterData : []);
-        setTicketTypeStats(Array.isArray(typeData) ? typeData : []);
-        setSportOptions(uniqueNames(sportOptData, filters.sport));
-        setBookieOptions(uniqueNames(bookieOptData, filters.bookie));
-        setTipsterOptions(uniqueNames(tipsterOptData, filters.tipster));
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast.error('Kunne ikke laste analyse');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [dataQs, chartQs, optionQs, filters.sport, filters.bookie, filters.tipster]);
-
   const goToChartDate = (state) => {
     const date = state?.activeLabel || state?.activePayload?.[0]?.payload?.date;
     if (!date) return;
     navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
   };
 
-  if (loading) {
+  if (isPending && !summary) {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -298,6 +210,7 @@ export default function AnalyticsPage() {
             variant="secondary"
             onClick={async () => {
               try {
+                const { exportAnalyticsToPDF } = await import('../utils/pdfExport');
                 await exportAnalyticsToPDF(stats, currency, {
                   chartData,
                   sportStats,

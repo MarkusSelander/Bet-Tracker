@@ -4,7 +4,7 @@
 .stat-card {
   position: relative;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .stat-card::before {
@@ -58,7 +58,7 @@
 /* Table Enhancements */
 .enhanced-table tbody tr {
   border-bottom: 1px solid rgba(39, 39, 42, 0.5);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .enhanced-table tbody tr:hover {
@@ -112,7 +112,7 @@
 .btn-primary-enhanced {
   position: relative;
   overflow: hidden;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary-enhanced::before {
@@ -164,7 +164,7 @@
 /* Sidebar Enhancement */
 .sidebar-nav-item {
   position: relative;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-nav-item::before {
@@ -221,7 +221,7 @@
 
 /* Form Input Enhancement */
 .input-enhanced {
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
 }
 
 .input-enhanced:focus {
@@ -239,7 +239,7 @@
   letter-spacing: 0.025em;
   border: 1px solid currentColor;
   border-opacity: 0.3;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
 .badge-enhanced:hover {

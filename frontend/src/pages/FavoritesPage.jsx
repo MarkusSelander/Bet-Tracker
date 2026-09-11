@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Plus, Search, Star, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import MatchMarketsDialog from '../components/MatchMarketsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
@@ -8,8 +8,11 @@ import { Input } from '../components/ui/input';
 import { localDateKey } from '../lib/calendar';
 import { fetchWithTimeout } from '../lib/fetch';
 import { MATCH_FILTERS, formatKickoff, groupByLeague, sportTabs } from '../lib/oddsFavorites';
+import { useFavoriteMatches, useFavoritePins } from '../lib/queries';
+import { queryClient, queryKeys } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const EMPTY_LIST = [];
 
 function shiftDate(iso, days) {
   const date = new Date(`${iso}T12:00:00`);
@@ -49,10 +52,6 @@ export default function FavoritesPage() {
   const [tab, setTab] = useState('favorites');
   const [filter, setFilter] = useState('all');
   const [date, setDate] = useState(() => localDateKey());
-  const [matches, setMatches] = useState([]);
-  const [leagues, setLeagues] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [eventIds, setEventIds] = useState([]);
   const [error, setError] = useState(null);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [markets, setMarkets] = useState([]);
@@ -63,6 +62,15 @@ export default function FavoritesPage() {
   const [searchResults, setSearchResults] = useState({ leagues: [], teams: [] });
   const [searchError, setSearchError] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const { data: pins } = useFavoritePins();
+  const {
+    data: matches = EMPTY_LIST,
+    error: matchesError,
+    isError: matchesIsError,
+  } = useFavoriteMatches(date, tab, filter);
+  const leagues = pins?.leagues || EMPTY_LIST;
+  const teams = pins?.teams || EMPTY_LIST;
+  const eventIds = pins?.eventIds || EMPTY_LIST;
 
   const leagueKeys = useMemo(() => new Set(leagues.map((row) => row.key)), [leagues]);
   const starredIds = useMemo(() => new Set(eventIds), [eventIds]);
@@ -70,48 +78,14 @@ export default function FavoritesPage() {
   const noPins = leagues.length === 0 && teams.length === 0 && eventIds.length === 0;
   const emptyFavorites = tab === 'favorites' && matches.length === 0 && !error && noPins;
 
-  const loadPins = useCallback(async () => {
-    const [leaguesRes, teamsRes, eventsRes] = await Promise.all([
-      fetchWithTimeout(`${BACKEND_URL}/api/favorites/leagues`, { credentials: 'include' }),
-      fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' }),
-      fetchWithTimeout(`${BACKEND_URL}/api/favorites/events`, { credentials: 'include' }),
-    ]);
-    if (!leaguesRes.ok || !teamsRes.ok || !eventsRes.ok) {
-      throw new Error('Kunne ikke hente favoritter');
-    }
-    setLeagues(await leaguesRes.json());
-    setTeams(await teamsRes.json());
-    const rows = await eventsRes.json();
-    setEventIds(rows.map((row) => row.event_id).filter(Boolean));
-  }, []);
-
-  const loadMatches = useCallback(async () => {
-    setError(null);
-    setMatches([]);
-    const response = await fetchWithTimeout(
-      `${BACKEND_URL}/api/odds/matches?date=${encodeURIComponent(date)}&tab=${encodeURIComponent(tab)}&filter=${encodeURIComponent(filter)}`,
-      { credentials: 'include' }
-    );
-    const data = await response.json().catch(() => []);
-    if (!response.ok) {
-      setMatches([]);
-      setError(apiErrorMessage(response.status, data, 'Kunne ikke hente kamper'));
-      return;
-    }
-    setMatches(Array.isArray(data) ? data : []);
-  }, [date, filter, tab]);
-
   useEffect(() => {
-    loadPins().catch(() => {
-      setError('Kunne ikke hente favoritter');
-    });
-  }, [loadPins]);
-
-  useEffect(() => {
-    loadMatches().catch(() => {
-      setError('Kunne ikke hente kamper');
-    });
-  }, [loadMatches]);
+    if (!matchesIsError) {
+      setError(null);
+      return undefined;
+    }
+    setError(matchesError?.message || 'Kunne ikke hente kamper');
+    return undefined;
+  }, [matchesError, matchesIsError]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -154,8 +128,10 @@ export default function FavoritesPage() {
   }, [searchOpen, searchQuery]);
 
   const refresh = async () => {
-    await loadPins();
-    await loadMatches();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.favoritePins }),
+      queryClient.invalidateQueries({ queryKey: ['favorites', 'matches'] }),
+    ]);
   };
 
   const toggleLeague = async (league) => {

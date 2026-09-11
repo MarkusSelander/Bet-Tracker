@@ -56,6 +56,58 @@ def filter_bets(bets: List[Dict[str, Any]], **filters: Any) -> List[Dict[str, An
     return [bet for bet in bets if matches(bet)]
 
 
+def bets_mongo_query(user_id: str, **filters: Any) -> Dict[str, Any]:
+    query: Dict[str, Any] = {"user_id": user_id}
+    date_from = filters.get("date_from")
+    date_to = filters.get("date_to")
+    if _has_value(date_from) or _has_value(date_to):
+        date_q: Dict[str, Any] = {}
+        if _has_value(date_from):
+            date_q["$gte"] = date_from
+        if _has_value(date_to):
+            date_q["$lte"] = date_to
+        query["date"] = date_q
+    for field in ("sport", "bookie", "tipster", "league", "ticket_type", "status"):
+        value = filters.get(field)
+        if _has_value(value):
+            query[field] = value
+    odds_min = filters.get("odds_min")
+    odds_max = filters.get("odds_max")
+    if odds_min is not None or odds_max is not None:
+        odds_q: Dict[str, Any] = {}
+        if odds_min is not None:
+            odds_q["$gte"] = odds_min
+        if odds_max is not None:
+            odds_q["$lte"] = odds_max
+        query["odds"] = odds_q
+    return query
+
+
+def unique_names(rows: List[Dict[str, Any]]) -> List[str]:
+    names = sorted({row.get("name") for row in rows if row.get("name")})
+    return names
+
+
+def build_analytics_summary(
+    bets: List[Dict[str, Any]],
+    option_bets: List[Dict[str, Any]],
+    chart_bets: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "stats": compute_stats(bets),
+        "chart": build_chart_data(chart_bets),
+        "sports": compute_breakdown(bets, "sport"),
+        "leagues": compute_breakdown(bets, "league"),
+        "odds_range": compute_odds_range_breakdown(bets),
+        "bookmakers": compute_breakdown(bets, "bookie"),
+        "tipsters": compute_breakdown(bets, "tipster", skip_empty=True),
+        "ticket_types": compute_breakdown(bets, "ticket_type"),
+        "sport_options": unique_names(compute_breakdown(option_bets, "sport")),
+        "bookie_options": unique_names(compute_breakdown(option_bets, "bookie")),
+        "tipster_options": unique_names(compute_breakdown(option_bets, "tipster", skip_empty=True)),
+    }
+
+
 def _empty_group(name: str) -> Dict[str, Any]:
     return {
         "name": name,

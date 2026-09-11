@@ -6,12 +6,15 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { useAuth } from '../contexts/AuthContext';
 import { fetchWithTimeout } from '../lib/fetch';
+import { invalidateTrackerData } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function SettingsPage() {
   const { user } = useOutletContext();
+  const { updateUser } = useAuth();
   const [currency, setCurrency] = useState(user?.currency || 'NOK');
   const [importing, setImporting] = useState(false);
   const [importingCoolbet, setImportingCoolbet] = useState(false);
@@ -30,8 +33,8 @@ export default function SettingsPage() {
       if (!response.ok) throw new Error('Failed to update currency');
 
       setCurrency(newCurrency);
+      updateUser({ currency: newCurrency });
       toast.success('Valuta oppdatert');
-      window.location.reload();
     } catch (error) {
       console.error('Error updating currency:', error);
       toast.error('Kunne ikke oppdatere valuta');
@@ -87,7 +90,7 @@ export default function SettingsPage() {
 
         const result = await response.json();
         toast.success(`Importert ${result.imported} spill`);
-        window.location.reload();
+        await invalidateTrackerData();
       } catch (error) {
         console.error('Error importing bets:', error);
         toast.error('Kunne ikke importere spill');
@@ -132,7 +135,7 @@ export default function SettingsPage() {
 
         const result = await response.json();
         toast.success(`Coolbet: ${result.imported} new, ${result.updated} updated, ${result.skipped} skipped`);
-        window.location.reload();
+        await invalidateTrackerData();
       } catch (error) {
         console.error('Error importing Coolbet bets:', error);
         toast.error(error.message || 'Kunne ikke importere Coolbet JSON');
