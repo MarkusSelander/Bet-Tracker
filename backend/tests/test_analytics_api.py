@@ -22,6 +22,7 @@ ANALYTICS_PATHS = [
     "/api/analytics/odds-range",
     "/api/analytics/leagues",
     "/api/analytics/ticket-types",
+    "/api/analytics/summary",
 ]
 
 
@@ -73,19 +74,42 @@ def test_leagues_and_ticket_types_endpoints_exist():
 
 
 class _FakeCursor:
-    def __init__(self, docs):
-        self.docs = docs
+    def __init__(self, docs, projection=None):
+        self.docs = list(docs)
+        self.projection = projection or {}
 
     def sort(self, *args, **kwargs):
         return self
 
+    def limit(self, n):
+        self.docs = self.docs[:n]
+        return self
+
+    def _project(self, doc):
+        projection = self.projection
+        if not projection:
+            return dict(doc)
+        excluded = {key for key, value in projection.items() if key != "_id" and value == 0}
+        included = {key for key, value in projection.items() if key != "_id" and value}
+        data = {key: value for key, value in doc.items() if key != "_id"}
+        if excluded:
+            return {key: value for key, value in data.items() if key not in excluded}
+        if included:
+            return {key: value for key, value in data.items() if key in included}
+        return data
+
     async def to_list(self, n):
-        return list(self.docs)
+        return [self._project(doc) for doc in self.docs]
 
 
 def _auth_and_bets(bets):
     mock_db = MagicMock()
-    mock_db.bets.find.return_value = _FakeCursor(bets)
+
+    def find(*args, **kwargs):
+        projection = args[1] if len(args) > 1 else kwargs.get("projection")
+        return _FakeCursor(bets, projection)
+
+    mock_db.bets.find.side_effect = find
     return (
         patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"),
         patch("server.db", mock_db),
@@ -198,3 +222,176 @@ def test_bets_list_filters_sport_league_ticket_and_odds():
 
     assert response.status_code == 200
     assert [bet["bet_id"] for bet in response.json()] == ["1"]
+
+
+def test_summary_endpoint_matches_filtered_stats():
+    bets = [
+        {
+            "date": "2026-03-01",
+            "status": "won",
+            "stake": 100,
+            "result": 80,
+            "odds": 1.8,
+            "sport": "Football",
+            "bookie": "Coolbet",
+            "tipster": "Anna",
+            "league": "Eliteserien",
+            "ticket_type": "single",
+        },
+        {
+            "date": "2026-03-02",
+            "status": "lost",
+            "stake": 50,
+            "result": -50,
+            "odds": 2.1,
+            "sport": "Tennis",
+            "bookie": "Unibet",
+            "tipster": "Bo",
+            "league": "ATP",
+            "ticket_type": "combo",
+        },
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        summary = client.get("/api/analytics/summary?sport=Football")
+        stats = client.get("/api/analytics/stats?sport=Football")
+
+    assert summary.status_code == 200
+    body = summary.json()
+    assert body["stats"]["total_bets"] == 1
+    assert body["stats"] == stats.json()
+    assert [row["name"] for row in body["leagues"]] == ["Eliteserien"]
+    assert "Football" in body["sport_options"]
+    assert "Tennis" in body["sport_options"]
+
+
+def test_bets_list_omits_legs_by_default():
+    bets = [
+        {
+            "bet_id": "1",
+            "user_id": "user_1",
+            "date": "2026-03-01",
+            "game": "A - B",
+            "bet": "1",
+            "status": "pending",
+            "stake": 100,
+            "result": 0,
+            "odds": 1.8,
+            "sport": "Football",
+            "bookie": "Coolbet",
+            "tipster": "Anna",
+            "league": "Eliteserien",
+            "ticket_type": "combo",
+            "created_at": "2026-03-01T12:00:00+00:00",
+            "legs": [{"match": "A - B", "outcome": "1"}],
+        }
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        hidden = client.get("/api/bets?status=pending")
+        shown = client.get("/api/bets?status=pending&include_legs=true")
+
+    assert hidden.status_code == 200
+    assert "legs" not in hidden.json()[0] or hidden.json()[0]["legs"] is None
+    assert shown.status_code == 200
+    assert shown.json()[0]["legs"][0]["match"] == "A - B"
+
+
+def test_pending_list_does_not_return_settled_bets():
+    bets = [
+        {
+            "bet_id": "won",
+            "user_id": "user_1",
+            "date": "2026-03-01",
+            "game": "A - B",
+            "bet": "1",
+            "status": "won",
+            "stake": 100,
+            "result": 80,
+            "odds": 1.8,
+            "sport": "Football",
+            "bookie": "Coolbet",
+            "created_at": "2026-03-01T12:00:00+00:00",
+        },
+        {
+            "bet_id": "open",
+            "user_id": "user_1",
+            "date": "2026-03-02",
+            "game": "C - D",
+            "bet": "2",
+            "status": "pending",
+            "stake": 50,
+            "result": 0,
+            "odds": 2.0,
+            "sport": "Football",
+            "bookie": "Coolbet",
+            "created_at": "2026-03-02T12:00:00+00:00",
+        },
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        response = client.get("/api/bets?status=pending&limit=20")
+
+    assert response.status_code == 200
+    assert [bet["bet_id"] for bet in response.json()] == ["open"]
+
+
+def test_source_ids_returns_compact_rows():
+    bets = [
+        {"source_id": "ticket-a", "status": "pending", "bookie": "Coolbet", "legs": [{"x": 1}]},
+        {"source_id": "ticket-b", "status": "won", "bookie": "Coolbet"},
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        response = client.get("/api/bets/source-ids?bookie=Coolbet")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"source_id": "ticket-a", "status": "pending"},
+        {"source_id": "ticket-b", "status": "won"},
+    ]
+
+
+def test_coolbet_import_uses_bulk_write():
+    mock_db = MagicMock()
+    mock_db.bets.find.side_effect = lambda *args, **kwargs: _FakeCursor([])
+    mock_db.bets.bulk_write = AsyncMock()
+    mock_db.users.update_one = AsyncMock()
+    ticket = {
+        "id": "ticket-abc",
+        "display_id": 1949,
+        "created_at": "2026-09-02T17:12:17.012Z",
+        "status": "WON",
+        "total_stake": 700,
+        "max_win": 1274,
+        "remaining_max_win": 1274,
+        "product": "PREMATCH",
+        "currency": "NOK",
+        "ticket_type": "single",
+        "total_matches": 1,
+        "first_bet_odds": 1.82,
+        "first_match": {
+            "sport_name": "Fotball",
+            "match_name": "Brann - Rosenborg",
+            "league_name": "Eliteserien",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Brann",
+        },
+    }
+    client = TestClient(app)
+    with (
+        patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"),
+        patch("server.db", mock_db),
+    ):
+        response = client.post("/api/bets/import/coolbet", json={"tickets": [ticket]})
+
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+    mock_db.bets.bulk_write.assert_awaited_once()
+    assert len(mock_db.bets.bulk_write.await_args.args[0]) == 1
+
+

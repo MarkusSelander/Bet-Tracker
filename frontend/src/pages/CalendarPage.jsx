@@ -1,16 +1,16 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { buildCalendarModel, localDateKey, monthRange } from '../lib/calendar';
-import { fetchWithTimeout } from '../lib/fetch';
 import { betsPath, parseFilters, toSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { useCalendarBets } from '../lib/queries';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const EMPTY_BETS = [];
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 const DAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 const MONTHS = [
@@ -55,8 +55,6 @@ export default function CalendarPage() {
   const { user } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseFilters(searchParams);
-  const [bets, setBets] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [detailBet, setDetailBet] = useState(null);
   const currency = user?.currency || 'NOK';
   const todayKey = localDateKey();
@@ -65,6 +63,8 @@ export default function CalendarPage() {
   const monthIndex = Number.isFinite(monthPart) ? monthPart - 1 : new Date().getMonth();
   const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
   const { dateFrom, dateTo } = monthRange(safeYear, monthIndex);
+  const { data, isPending, isError } = useCalendarBets(dateFrom, dateTo);
+  const bets = data ?? EMPTY_BETS;
   const selectedDate =
     filters.date && filters.date >= dateFrom && filters.date <= dateTo
       ? filters.date
@@ -72,7 +72,7 @@ export default function CalendarPage() {
         ? todayKey
         : dateFrom;
 
-  const model = useMemo(() => buildCalendarModel(safeYear, monthIndex, bets), [safeYear, monthIndex, bets]);
+  const model = buildCalendarModel(safeYear, monthIndex, bets);
   const selectedDay = model.byDate[selectedDate] || { bets: [], profit: 0, won: 0, lost: 0, pending: 0, count: 0 };
 
   const writeCalendar = (next) => {
@@ -80,36 +80,8 @@ export default function CalendarPage() {
   };
 
   useEffect(() => {
-    const loadMonth = async () => {
-      if (!BACKEND_URL) {
-        toast.error('Backend-URL mangler');
-        setLoading(false);
-        return;
-      }
-
-      const { dateFrom, dateTo } = monthRange(safeYear, monthIndex);
-      setBets([]);
-      setLoading(true);
-      try {
-        const response = await fetchWithTimeout(
-          `${BACKEND_URL}/api/bets?date_from=${dateFrom}&date_to=${dateTo}`,
-          { credentials: 'include' },
-          15000
-        );
-        if (!response.ok) throw new Error(`Kalender ${response.status}`);
-        const data = await response.json();
-        setBets(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Error fetching calendar data:', error);
-        toast.error('Kunne ikke laste kalenderen');
-        setBets([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMonth();
-  }, [safeYear, monthIndex]);
+    if (isError) toast.error('Kunne ikke laste kalenderen');
+  }, [isError]);
 
   const goToToday = () => {
     writeCalendar({ date: todayKey, month: todayKey.slice(0, 7) });
@@ -140,7 +112,7 @@ export default function CalendarPage() {
     }
   };
 
-  if (loading && bets.length === 0) {
+  if (isPending && bets.length === 0) {
     return (
       <div className="space-y-6">
         <PageHeader title="Kalender" subtitle="Resultat per dag" testId="calendar-title" />

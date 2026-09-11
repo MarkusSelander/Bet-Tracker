@@ -2,6 +2,7 @@ import { Pencil, Trash2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { PRODUCT_LABELS, STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { useBet } from '../lib/queries';
 
 function isPresent(value) {
   return value !== null && value !== undefined && value !== '';
@@ -49,7 +50,9 @@ function DetailRow({ label, children }) {
   );
 }
 
-export default function BetDetailsDialog({ bet, open, onOpenChange, currency = 'NOK', onEdit, onDelete }) {
+export default function BetDetailsDialog({ bet: listedBet, open, onOpenChange, currency = 'NOK', onEdit, onDelete }) {
+  const { data: fullBet } = useBet(listedBet?.bet_id, { enabled: Boolean(open && listedBet?.bet_id) });
+  const bet = fullBet || listedBet;
   const handleOpenChange = (nextOpen) => {
     onOpenChange?.(nextOpen);
   };

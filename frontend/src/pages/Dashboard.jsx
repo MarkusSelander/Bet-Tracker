@@ -17,54 +17,28 @@ import { toast } from 'sonner';
 import BetDetailsDialog from '../components/BetDetailsDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
-import { analyticsPath, betsPath } from '../lib/filters';
+import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
-import { fetchWithTimeout } from '../lib/fetch';
-import { exportDashboardToPDF } from '../utils/pdfExport';
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+import { useAnalyticsSummary, usePendingBets, useRecentBets } from '../lib/queries';
 
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 
 export default function Dashboard() {
   const { user } = useOutletContext();
-  const [stats, setStats] = useState(null);
-  const [chartData, setChartData] = useState([]);
-  const [recentBets, setRecentBets] = useState([]);
-  const [pendingBets, setPendingBets] = useState([]);
   const [detailBet, setDetailBet] = useState(null);
-  const [loading, setLoading] = useState(true);
   const currency = user?.currency || 'NOK';
+  const dashboardSearch = toAnalyticsApiSearch({ period: '30' });
+  const { data: summary, isPending: summaryPending, isError: summaryError } = useAnalyticsSummary(dashboardSearch);
+  const { data: recentBets = [] } = useRecentBets(8);
+  const { data: pendingBets = [] } = usePendingBets();
+  const stats = summary?.stats || null;
+  const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsRes, chartRes, recentBetsRes, pendingRes] = await Promise.all([
-          fetchWithTimeout(`${BACKEND_URL}/api/analytics/stats`),
-          fetchWithTimeout(`${BACKEND_URL}/api/analytics/chart?days=30`),
-          fetchWithTimeout(`${BACKEND_URL}/api/bets/recent?limit=8`),
-          fetchWithTimeout(`${BACKEND_URL}/api/bets?status=pending`),
-        ]);
+    if (summaryError && !summary) toast.error('Kunne ikke laste oversikt');
+  }, [summaryError, summary]);
 
-        setStats(statsRes.ok ? await statsRes.json() : null);
-        const chartJson = chartRes.ok ? await chartRes.json() : [];
-        setChartData(Array.isArray(chartJson) ? chartJson : []);
-        const recentJson = recentBetsRes.ok ? await recentBetsRes.json() : [];
-        setRecentBets(Array.isArray(recentJson) ? recentJson : []);
-        const pendingJson = pendingRes.ok ? await pendingRes.json() : [];
-        setPendingBets(Array.isArray(pendingJson) ? pendingJson : []);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast.error('Kunne ikke laste oversikt');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  if (loading) {
+  if (summaryPending && !summary) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
@@ -105,6 +79,7 @@ export default function Dashboard() {
             variant="secondary"
             onClick={async () => {
               try {
+                const { exportDashboardToPDF } = await import('../utils/pdfExport');
                 await exportDashboardToPDF(stats, chartData, recentBets, currency, {
                   pendingBets,
                   userName: user?.name,

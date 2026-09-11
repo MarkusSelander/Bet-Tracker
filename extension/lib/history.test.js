@@ -125,10 +125,10 @@ test("collectKnownIdsFromBets uses backend source_id", () => {
   );
 });
 
-test("bets url can filter by bookie", () => {
+test("bets url uses source-ids endpoint", () => {
   assert.equal(
     betsUrl("https://api.example.com/", "Coolbet"),
-    "https://api.example.com/api/bets?bookie=Coolbet"
+    "https://api.example.com/api/bets/source-ids?bookie=Coolbet"
   );
 });
 
