@@ -142,6 +142,32 @@ def _norm(value):
     return " ".join(str(value or "").lower().split())
 
 
+def _name_matches(name, needle):
+    hay = _norm(name)
+    if not needle or not hay:
+        return False
+    if needle in hay:
+        return True
+    tokens = needle.split()
+    return len(tokens) > 1 and all(token in hay for token in tokens)
+
+
+def search_event_sport_keys(sports, query):
+    needle = _norm(query)
+    if not needle:
+        return []
+    matched = [
+        sport["key"]
+        for sport in sports or []
+        if sport.get("active", True)
+        and sport.get("key")
+        and needle in _norm(f"{sport.get('title', '')} {sport.get('key', '')}")
+    ]
+    if matched:
+        return matched
+    return sport_tab_keys(sports, "soccer")
+
+
 def favorite_matches(matches, league_keys, teams, event_ids):
     leagues = set(league_keys or [])
     events = set(event_ids or [])
@@ -200,7 +226,7 @@ def search_leagues_and_teams(sports, events, query, limit=8):
         seen = set()
         for event in events:
             for name in (event.get("home_team"), event.get("away_team")):
-                if not name or needle not in _norm(name):
+                if not name or not _name_matches(name, needle):
                     continue
                 item = (name, event.get("sport_key"))
                 if item in seen:

@@ -1,4 +1,12 @@
-from odds_logic import best_h2h, favorite_matches, filter_matches, map_event_markets, search_leagues_and_teams, sport_tab_keys
+from odds_logic import (
+    best_h2h,
+    favorite_matches,
+    filter_matches,
+    map_event_markets,
+    search_event_sport_keys,
+    search_leagues_and_teams,
+    sport_tab_keys,
+)
 
 
 def test_best_h2h_picks_highest_price_per_outcome_and_bookmaker():
@@ -253,3 +261,45 @@ def test_search_finds_leagues_and_teams_by_substring():
     assert result["teams"] == [{"name": "Brann", "sport_key": "soccer_norway_eliteserien"}]
     leagues = search_leagues_and_teams(sports, events, "elite")
     assert leagues["leagues"][0]["key"] == "soccer_norway_eliteserien"
+
+
+def _soccer_sports_with_eliteserien_last(count=10):
+    sports = [
+        {"key": f"soccer_league_{index}", "group": "Soccer", "title": f"League {index}", "active": True}
+        for index in range(count)
+    ]
+    sports.append({
+        "key": "soccer_norway_eliteserien",
+        "group": "Soccer",
+        "title": "Eliteserien",
+        "active": True,
+    })
+    sports.append({
+        "key": "soccer_epl",
+        "group": "Soccer",
+        "title": "Premier League",
+        "active": True,
+    })
+    return sports
+
+
+def test_search_event_sport_keys_uses_all_soccer_when_query_is_team_name():
+    sports = _soccer_sports_with_eliteserien_last()
+    keys = search_event_sport_keys(sports, "Brann")
+    assert "soccer_norway_eliteserien" in keys
+    assert "soccer_epl" in keys
+    assert len(keys) == len(sports)
+    assert keys == sport_tab_keys(sports, "soccer")
+
+
+def test_search_event_sport_keys_keeps_matched_league_when_query_hits_title():
+    sports = _soccer_sports_with_eliteserien_last()
+    assert search_event_sport_keys(sports, "elite") == ["soccer_norway_eliteserien"]
+    assert search_event_sport_keys(sports, "premier") == ["soccer_epl"]
+
+
+def test_search_finds_team_when_query_tokens_match_name():
+    sports = [{"key": "soccer_epl", "title": "Premier League", "group": "Soccer", "active": True}]
+    events = [{"sport_key": "soccer_epl", "home_team": "Manchester City", "away_team": "Arsenal"}]
+    result = search_leagues_and_teams(sports, events, "Man City")
+    assert result["teams"] == [{"name": "Manchester City", "sport_key": "soccer_epl"}]

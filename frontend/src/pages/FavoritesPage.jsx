@@ -57,6 +57,8 @@ export default function FavoritesPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState({ leagues: [], teams: [] });
+  const [searchError, setSearchError] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const leagueKeys = useMemo(() => new Set(leagues.map((row) => row.key)), [leagues]);
   const starredIds = useMemo(() => new Set(eventIds), [eventIds]);
@@ -70,12 +72,13 @@ export default function FavoritesPage() {
       fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, { credentials: 'include' }),
       fetchWithTimeout(`${BACKEND_URL}/api/favorites/events`, { credentials: 'include' }),
     ]);
-    if (leaguesRes.ok) setLeagues(await leaguesRes.json());
-    if (teamsRes.ok) setTeams(await teamsRes.json());
-    if (eventsRes.ok) {
-      const rows = await eventsRes.json();
-      setEventIds(rows.map((row) => row.event_id).filter(Boolean));
+    if (!leaguesRes.ok || !teamsRes.ok || !eventsRes.ok) {
+      throw new Error('Kunne ikke hente favoritter');
     }
+    setLeagues(await leaguesRes.json());
+    setTeams(await teamsRes.json());
+    const rows = await eventsRes.json();
+    setEventIds(rows.map((row) => row.event_id).filter(Boolean));
   }, []);
 
   const loadMatches = useCallback(async () => {
@@ -108,19 +111,40 @@ export default function FavoritesPage() {
     const query = searchQuery.trim();
     if (!searchOpen) return undefined;
     if (!query) {
+      setSearchError(null);
+      setSearchLoading(false);
       setSearchResults({ leagues: [], teams: [] });
       return undefined;
     }
+    setSearchLoading(true);
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      const response = await fetchWithTimeout(
-        `${BACKEND_URL}/api/favorites/search?query=${encodeURIComponent(query)}`,
-        { credentials: 'include' }
-      );
-      if (!response.ok) return;
-      const data = await response.json();
-      setSearchResults({ leagues: data.leagues || [], teams: data.teams || [] });
+      try {
+        const response = await fetchWithTimeout(
+          `${BACKEND_URL}/api/favorites/search?query=${encodeURIComponent(query)}`,
+          { credentials: 'include' }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setSearchError(apiErrorMessage(response.status, data, 'Kunne ikke søke'));
+          setSearchResults({ leagues: [], teams: [] });
+          return;
+        }
+        setSearchError(null);
+        setSearchResults({ leagues: data.leagues || [], teams: data.teams || [] });
+      } catch (err) {
+        if (cancelled) return;
+        setSearchError(err.message || 'Kunne ikke søke');
+        setSearchResults({ leagues: [], teams: [] });
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [searchOpen, searchQuery]);
 
   const refresh = async () => {
@@ -408,6 +432,14 @@ export default function FavoritesPage() {
             </Button>
           </div>
           <div className="space-y-3 max-h-72 overflow-y-auto">
+            {searchError ? <p className="text-sm text-destructive">{searchError}</p> : null}
+            {!searchError &&
+            !searchLoading &&
+            searchQuery.trim() &&
+            (searchResults.leagues || []).length === 0 &&
+            (searchResults.teams || []).length === 0 ? (
+              <p className="text-sm text-text-secondary">Ingen treff</p>
+            ) : null}
             {(searchResults.leagues || []).map((league) => (
               <button
                 key={league.key}

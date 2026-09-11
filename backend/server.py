@@ -27,6 +27,7 @@ from odds_logic import (
     filter_matches,
     map_event_markets,
     normalize_event,
+    search_event_sport_keys,
     search_leagues_and_teams,
     sport_tab_keys,
 )
@@ -1480,15 +1481,7 @@ async def search_favorites(request: Request, query: str = ""):
         return {"leagues": [], "teams": []}
     try:
         sports = await odds_client.get_json("/sports", {"all": "false"}, ttl_seconds=TTL_SPORTS)
-        lowered = needle.lower()
-        matched_keys = [
-            sport["key"]
-            for sport in sports or []
-            if sport.get("active", True)
-            and sport.get("key")
-            and lowered in f"{sport.get('title', '')} {sport.get('key', '')}".lower()
-        ]
-        event_keys = matched_keys or sport_tab_keys(sports, "soccer")[:8]
+        event_keys = search_event_sport_keys(sports, query)
 
         async def fetch_events(key):
             try:
