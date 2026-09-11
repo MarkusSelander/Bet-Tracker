@@ -120,3 +120,44 @@ export function stakeAffix(currency = 'NOK') {
   if (currency === 'USD') return '$';
   return 'kr';
 }
+
+export function visibleFooterActions({ mode, onEdit, onDelete } = {}) {
+  if (mode === 'create' || mode === 'edit') return ['submit', 'details'];
+  const actions = [];
+  if (typeof onEdit === 'function') actions.push('edit');
+  if (typeof onDelete === 'function') actions.push('delete');
+  actions.push('details');
+  return actions;
+}
+
+export function dialogTitle(mode) {
+  if (mode === 'create') return 'Nytt spill';
+  if (mode === 'edit') return 'Rediger spill';
+  return 'Spilldetaljer';
+}
+
+export function submitLabel(mode) {
+  return mode === 'edit' ? 'Oppdater' : 'Legg til';
+}
+
+export function missingComboLegs(bet) {
+  const comboLike = Number(bet?.total_matches) > 1 || ['combo', 'system', 'betbuilder'].includes(bet?.ticket_type);
+  if (!comboLike) return false;
+  const stored = Array.isArray(bet?.legs) ? bet.legs.length : 0;
+  const expected = Number(bet?.total_matches) || 0;
+  if (expected > 1) return stored < expected;
+  return stored < 2;
+}
+
+export function formatExpectedDate(value) {
+  if (!isPresent(value)) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString('nb-NO', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}

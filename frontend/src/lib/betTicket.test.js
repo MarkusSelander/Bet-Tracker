@@ -10,6 +10,10 @@ let shouldShowDetailField;
 let toCreatePayload;
 let toUpdatePayload;
 let stakeAffix;
+let visibleFooterActions;
+let dialogTitle;
+let submitLabel;
+let missingComboLegs;
 
 before(async () => {
   ({
@@ -22,6 +26,10 @@ before(async () => {
     toCreatePayload,
     toUpdatePayload,
     stakeAffix,
+    visibleFooterActions,
+    dialogTitle,
+    submitLabel,
+    missingComboLegs,
   } = await import('./betTicket.js'));
 });
 
@@ -146,4 +154,44 @@ test('stakeAffix uses kr for NOK', () => {
   assert.equal(stakeAffix('NOK'), 'kr');
   assert.equal(stakeAffix('USD'), '$');
   assert.equal(stakeAffix('UNITS'), 'U');
+});
+
+test('visibleFooterActions hides edit and delete without callbacks', () => {
+  assert.deepEqual(visibleFooterActions({ mode: 'view' }), ['details']);
+});
+
+test('visibleFooterActions shows edit and delete in view when provided', () => {
+  assert.deepEqual(
+    visibleFooterActions({ mode: 'view', onEdit: () => {}, onDelete: () => {} }),
+    ['edit', 'delete', 'details']
+  );
+});
+
+test('visibleFooterActions uses submit plus details for create and edit', () => {
+  assert.deepEqual(visibleFooterActions({ mode: 'create' }), ['submit', 'details']);
+  assert.deepEqual(visibleFooterActions({ mode: 'edit', onEdit: () => {} }), ['submit', 'details']);
+});
+
+test('dialogTitle and submitLabel follow mode', () => {
+  assert.equal(dialogTitle('create'), 'Nytt spill');
+  assert.equal(dialogTitle('edit'), 'Rediger spill');
+  assert.equal(dialogTitle('view'), 'Spilldetaljer');
+  assert.equal(submitLabel('create'), 'Legg til');
+  assert.equal(submitLabel('edit'), 'Oppdater');
+});
+
+test('missingComboLegs is true when stored legs are fewer than total_matches', () => {
+  assert.equal(
+    missingComboLegs({ ticket_type: 'combo', total_matches: 5, legs: [{ match: 'FC Porto - Manchester City' }] }),
+    true
+  );
+  assert.equal(
+    missingComboLegs({
+      ticket_type: 'combo',
+      total_matches: 2,
+      legs: [{ match: 'A' }, { match: 'B' }],
+    }),
+    false
+  );
+  assert.equal(missingComboLegs({ ticket_type: 'single', total_matches: 1, legs: [] }), false);
 });
