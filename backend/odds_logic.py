@@ -212,3 +212,17 @@ def search_leagues_and_teams(sports, events, query, limit=8):
             if len(teams) >= limit:
                 break
     return {"leagues": leagues, "teams": teams}
+
+
+def normalize_event(event, odds_1x2):
+    return {
+        "id": event.get("id"),
+        "sport_key": event.get("sport_key"),
+        "sport_title": event.get("sport_title"),
+        "commence_time": event.get("commence_time"),
+        "home_team": event.get("home_team"),
+        "away_team": event.get("away_team"),
+        "completed": bool(event.get("completed")),
+        "scores": event.get("scores"),
+        "odds_1x2": odds_1x2,
+    }

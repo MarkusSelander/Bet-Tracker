@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import logging
@@ -19,6 +20,16 @@ from auth_cookies import use_cross_site_cookies
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
+from odds_client import OddsApiError, OddsClient, TTL_MARKETS, TTL_ODDS, TTL_SCORES, TTL_SPORTS, default_http_get
+from odds_logic import (
+    best_h2h,
+    favorite_matches,
+    filter_matches,
+    map_event_markets,
+    normalize_event,
+    search_leagues_and_teams,
+    sport_tab_keys,
+)
 from stats import (
     build_chart_data,
     chart_date_bounds,
@@ -35,6 +46,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url, **mongo_client_kwargs(mongo_url))
 db = client[os.environ['DB_NAME']]
 is_production = use_cross_site_cookies()
+odds_client = OddsClient(api_key=os.environ.get("ODDS_API_KEY", ""), http_get=default_http_get)
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -557,6 +569,22 @@ class Tipster(BaseModel):
 
 class TipsterCreate(BaseModel):
     name: str
+
+
+class FavoriteLeagueIn(BaseModel):
+    key: str
+    title: str = ""
+    group: str = ""
+
+
+class FavoriteTeamIn(BaseModel):
+    name: str
+    sport_key: str
+
+
+class FavoriteEventIn(BaseModel):
+    event_id: str
+    sport_key: Optional[str] = None
 
 
 # Auth Helper
@@ -1222,6 +1250,260 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _odds_http_error(err: OddsApiError) -> HTTPException:
+    return HTTPException(status_code=err.status_code, detail=err.detail)
+
+
+async def _user_docs(collection, user_id: str):
+    return await collection.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
+
+
+def _sport_title_map(sports):
+    return {sport.get("key"): sport.get("title") or sport.get("key") for sport in sports or []}
+
+
+def _merge_score_and_odds(score_event, odds_event, sport_key, sport_title):
+    combined = dict(score_event or {})
+    for key, value in (odds_event or {}).items():
+        if key == "scores" and combined.get("scores"):
+            continue
+        if value is not None or key not in combined:
+            combined[key] = value
+    combined.setdefault("sport_key", sport_key)
+    combined.setdefault("sport_title", sport_title)
+    if odds_event and odds_event.get("bookmakers"):
+        combined["bookmakers"] = odds_event["bookmakers"]
+    return normalize_event(combined, best_h2h(combined))
+
+
+async def _matches_for_sport_keys(sport_keys, sports):
+    titles = _sport_title_map(sports)
+    matches = []
+    for key in sport_keys:
+        scores_rows = await odds_client.get_json(
+            f"/sports/{key}/scores",
+            {"daysFrom": "3"},
+            ttl_seconds=TTL_SCORES,
+        )
+        odds_rows = await odds_client.get_json(
+            f"/sports/{key}/odds",
+            {"regions": "eu", "markets": "h2h", "oddsFormat": "decimal"},
+            ttl_seconds=TTL_ODDS,
+        )
+        scores_map = {row["id"]: row for row in scores_rows or [] if row.get("id")}
+        odds_map = {row["id"]: row for row in odds_rows or [] if row.get("id")}
+        title = titles.get(key) or key
+        for event_id in dict.fromkeys([*scores_map, *odds_map]):
+            matches.append(
+                _merge_score_and_odds(scores_map.get(event_id), odds_map.get(event_id), key, title)
+            )
+    return matches
+
+
+async def _favorite_state(user_id: str):
+    leagues = await _user_docs(db.favorite_leagues, user_id)
+    teams = await _user_docs(db.favorite_teams, user_id)
+    events = await _user_docs(db.favorite_events, user_id)
+    league_keys = [row.get("sport_key") for row in leagues if row.get("sport_key")]
+    team_keys = [row.get("sport_key") for row in teams if row.get("sport_key")]
+    event_keys = [row.get("sport_key") for row in events if row.get("sport_key")]
+    event_ids = [row.get("event_id") for row in events if row.get("event_id")]
+    sport_keys = list(dict.fromkeys([*league_keys, *team_keys, *event_keys]))
+    return {
+        "leagues": leagues,
+        "teams": teams,
+        "event_ids": event_ids,
+        "league_keys": league_keys,
+        "sport_keys": sport_keys,
+    }
+
+
+@api_router.get("/odds/sports")
+async def get_odds_sports(request: Request):
+    await get_current_user(request)
+    try:
+        return await odds_client.get_json("/sports", {"all": "false"}, ttl_seconds=TTL_SPORTS)
+    except OddsApiError as err:
+        raise _odds_http_error(err) from err
+
+
+@api_router.get("/odds/matches")
+async def get_odds_matches(
+    request: Request,
+    date: str,
+    tab: str = "favorites",
+    filter: str = "all",
+):
+    user_id = await get_current_user(request)
+    try:
+        if tab == "favorites":
+            state = await _favorite_state(user_id)
+            if not state["sport_keys"]:
+                return []
+            sports = await odds_client.get_json("/sports", {"all": "false"}, ttl_seconds=TTL_SPORTS)
+            matches = await _matches_for_sport_keys(state["sport_keys"], sports)
+            matches = favorite_matches(matches, state["league_keys"], state["teams"], state["event_ids"])
+        else:
+            sports = await odds_client.get_json("/sports", {"all": "false"}, ttl_seconds=TTL_SPORTS)
+            sport_keys = sport_tab_keys(sports, tab)
+            matches = await _matches_for_sport_keys(sport_keys, sports)
+        return filter_matches(matches, date=date, status_filter=filter)
+    except OddsApiError as err:
+        raise _odds_http_error(err) from err
+
+
+@api_router.get("/odds/matches/{event_id}/markets")
+async def get_odds_match_markets(request: Request, event_id: str, sport_key: str):
+    await get_current_user(request)
+    try:
+        payload = await odds_client.get_json(
+            f"/sports/{sport_key}/events/{event_id}/odds",
+            {"regions": "eu", "markets": "h2h,totals,btts", "oddsFormat": "decimal"},
+            ttl_seconds=TTL_MARKETS,
+        )
+    except OddsApiError as err:
+        raise _odds_http_error(err) from err
+    event = payload[0] if isinstance(payload, list) and payload else payload
+    return map_event_markets(event or {})
+
+
+@api_router.get("/favorites/leagues")
+async def get_favorite_leagues(request: Request):
+    user_id = await get_current_user(request)
+    rows = await _user_docs(db.favorite_leagues, user_id)
+    return [
+        {
+            "key": row.get("sport_key"),
+            "title": row.get("title") or row.get("sport_key"),
+            "group": row.get("group") or "",
+        }
+        for row in rows
+        if row.get("sport_key")
+    ]
+
+
+@api_router.post("/favorites/leagues")
+async def pin_favorite_league(request: Request, body: FavoriteLeagueIn):
+    user_id = await get_current_user(request)
+    doc = {
+        "user_id": user_id,
+        "sport_key": body.key,
+        "title": body.title or body.key,
+        "group": body.group or "",
+    }
+    await db.favorite_leagues.update_one(
+        {"user_id": user_id, "sport_key": body.key},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"key": doc["sport_key"], "title": doc["title"], "group": doc["group"]}
+
+
+@api_router.delete("/favorites/leagues/{sport_key}")
+async def unpin_favorite_league(request: Request, sport_key: str):
+    user_id = await get_current_user(request)
+    await db.favorite_leagues.delete_one({"user_id": user_id, "sport_key": sport_key})
+    return {"ok": True}
+
+
+@api_router.get("/favorites/teams")
+async def get_favorite_teams(request: Request):
+    user_id = await get_current_user(request)
+    rows = await _user_docs(db.favorite_teams, user_id)
+    return [
+        {"name": row.get("name"), "sport_key": row.get("sport_key")}
+        for row in rows
+        if row.get("name")
+    ]
+
+
+@api_router.post("/favorites/teams")
+async def follow_favorite_team(request: Request, body: FavoriteTeamIn):
+    user_id = await get_current_user(request)
+    doc = {"user_id": user_id, "name": body.name, "sport_key": body.sport_key}
+    await db.favorite_teams.update_one(
+        {"user_id": user_id, "name": body.name, "sport_key": body.sport_key},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"name": body.name, "sport_key": body.sport_key}
+
+
+@api_router.delete("/favorites/teams")
+async def unfollow_favorite_team(request: Request, body: FavoriteTeamIn):
+    user_id = await get_current_user(request)
+    await db.favorite_teams.delete_one(
+        {"user_id": user_id, "name": body.name, "sport_key": body.sport_key}
+    )
+    return {"ok": True}
+
+
+@api_router.get("/favorites/events")
+async def get_favorite_events(request: Request):
+    user_id = await get_current_user(request)
+    rows = await _user_docs(db.favorite_events, user_id)
+    return [
+        {"event_id": row.get("event_id"), "sport_key": row.get("sport_key")}
+        for row in rows
+        if row.get("event_id")
+    ]
+
+
+@api_router.post("/favorites/events")
+async def star_favorite_event(request: Request, body: FavoriteEventIn):
+    user_id = await get_current_user(request)
+    doc = {"user_id": user_id, "event_id": body.event_id}
+    if body.sport_key:
+        doc["sport_key"] = body.sport_key
+    await db.favorite_events.update_one(
+        {"user_id": user_id, "event_id": body.event_id},
+        {"$set": doc},
+        upsert=True,
+    )
+    return {"event_id": body.event_id, "sport_key": body.sport_key}
+
+
+@api_router.delete("/favorites/events")
+async def unstar_favorite_event(request: Request, body: FavoriteEventIn):
+    user_id = await get_current_user(request)
+    await db.favorite_events.delete_one({"user_id": user_id, "event_id": body.event_id})
+    return {"ok": True}
+
+
+@api_router.get("/favorites/search")
+async def search_favorites(request: Request, query: str = ""):
+    await get_current_user(request)
+    needle = (query or "").strip()
+    if not needle:
+        return {"leagues": [], "teams": []}
+    try:
+        sports = await odds_client.get_json("/sports", {"all": "false"}, ttl_seconds=TTL_SPORTS)
+        lowered = needle.lower()
+        matched_keys = [
+            sport["key"]
+            for sport in sports or []
+            if sport.get("active", True)
+            and sport.get("key")
+            and lowered in f"{sport.get('title', '')} {sport.get('key', '')}".lower()
+        ]
+        event_keys = matched_keys or sport_tab_keys(sports, "soccer")[:8]
+
+        async def fetch_events(key):
+            try:
+                return await odds_client.get_json(f"/sports/{key}/events", {}, ttl_seconds=TTL_SCORES)
+            except OddsApiError:
+                return []
+
+        batches = await asyncio.gather(*[fetch_events(key) for key in event_keys])
+        events = []
+        for batch in batches:
+            events.extend(batch or [])
+        return search_leagues_and_teams(sports, events, query)
+    except OddsApiError as err:
+        raise _odds_http_error(err) from err
+
 
 app.include_router(api_router)
 
