@@ -149,6 +149,38 @@ export function missingComboLegs(bet) {
   return stored < 2;
 }
 
+export function shouldUseTicketLayout(mode, bet) {
+  return mode === 'view' && Boolean(bet);
+}
+
+export function potentialReturn(bet) {
+  const stake = Number(bet?.stake) || 0;
+  const odds = Number(bet?.odds) || 0;
+  return Math.round(stake * odds * 100) / 100;
+}
+
+export function ticketViewLegs(bet) {
+  return Array.isArray(bet?.legs) ? bet.legs : [];
+}
+
+export function ticketLegCount(bet) {
+  const stored = ticketViewLegs(bet).length;
+  const total = Number(bet?.total_matches) || 0;
+  return Math.max(stored, total);
+}
+
+export function formatLegKickoff(value) {
+  if (!isPresent(value)) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleString('nb-NO', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export function formatExpectedDate(value) {
   if (!isPresent(value)) return null;
   const parsed = new Date(value);

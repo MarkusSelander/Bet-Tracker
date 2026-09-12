@@ -280,6 +280,7 @@ def test_map_combo_stores_all_unique_selections_as_legs():
         "odds": 1.48,
         "status": "pending",
         "product": "PREMATCH",
+        "start_time": None,
     }
     assert bet["legs"][1] == {
         "match": "Sabalenka, A - Rybakina, E",
@@ -290,6 +291,7 @@ def test_map_combo_stores_all_unique_selections_as_legs():
         "odds": 1.75,
         "status": "pending",
         "product": "PREMATCH",
+        "start_time": "2026-09-12T20:05:00.000Z",
     }
 
 
@@ -309,6 +311,12 @@ def test_extract_legs_prefers_unique_selections_over_first_match():
     assert legs[0]["match"] == "Some Home - Liverpool"
     assert legs[1]["match"] == "Sabalenka, A - Rybakina, E"
     assert legs[1]["product"] == "PREMATCH"
+
+
+def test_extract_legs_copies_match_start():
+    legs = extract_legs(_combo_ticket_detail_payload())
+    assert legs[0].get("start_time") is None
+    assert legs[1]["start_time"] == "2026-09-12T20:05:00.000Z"
 
 
 def test_merged_ticket_detail_import_stores_all_legs():

@@ -281,16 +281,31 @@ test("combo tickets need details until matches exist", () => {
 });
 
 test("ticket detail paths include ticket id", () => {
-  const paths = ticketDetailPaths("26090221-4ce1-4145-b10d-387fb0146ecd", 1949);
-  assert.ok(
-    paths.some((path) =>
-      path.startsWith("/s/sbgate/bets/tickets/26090221-4ce1-4145-b10d-387fb0146ecd?")
-    )
-  );
-  assert.ok(paths.some((path) => path.includes("ticketId=26090221-4ce1-4145-b10d-387fb0146ecd")));
-  assert.ok(paths[0].includes("language=eu"));
-  assert.ok(paths.some((path) => path.includes("/s/sbgate/bets/ticket/")));
-  assert.ok(paths.some((path) => path.startsWith("/s/sbgate/bets/1949?")));
+  const uuid = "26090221-4ce1-4145-b10d-387fb0146ecd";
+  const paths = ticketDetailPaths(uuid, 1949);
+  assert.deepEqual(paths, [
+    `/s/sbgate/bets/tickets/${uuid}?language=eu&layout=EUROPEAN&ticketId=${uuid}`,
+  ]);
+});
+
+test("ticket detail paths never request display_id like 2004", () => {
+  const uuid = "26091203-0b1b-4bd4-8d33-87f7263e9dd7";
+  const paths = ticketDetailPaths(uuid, 2004);
+  assert.deepEqual(paths, [
+    `/s/sbgate/bets/tickets/${uuid}?language=eu&layout=EUROPEAN&ticketId=${uuid}`,
+  ]);
+  for (const path of paths) {
+    assert.equal(path.includes("/tickets/2004"), false);
+    assert.equal(path.includes("/bets/2004"), false);
+    assert.equal(/\/tickets\/\d+(?:\?|$)/.test(path), false);
+    assert.match(path, /[?&]ticketId=26091203-0b1b-4bd4-8d33-87f7263e9dd7/);
+  }
+});
+
+test("ticket detail paths skip numeric display ids used as ticket id", () => {
+  assert.deepEqual(ticketDetailPaths(2004), []);
+  assert.deepEqual(ticketDetailPaths("2004", 2004), []);
+  assert.deepEqual(ticketDetailPaths(null, 2004), []);
 });
 
 test("mergeTicketDetails copies match lists onto history ticket", () => {

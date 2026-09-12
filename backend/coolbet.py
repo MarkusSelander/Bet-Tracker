@@ -128,6 +128,14 @@ def extract_legs(ticket: Dict[str, Any]) -> list:
             continue
         status = match.get("status") or item.get("status")
         odds = match.get("odds") if match.get("odds") is not None else item.get("odds")
+        start_time = (
+            match.get("match_start")
+            or item.get("match_start")
+            or match.get("start_time")
+            or item.get("start_time")
+            or match.get("event_start")
+            or item.get("event_start")
+        )
         legs.append(
             {
                 "match": name,
@@ -142,6 +150,7 @@ def extract_legs(ticket: Dict[str, Any]) -> list:
                 "odds": float(odds) if odds is not None else None,
                 "status": str(status).lower() if status else None,
                 "product": match.get("product") or item.get("product"),
+                "start_time": start_time,
             }
         )
     return legs

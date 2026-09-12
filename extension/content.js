@@ -130,7 +130,12 @@
       let merged = ticket;
       for (const path of CoolbetHistory.ticketDetailPaths(ticket.id, ticket.display_id)) {
         const detailResponse = await fetch(path, { credentials: "include", headers });
-        if (!detailResponse.ok) continue;
+        if (!detailResponse.ok) {
+          if (detailResponse.status === 404) {
+            console.warn("Coolbet ticket detail 404", path);
+          }
+          continue;
+        }
         try {
           const detail = await detailResponse.json();
           merged = CoolbetHistory.mergeTicketDetails(merged, detail);

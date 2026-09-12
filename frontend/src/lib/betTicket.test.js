@@ -14,6 +14,11 @@ let visibleFooterActions;
 let dialogTitle;
 let submitLabel;
 let missingComboLegs;
+let potentialReturn;
+let shouldUseTicketLayout;
+let formatLegKickoff;
+let ticketViewLegs;
+let ticketLegCount;
 
 before(async () => {
   ({
@@ -30,6 +35,11 @@ before(async () => {
     dialogTitle,
     submitLabel,
     missingComboLegs,
+    potentialReturn,
+    shouldUseTicketLayout,
+    formatLegKickoff,
+    ticketViewLegs,
+    ticketLegCount,
   } = await import('./betTicket.js'));
 });
 
@@ -161,10 +171,11 @@ test('visibleFooterActions hides edit and delete without callbacks', () => {
 });
 
 test('visibleFooterActions shows edit and delete in view when provided', () => {
-  assert.deepEqual(
-    visibleFooterActions({ mode: 'view', onEdit: () => {}, onDelete: () => {} }),
-    ['edit', 'delete', 'details']
-  );
+  assert.deepEqual(visibleFooterActions({ mode: 'view', onEdit: () => {}, onDelete: () => {} }), [
+    'edit',
+    'delete',
+    'details',
+  ]);
 });
 
 test('visibleFooterActions uses submit plus details for create and edit', () => {
@@ -194,4 +205,37 @@ test('missingComboLegs is true when stored legs are fewer than total_matches', (
     false
   );
   assert.equal(missingComboLegs({ ticket_type: 'single', total_matches: 1, legs: [] }), false);
+});
+
+test('shouldUseTicketLayout is only for view mode', () => {
+  const combo = { ticket_type: 'combo', legs: [{ match: 'A - B' }] };
+  assert.equal(shouldUseTicketLayout('view', combo), true);
+  assert.equal(shouldUseTicketLayout('edit', combo), false);
+  assert.equal(shouldUseTicketLayout('create', combo), false);
+  assert.equal(shouldUseTicketLayout('view', null), false);
+});
+
+test('potentialReturn is stake times odds like Coolbet possible payout', () => {
+  assert.equal(potentialReturn({ stake: 1000, odds: 2.59 }), 2590);
+  assert.equal(potentialReturn({ stake: '1000', odds: '2.59' }), 2590);
+  assert.equal(potentialReturn({}), 0);
+});
+
+test('ticketViewLegs returns stored legs and ticketLegCount prefers total_matches', () => {
+  const combo = {
+    ticket_type: 'combo',
+    total_matches: 2,
+    legs: [{ match: 'Liverpool - Fulham' }, { match: 'Sabalenka, A - Rybakina, E' }],
+  };
+  assert.equal(ticketViewLegs(combo).length, 2);
+  assert.equal(ticketLegCount(combo), 2);
+  assert.deepEqual(ticketViewLegs({ ticket_type: 'single' }), []);
+  assert.equal(ticketLegCount({ ticket_type: 'combo', total_matches: 5, legs: [{ match: 'A' }] }), 5);
+});
+
+test('formatLegKickoff formats match start for ticket rows', () => {
+  const text = formatLegKickoff('2026-09-12T20:05:00.000Z');
+  assert.match(text, /12/);
+  assert.match(text, /\d{1,2}[:.]\d{2}/);
+  assert.equal(formatLegKickoff(null), '');
 });
