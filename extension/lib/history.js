@@ -132,22 +132,15 @@
     );
   }
 
-  function ticketDetailPaths(ticketId, displayId) {
-    const query = "language=eu&layout=EUROPEAN";
-    const ids = [ticketId];
-    if (displayId != null && String(displayId) !== String(ticketId)) {
-      ids.push(displayId);
-    }
-    const paths = [];
-    for (const rawId of ids) {
-      const id = encodeURIComponent(rawId);
-      paths.push(
-        `/s/sbgate/bets/tickets/${id}?${query}&ticketId=${id}`,
-        `/s/sbgate/bets/${id}?${query}`,
-        `/s/sbgate/bets/ticket/${id}?${query}`
-      );
-    }
-    return paths;
+  function isNumericDisplayId(value) {
+    return value != null && value !== "" && /^\d+$/.test(String(value));
+  }
+
+  function ticketDetailPaths(ticketId, _displayId) {
+    // Coolbet 404s on /tickets/{display_id} and on UUID without ticketId=.
+    if (!ticketId || isNumericDisplayId(ticketId)) return [];
+    const id = encodeURIComponent(ticketId);
+    return [`/s/sbgate/bets/tickets/${id}?language=eu&layout=EUROPEAN&ticketId=${id}`];
   }
 
   function storedLegCount(ticket) {
