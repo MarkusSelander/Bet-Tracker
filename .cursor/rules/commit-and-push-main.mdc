@@ -1,0 +1,26 @@
+---
+description: Alltid commit og squash-merge ferdig arbeid til origin/main
+alwaysApply: true
+---
+
+# Alltid commit og push til main
+
+Denne regelen overstyrer standarden «ikke commit/push med mindre brukeren ber om det» i **dette** repoet.
+
+## Når arbeidet er ferdig
+
+1. **Commit** ferdig feature/fix uten å vente på at brukeren sier «commit».
+   - Norsk, why-fokusert melding (1–2 setninger).
+   - Bruk HEREDOC: `git commit -m "$(cat <<'EOF'` … `EOF` `)"`.
+   - Ikke commit hemmeligheter (`.env`, credentials) eller `.DS_Store`.
+   - Aldri `--no-verify` / hopp over hooks. Aldri force-push.
+2. **Få det inn på `origin/main`** uten å vente på «push til main»:
+   - Push feature-branch (`git push -u origin HEAD`).
+   - Opprett PR med `gh pr create` hvis den ikke finnes.
+   - Squash-merge som PR #2–#7 (`gh pr merge --squash --delete-branch`).
+   - Aldri merge direkte til main uten PR. Aldri `push --force`.
+3. Bekreft `origin/main`-SHA. Fast-forward lokal `main` når mulig (`git pull --ff-only`).
+
+## Chrome-utvidelse
+
+Utviklet unpacked fra `/Users/markusselander/Desktop/App/extension`. Når extension-kode endres: minn brukeren om å laste inn på nytt (`chrome://extensions` → Reload).
