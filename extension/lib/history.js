@@ -118,12 +118,22 @@
     const paths = [];
     for (const rawId of ids) {
       const id = encodeURIComponent(rawId);
-      paths.push(`/s/sbgate/bets/${id}?${query}`, `/s/sbgate/bets/ticket/${id}?${query}`);
+      paths.push(
+        `/s/sbgate/bets/tickets/${id}?${query}&ticketId=${id}`,
+        `/s/sbgate/bets/${id}?${query}`,
+        `/s/sbgate/bets/ticket/${id}?${query}`
+      );
     }
     return paths;
   }
 
   function storedLegCount(ticket) {
+    if (Array.isArray(ticket.uniqueSelections) && ticket.uniqueSelections.length > 0) {
+      return ticket.uniqueSelections.length;
+    }
+    if (Array.isArray(ticket.unique_selections) && ticket.unique_selections.length > 0) {
+      return ticket.unique_selections.length;
+    }
     if (Array.isArray(ticket.matches) && ticket.matches.length > 0) return ticket.matches.length;
     if (Array.isArray(ticket.legs) && ticket.legs.length > 0) return ticket.legs.length;
     if (!Array.isArray(ticket.bets)) return 0;
@@ -162,6 +172,8 @@
 
     for (const candidate of candidates) {
       if (
+        (Array.isArray(candidate.uniqueSelections) && candidate.uniqueSelections.length > 0) ||
+        (Array.isArray(candidate.unique_selections) && candidate.unique_selections.length > 0) ||
         (Array.isArray(candidate.matches) && candidate.matches.length > 0) ||
         (Array.isArray(candidate.bets) && candidate.bets.length > 0) ||
         (Array.isArray(candidate.legs) && candidate.legs.length > 0) ||
@@ -179,6 +191,8 @@
     if (payload.matches) merged.matches = payload.matches;
     if (payload.bets) merged.bets = payload.bets;
     if (payload.legs) merged.legs = payload.legs;
+    if (payload.uniqueSelections) merged.uniqueSelections = payload.uniqueSelections;
+    if (payload.unique_selections) merged.unique_selections = payload.unique_selections;
     if (payload.selections && !merged.matches) merged.matches = payload.selections;
     return merged;
   }

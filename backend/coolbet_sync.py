@@ -31,6 +31,7 @@ def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> lis
     for tid in ids:
         paths.extend(
             [
+                f"/s/sbgate/bets/tickets/{tid}?{query}&ticketId={tid}",
                 f"/s/sbgate/bets/{tid}?{query}",
                 f"/s/sbgate/bets/ticket/{tid}?{query}",
             ]
@@ -39,7 +40,7 @@ def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> lis
 
 
 def _stored_leg_count(ticket: Dict[str, Any]) -> int:
-    for key in ("matches", "legs"):
+    for key in ("uniqueSelections", "unique_selections", "matches", "legs"):
         value = ticket.get(key)
         if isinstance(value, list) and value:
             return len(value)
@@ -86,7 +87,14 @@ def unwrap_ticket_payload(detail: Any) -> Dict[str, Any]:
     for candidate in candidates:
         if any(
             isinstance(candidate.get(key), list) and candidate.get(key)
-            for key in ("matches", "bets", "legs", "selections")
+            for key in (
+                "uniqueSelections",
+                "unique_selections",
+                "matches",
+                "bets",
+                "legs",
+                "selections",
+            )
         ):
             return candidate
     return detail
@@ -95,7 +103,7 @@ def unwrap_ticket_payload(detail: Any) -> Dict[str, Any]:
 def merge_ticket_details(ticket: Dict[str, Any], detail: Any) -> Dict[str, Any]:
     payload = unwrap_ticket_payload(detail)
     merged = {**ticket}
-    for key in ("matches", "bets", "legs"):
+    for key in ("matches", "bets", "legs", "uniqueSelections", "unique_selections"):
         if payload.get(key):
             merged[key] = payload[key]
     if payload.get("selections") and not merged.get("matches"):

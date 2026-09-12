@@ -115,7 +115,11 @@ def test_combo_tickets_need_details_until_matches_exist():
 
 def test_ticket_detail_paths_include_id():
     paths = ticket_detail_paths("26090221-4ce1-4145-b10d-387fb0146ecd", display_id=1949)
-    assert paths[0].startswith("/s/sbgate/bets/26090221-4ce1-4145-b10d-387fb0146ecd")
+    assert any(
+        path.startswith("/s/sbgate/bets/tickets/26090221-4ce1-4145-b10d-387fb0146ecd?")
+        for path in paths
+    )
+    assert any("ticketId=26090221-4ce1-4145-b10d-387fb0146ecd" in path for path in paths)
     assert "language=eu" in paths[0]
     assert any("/s/sbgate/bets/ticket/" in path for path in paths)
     assert any(path.startswith("/s/sbgate/bets/1949?") for path in paths)
@@ -136,3 +140,33 @@ def test_merge_unwraps_nested_ticket_payload():
     )
     assert merged["matches"][1]["match_name"] == "C - D"
     assert not needs_ticket_details(merged)
+
+
+def test_merge_copies_unique_selections_from_ticket_detail():
+    merged = merge_ticket_details(
+        {
+            "id": "TICKET-UUID",
+            "total_matches": 2,
+            "ticket_type": "combo",
+            "first_match": {"match_name": "Some Home - Liverpool"},
+        },
+        {
+            "bets": [{"leg_count": 2, "outcome_ids": [1, 2], "status": "PENDING"}],
+            "ticket": {"id": "TICKET-UUID", "ticket_type": "combo", "total_matches": 2},
+            "uniqueSelections": [
+                {"match_name": "Some Home - Liverpool", "outcome_name": "Liverpool"},
+                {"match_name": "Sabalenka, A - Rybakina, E", "outcome_name": "Sabalenka, A"},
+            ],
+        },
+    )
+    assert len(merged["uniqueSelections"]) == 2
+    assert merged["uniqueSelections"][1]["match_name"] == "Sabalenka, A - Rybakina, E"
+    assert not needs_ticket_details(merged)
+    assert needs_ticket_details(
+        {
+            "id": "TICKET-UUID",
+            "total_matches": 2,
+            "ticket_type": "combo",
+            "bets": [{"leg_count": 2, "outcome_ids": [1, 2]}],
+        }
+    )

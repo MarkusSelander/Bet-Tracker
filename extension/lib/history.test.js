@@ -206,7 +206,12 @@ test("combo tickets need details until matches exist", () => {
 
 test("ticket detail paths include ticket id", () => {
   const paths = ticketDetailPaths("26090221-4ce1-4145-b10d-387fb0146ecd", 1949);
-  assert.ok(paths[0].startsWith("/s/sbgate/bets/26090221-4ce1-4145-b10d-387fb0146ecd"));
+  assert.ok(
+    paths.some((path) =>
+      path.startsWith("/s/sbgate/bets/tickets/26090221-4ce1-4145-b10d-387fb0146ecd?")
+    )
+  );
+  assert.ok(paths.some((path) => path.includes("ticketId=26090221-4ce1-4145-b10d-387fb0146ecd")));
   assert.ok(paths[0].includes("language=eu"));
   assert.ok(paths.some((path) => path.includes("/s/sbgate/bets/ticket/")));
   assert.ok(paths.some((path) => path.startsWith("/s/sbgate/bets/1949?")));
@@ -228,6 +233,37 @@ test("mergeTicketDetails unwraps nested ticket payloads", () => {
   );
   assert.equal(merged.matches[1].match_name, "C - D");
   assert.equal(needsTicketDetails(merged), false);
+});
+
+test("mergeTicketDetails copies uniqueSelections from ticket detail", () => {
+  const merged = mergeTicketDetails(
+    {
+      id: "TICKET-UUID",
+      total_matches: 2,
+      ticket_type: "combo",
+      first_match: { match_name: "Some Home - Liverpool" },
+    },
+    {
+      bets: [{ leg_count: 2, outcome_ids: [1, 2], status: "PENDING" }],
+      ticket: { id: "TICKET-UUID", ticket_type: "combo", total_matches: 2 },
+      uniqueSelections: [
+        { match_name: "Some Home - Liverpool", outcome_name: "Liverpool" },
+        { match_name: "Sabalenka, A - Rybakina, E", outcome_name: "Sabalenka, A" },
+      ],
+    }
+  );
+  assert.equal(merged.uniqueSelections.length, 2);
+  assert.equal(merged.uniqueSelections[1].match_name, "Sabalenka, A - Rybakina, E");
+  assert.equal(needsTicketDetails(merged), false);
+  assert.equal(
+    needsTicketDetails({
+      id: "TICKET-UUID",
+      total_matches: 2,
+      ticket_type: "combo",
+      bets: [{ leg_count: 2, outcome_ids: [1, 2] }],
+    }),
+    true
+  );
 });
 
 test("formatLastSync says never only when no timestamp exists", () => {
