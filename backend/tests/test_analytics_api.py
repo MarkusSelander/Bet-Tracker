@@ -77,8 +77,10 @@ class _FakeCursor:
     def __init__(self, docs, projection=None):
         self.docs = list(docs)
         self.projection = projection or {}
+        self.sort_args = []
 
     def sort(self, *args, **kwargs):
+        self.sort_args.append((args, kwargs))
         return self
 
     def limit(self, n):
@@ -395,3 +397,15 @@ def test_coolbet_import_uses_bulk_write():
     assert len(mock_db.bets.bulk_write.await_args.args[0]) == 1
 
 
+def test_stats_query_sorts_by_date_then_time():
+    cursor = _FakeCursor([])
+    mock_db = MagicMock()
+    mock_db.bets.find.return_value = cursor
+    client = TestClient(app)
+    with patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"), patch(
+        "server.db", mock_db
+    ):
+        response = client.get("/api/analytics/stats")
+
+    assert response.status_code == 200
+    assert cursor.sort_args == [(([("date", 1), ("time", 1)],), {})]

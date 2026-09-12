@@ -321,3 +321,63 @@ def test_analytics_summary_reuses_existing_aggregates():
     assert summary["chart"] == build_chart_data(football)
 
 
+def test_current_streak_uses_chronological_order_not_list_order():
+    bets = [
+        _bet(date="2026-03-04", time="10:00:00", status="won"),
+        _bet(date="2026-03-01", time="20:00:00", status="won"),
+        _bet(date="2026-03-03", time="21:00:00", status="won"),
+        _bet(date="2026-03-02", time="10:00:00", status="lost"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 2
+    assert stats["current_streak_type"] == "won"
+    assert stats["best_win_streak"] == 2
+    assert stats["worst_loss_streak"] == 1
+
+
+def test_streak_orders_same_day_bets_by_time():
+    bets = [
+        _bet(date="2026-03-01", time="22:00:00", status="lost"),
+        _bet(date="2026-03-01", time="09:00:00", status="won"),
+        _bet(date="2026-03-01", time="15:00:00", status="won"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 1
+    assert stats["current_streak_type"] == "lost"
+
+
+def test_streak_skips_pending_push_and_cashed():
+    bets = [
+        _bet(date="2026-03-06", time="12:00:00", status="cashed"),
+        _bet(date="2026-03-01", time="12:00:00", status="won"),
+        _bet(date="2026-03-04", time="12:00:00", status="push"),
+        _bet(date="2026-03-03", time="12:00:00", status="won"),
+        _bet(date="2026-03-02", time="12:00:00", status="pending"),
+        _bet(date="2026-03-05", time="12:00:00", status="won"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 3
+    assert stats["current_streak_type"] == "won"
+    assert stats["best_win_streak"] == 3
+
+
+def test_streak_is_empty_when_no_won_or_lost_bets():
+    stats = compute_stats(
+        [
+            _bet(status="pending"),
+            _bet(status="push"),
+            _bet(status="cashed"),
+        ]
+    )
+
+    assert stats["current_streak"] == 0
+    assert stats["current_streak_type"] is None
+    assert stats["best_win_streak"] == 0
+    assert stats["worst_loss_streak"] == 0
+

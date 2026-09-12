@@ -653,7 +653,7 @@ def analytics_filters(
 
 async def filtered_user_bets(user_id: str, include_legs: bool = False, **filters) -> list:
     query = bets_mongo_query(user_id, **filters)
-    bets = await db.bets.find(query, bet_projection(include_legs)).sort("date", 1).sort("time", 1).to_list(10000)
+    bets = await db.bets.find(query, bet_projection(include_legs)).sort([("date", 1), ("time", 1)]).to_list(10000)
     return filter_bets(bets, **filters)
 
 

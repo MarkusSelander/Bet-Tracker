@@ -249,6 +249,10 @@ def build_chart_data(bets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return chart_data
 
 
+def _bet_chrono_key(bet: Dict[str, Any]) -> Tuple[str, str]:
+    return (bet.get("date") or "", bet.get("time") or "00:00:00")
+
+
 def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
     settled = [bet for bet in all_bets if bet.get("status") in SETTLED_STATUSES]
     total_stake = sum(bet.get("stake", 0) for bet in settled)
@@ -267,27 +271,19 @@ def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
     temp_win_streak = 0
     temp_loss_streak = 0
 
-    for bet in all_bets:
+    for bet in sorted(all_bets, key=_bet_chrono_key):
         status = bet.get("status")
         if status == "won":
             temp_win_streak += 1
             temp_loss_streak = 0
-            if current_streak_type == "won" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "won"
-            else:
-                current_streak = 1
-                current_streak_type = "won"
+            current_streak = temp_win_streak
+            current_streak_type = "won"
             best_win_streak = max(best_win_streak, temp_win_streak)
         elif status == "lost":
             temp_loss_streak += 1
             temp_win_streak = 0
-            if current_streak_type == "lost" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "lost"
-            else:
-                current_streak = 1
-                current_streak_type = "lost"
+            current_streak = temp_loss_streak
+            current_streak_type = "lost"
             worst_loss_streak = max(worst_loss_streak, temp_loss_streak)
 
     decided = len(won_bets) + len(lost_bets)
