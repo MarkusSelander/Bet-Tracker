@@ -1,11 +1,10 @@
 (function (root, factory) {
   const api = factory();
-  if (typeof module !== "undefined" && module.exports) {
+  root.CoolbetHistory = api;
+  if (typeof module !== "undefined" && module && module.exports) {
     module.exports = api;
-  } else {
-    root.CoolbetHistory = api;
   }
-})(typeof self !== "undefined" ? self : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : typeof self !== "undefined" ? self : this, function () {
   const HISTORY_PATH = "/s/sbgate/bets/history";
   const TICKET_STATUS =
     "all,WON,LOST,CONFIRMED,CANCELLED,PUSHED,PARTIALLY_WON,VOIDED,CASHED,PENDING";

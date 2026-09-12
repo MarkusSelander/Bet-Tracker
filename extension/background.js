@@ -1,4 +1,6 @@
-importScripts("lib/history.js");
+import "./lib/history.js";
+
+const CoolbetHistory = globalThis.CoolbetHistory;
 
 const BET_HISTORY_URL = "https://www.coolbet.com/eu/bet-history/sports";
 const ALARM_NAME = "coolbet-auto-sync";

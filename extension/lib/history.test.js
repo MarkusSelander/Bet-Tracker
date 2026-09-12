@@ -1,5 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
 const {
   HISTORY_PATH,
   authHeaders,
@@ -630,4 +633,34 @@ test("resolveLastSyncAt prefers local lastSyncAt and falls back to backend field
   );
   assert.equal(resolveLastSyncAt({ lastStatus: "ok" }), null);
   assert.equal(resolveLastSyncAt({}), null);
+});
+
+test("history.js has no ESM import/export so Chrome can load it in classic and module workers", () => {
+  const src = fs.readFileSync(path.join(__dirname, "history.js"), "utf8");
+  assert.doesNotMatch(src, /^\s*export\s/m);
+  assert.doesNotMatch(src, /^\s*import\s/m);
+});
+
+test("service worker loads history.js with a static import instead of importScripts", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+  assert.match(src, /^import\s+["']\.\/lib\/history\.js["'];/m);
+  assert.doesNotMatch(src, /importScripts\s*\(/);
+});
+
+test("manifest registers the background service worker as an ES module", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "manifest.json"), "utf8")
+  );
+  assert.equal(manifest.background.service_worker, "background.js");
+  assert.equal(manifest.background.type, "module");
+});
+
+test("history.js attaches CoolbetHistory on the worker global even when module.exports exists", () => {
+  const src = fs.readFileSync(path.join(__dirname, "history.js"), "utf8");
+  const sandbox = { module: { exports: {} } };
+  sandbox.self = sandbox;
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(src, sandbox, { filename: "history.js" });
+  assert.equal(typeof sandbox.CoolbetHistory.ticketsToImport, "function");
+  assert.equal(sandbox.module.exports.ticketsToImport, sandbox.CoolbetHistory.ticketsToImport);
 });
