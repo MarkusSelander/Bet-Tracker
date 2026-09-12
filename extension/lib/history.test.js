@@ -299,14 +299,14 @@ test("fetches combo details when a known ticket is still pending in Bet Tracker"
   );
 });
 
-test("fetches details for every combo missing legs, including known settled", () => {
+test("skips ticket details for known complete combos even if the list payload has no legs", () => {
   const combo = { id: "a", total_matches: 2, ticket_type: "combo", status: "WON" };
   const pending = { id: "b", total_matches: 2, ticket_type: "combo", status: "PENDING" };
   const fresh = { id: "c", total_matches: 2, ticket_type: "combo", status: "WON" };
   const known = new Set(["a", "b"]);
-  assert.equal(shouldFetchTicketDetails(combo, known), true);
-  assert.equal(shouldFetchTicketDetails(pending, known), true);
-  assert.equal(shouldFetchTicketDetails(fresh, known), true);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
+  assert.equal(shouldFetchTicketDetails(pending, known, new Set(["b"]), new Set()), true);
+  assert.equal(shouldFetchTicketDetails(fresh, known, new Set(), new Set()), true);
   assert.equal(shouldFetchTicketDetails(combo, new Set()), true);
 });
 
@@ -314,7 +314,30 @@ test("fetches details for known settled combos missing stored legs", () => {
   const combo = { id: "a", total_matches: 5, ticket_type: "combo", status: "WON" };
   const known = new Set(["a"]);
   assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set(["a"])), true);
-  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), true);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
+});
+
+test("complete Chelsea-Hull combo is not fetched or imported on later syncs", () => {
+  const complete = mergeTicketDetails(
+    { ...chelseaHullHistoryListTicket(), status: "WON" },
+    chelseaHullTicketDetail()
+  );
+  const known = new Set([CHELSEA_HULL_UUID]);
+  assert.equal(complete.uniqueSelections.length, 2);
+  assert.equal(complete.total_matches, 2);
+  assert.equal(shouldFetchTicketDetails(complete, known, new Set(), new Set()), false);
+  const imported = ticketsToImport([complete], known, new Set(), new Set());
+  assert.deepEqual(
+    imported.map((ticket) => ticket.id),
+    []
+  );
+});
+
+test("incomplete settled Chelsea-Hull combo still fetches ticket details", () => {
+  const list = { ...chelseaHullHistoryListTicket(), status: "WON" };
+  const known = new Set([CHELSEA_HULL_UUID]);
+  assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set([CHELSEA_HULL_UUID])), true);
+  assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set()), false);
 });
 
 test("reimports known settled tickets that are missing stored legs", () => {
@@ -394,7 +417,7 @@ test("ticket detail paths skip numeric display ids used as ticket id", () => {
   assert.deepEqual(ticketDetailPaths(null, 2004), []);
 });
 
-test("Chelsea-Hull list ticket has no uniqueSelections and always needs a UUID detail fetch", () => {
+test("Chelsea-Hull list ticket has no uniqueSelections and needs a UUID detail fetch until stored legs are complete", () => {
   const list = chelseaHullHistoryListTicket();
   assert.equal(list.uniqueSelections, undefined);
   assert.equal(needsTicketDetails(list), true);
@@ -402,6 +425,15 @@ test("Chelsea-Hull list ticket has no uniqueSelections and always needs a UUID d
   assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set()), true);
   assert.equal(
     shouldFetchTicketDetails({ ...list, status: "WON" }, known, new Set(), new Set()),
+    false
+  );
+  assert.equal(
+    shouldFetchTicketDetails(
+      { ...list, status: "WON" },
+      known,
+      new Set(),
+      new Set([CHELSEA_HULL_UUID])
+    ),
     true
   );
 });
@@ -441,7 +473,7 @@ test("existing settled combo with one stored leg is imported after detail merge"
     [merged],
     new Set([CHELSEA_HULL_UUID]),
     new Set(),
-    new Set()
+    new Set([CHELSEA_HULL_UUID])
   );
   assert.deepEqual(
     imported.map((ticket) => ticket.id),

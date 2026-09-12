@@ -12,6 +12,7 @@ from coolbet_sync import (
     merge_ticket_details,
     needs_ticket_details,
     resolve_last_coolbet_sync_at,
+    should_fetch_ticket_details,
     should_stop_pagination,
     ticket_detail_paths,
     tickets_to_import,
@@ -150,7 +151,7 @@ def test_tickets_to_import_reimports_incomplete_settled_combos():
     assert [ticket["id"] for ticket in imported] == ["incomplete-combo"]
 
 
-def test_tickets_to_import_includes_known_settled_combo_after_detail_legs():
+def test_tickets_to_import_skips_known_complete_combo_even_with_detail_legs():
     uuid = "26091204-3cbd-47e8-8111-e3517af40f5d"
     ticket = {
         "id": uuid,
@@ -163,7 +164,38 @@ def test_tickets_to_import_includes_known_settled_combo_after_detail_legs():
         ],
     }
     imported = tickets_to_import([ticket], known_ids={uuid}, pending_ids=set(), incomplete_ids=set())
-    assert [item["id"] for item in imported] == [uuid]
+    assert imported == []
+
+
+def test_should_fetch_ticket_details_skips_complete_and_keeps_incomplete_settled():
+    uuid = "26091204-3cbd-47e8-8111-e3517af40f5d"
+    complete = {
+        "id": uuid,
+        "status": "WON",
+        "ticket_type": "combo",
+        "total_matches": 2,
+        "uniqueSelections": [
+            {"match_name": "Chelsea - Hull"},
+            {"match_name": "Fukuoka SoftBank Hawks - Chiba Lotte Marines"},
+        ],
+    }
+    incomplete_list = {
+        "id": uuid,
+        "status": "WON",
+        "ticket_type": "combo",
+        "total_matches": 2,
+    }
+    known = {uuid}
+    assert should_fetch_ticket_details(complete, known, set(), set()) is False
+    assert should_fetch_ticket_details(incomplete_list, known, set(), {uuid}) is True
+    assert should_fetch_ticket_details(incomplete_list, known, set(), set()) is False
+    assert tickets_to_import([complete], known_ids=known, pending_ids=set(), incomplete_ids=set()) == []
+    assert [
+        ticket["id"]
+        for ticket in tickets_to_import(
+            [incomplete_list], known_ids=known, pending_ids=set(), incomplete_ids={uuid}
+        )
+    ] == [uuid]
 
 
 def test_chrome_extension_origin_regex_allows_unpacked_ids():
