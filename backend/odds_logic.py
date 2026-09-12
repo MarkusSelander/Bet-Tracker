@@ -1,4 +1,9 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from odds_client import OddsApiError, preferred_odds_fetch_error
+
+OSLO_TZ = ZoneInfo("Europe/Oslo")
 
 
 def _h2h_market(bookmaker):
@@ -118,7 +123,7 @@ def match_date(commence_time):
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.date().isoformat()
+    return value.astimezone(OSLO_TZ).date().isoformat()
 
 
 def match_status(match):
@@ -168,10 +173,42 @@ def search_event_sport_keys(sports, query):
     return sport_tab_keys(sports, "soccer")
 
 
+def favorite_sport_keys(league_keys, teams, events):
+    keys = []
+    for key in league_keys or []:
+        if key:
+            keys.append(key)
+    for row in list(teams or []) + list(events or []):
+        key = row.get("sport_key") if isinstance(row, dict) else None
+        if key:
+            keys.append(key)
+    return list(dict.fromkeys(keys))
+
+
+def merge_sport_fetch_results(results):
+    matches = []
+    errors = []
+    for item in results or []:
+        if isinstance(item, OddsApiError):
+            errors.append(item)
+            continue
+        if item:
+            matches.extend(item)
+    if matches:
+        return matches
+    if errors:
+        raise preferred_odds_fetch_error(errors)
+    return []
+
+
 def favorite_matches(matches, league_keys, teams, event_ids):
-    leagues = set(league_keys or [])
-    events = set(event_ids or [])
-    team_pairs = {(_norm(team.get("name")), team.get("sport_key")) for team in teams or []}
+    leagues = {key for key in (league_keys or []) if key}
+    events = {event_id for event_id in (event_ids or []) if event_id}
+    team_pairs = {
+        (_norm(team.get("name")), team.get("sport_key"))
+        for team in teams or []
+        if team.get("name") and team.get("sport_key")
+    }
     selected = []
     for match in matches:
         home = _norm(match.get("home_team"))

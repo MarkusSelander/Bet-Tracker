@@ -43,7 +43,7 @@
   }
 
   function betsUrl(apiBase, bookie) {
-    const base = `${String(apiBase).replace(/\/$/, "")}/api/bets`;
+    const base = `${String(apiBase).replace(/\/$/, "")}/api/bets/source-ids`;
     if (!bookie) return base;
     return `${base}?bookie=${encodeURIComponent(bookie)}`;
   }

@@ -20,18 +20,22 @@ from auth_cookies import use_cross_site_cookies
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
-from odds_client import OddsApiError, OddsClient, TTL_MARKETS, TTL_ODDS, TTL_SCORES, TTL_SPORTS, default_http_get
+from odds_client import OddsApiError, OddsClient, TTL_MARKETS, TTL_ODDS, TTL_SCORES, TTL_SPORTS, default_http_get, preferred_odds_fetch_error
 from odds_logic import (
     best_h2h,
     favorite_matches,
+    favorite_sport_keys,
     filter_matches,
     map_event_markets,
+    merge_sport_fetch_results,
     normalize_event,
     search_event_sport_keys,
     search_leagues_and_teams,
     sport_tab_keys,
 )
 from stats import (
+    bets_mongo_query,
+    build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
     compute_breakdown,
@@ -39,6 +43,9 @@ from stats import (
     compute_stats,
     filter_bets,
 )
+from pymongo import InsertOne, ReplaceOne
+from starlette.middleware.gzip import GZipMiddleware
+from ttl_cache import SessionCache, TtlLruCache
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -48,6 +55,9 @@ client = AsyncIOMotorClient(mongo_url, **mongo_client_kwargs(mongo_url))
 db = client[os.environ['DB_NAME']]
 is_production = use_cross_site_cookies()
 odds_client = OddsClient(api_key=os.environ.get("ODDS_API_KEY", ""), http_get=default_http_get)
+session_cache = SessionCache(ttl_seconds=15)
+sportsdb_cache = TtlLruCache(maxsize=512, ttl_seconds=86_400)
+sportsdb_http = httpx.AsyncClient(timeout=3.0)
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -56,8 +66,12 @@ api_router = APIRouter(prefix="/api")
 SPORTSDB_API_KEY = "3"  # Free tier key
 SPORTSDB_BASE_URL = "https://www.thesportsdb.com/api/v1/json"
 
-# Cache for TheSportsDB lookups to minimize API calls
-sportsdb_cache = {}
+LIST_PROJECTION = {"_id": 0, "legs": 0}
+FULL_PROJECTION = {"_id": 0}
+
+
+def bet_projection(include_legs: bool) -> dict:
+    return FULL_PROJECTION if include_legs else LIST_PROJECTION
 
 
 async def query_sportsdb_team(team_name: str) -> Optional[str]:
@@ -70,57 +84,54 @@ async def query_sportsdb_team(team_name: str) -> Optional[str]:
 
     # Check cache first
     cache_key = team_name.lower().strip()
-    if cache_key in sportsdb_cache:
-        return sportsdb_cache[cache_key]
+    cached, hit = sportsdb_cache.get(cache_key)
+    if hit:
+        return cached
 
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            # Search for team by name
-            response = await client.get(
-                f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/searchteams.php",
-                params={"t": team_name}
-            )
+        response = await sportsdb_http.get(
+            f"{SPORTSDB_BASE_URL}/{SPORTSDB_API_KEY}/searchteams.php",
+            params={"t": team_name}
+        )
 
-            if response.status_code == 200:
-                data = response.json()
-                teams = data.get("teams")
+        if response.status_code == 200:
+            data = response.json()
+            teams = data.get("teams")
 
-                if teams and len(teams) > 0:
-                    # Get the first match
-                    team = teams[0]
-                    sport = team.get("strSport", "").strip()
+            if teams and len(teams) > 0:
+                # Get the first match
+                team = teams[0]
+                sport = team.get("strSport", "").strip()
 
-                    # Map TheSportsDB sport names to our sport categories
-                    sport_mapping = {
-                        "Soccer": "Football",
-                        "Basketball": "Basketball",
-                        "Ice Hockey": "Ice Hockey",
-                        "American Football": "American Football",
-                        "Baseball": "Baseball",
-                        "Tennis": "Tennis",
-                        "Handball": "Handball",
-                        "Volleyball": "Volleyball",
-                        "Esports": "Esports",
-                        "Fighting": "Other",
-                        "Rugby": "Other",
-                        "Cricket": "Other",
-                        "Golf": "Other",
-                        "Motorsport": "Other",
-                        "Cycling": "Other",
-                        "Darts": "Other",
-                        "Snooker": "Other",
-                    }
+                # Map TheSportsDB sport names to our sport categories
+                sport_mapping = {
+                    "Soccer": "Football",
+                    "Basketball": "Basketball",
+                    "Ice Hockey": "Ice Hockey",
+                    "American Football": "American Football",
+                    "Baseball": "Baseball",
+                    "Tennis": "Tennis",
+                    "Handball": "Handball",
+                    "Volleyball": "Volleyball",
+                    "Esports": "Esports",
+                    "Fighting": "Other",
+                    "Rugby": "Other",
+                    "Cricket": "Other",
+                    "Golf": "Other",
+                    "Motorsport": "Other",
+                    "Cycling": "Other",
+                    "Darts": "Other",
+                    "Snooker": "Other",
+                }
 
-                    result = sport_mapping.get(sport, "Other")
+                result = sport_mapping.get(sport, "Other")
 
-                    # Cache the result
-                    sportsdb_cache[cache_key] = result
-                    return result
+                sportsdb_cache.set(cache_key, result)
+                return result
     except Exception as e:
         logging.warning(f"TheSportsDB API error for '{team_name}': {e}")
 
-    # Cache negative result to avoid repeated failed lookups
-    sportsdb_cache[cache_key] = None
+    sportsdb_cache.set(cache_key, None)
     return None
 
 
@@ -601,6 +612,10 @@ async def get_current_user(request: Request) -> str:
     if not session_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    cached_user = session_cache.get(session_token)
+    if cached_user:
+        return cached_user
+
     session_doc = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
     if not session_doc:
         raise HTTPException(status_code=401, detail="Invalid session")
@@ -613,6 +628,7 @@ async def get_current_user(request: Request) -> str:
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=401, detail="Session expired")
 
+    session_cache.set(session_token, session_doc["user_id"])
     return session_doc["user_id"]
 
 def _unavailable_db() -> HTTPException:
@@ -635,9 +651,10 @@ def analytics_filters(
     }
 
 
-async def filtered_user_bets(user_id: str, **filters) -> list:
-    all_bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).sort("time", 1).to_list(10000)
-    return filter_bets(all_bets, **filters)
+async def filtered_user_bets(user_id: str, include_legs: bool = False, **filters) -> list:
+    query = bets_mongo_query(user_id, **filters)
+    bets = await db.bets.find(query, bet_projection(include_legs)).sort([("date", 1), ("time", 1)]).to_list(10000)
+    return filter_bets(bets, **filters)
 
 
 async def attach_last_coolbet_sync(user_doc: Optional[dict]) -> Optional[dict]:
@@ -743,6 +760,7 @@ async def logout(request: Request, response: Response):
         if auth_header and auth_header.startswith("Bearer "):
             session_token = auth_header.split(" ")[1]
     if session_token:
+        session_cache.pop(session_token)
         await db.user_sessions.delete_one({"session_token": session_token})
     response.delete_cookie(
         "session_token",
@@ -781,12 +799,11 @@ async def get_bets(
     ticket_type: Optional[str] = None,
     odds_min: Optional[float] = None,
     odds_max: Optional[float] = None,
+    limit: Optional[int] = None,
+    include_legs: bool = False,
 ):
     user_id = await get_current_user(request)
-
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", -1).to_list(10000)
-    return filter_bets(
-        bets,
+    filters = dict(
         date_from=date_from,
         date_to=date_to,
         bookie=bookie,
@@ -798,6 +815,13 @@ async def get_bets(
         odds_min=odds_min,
         odds_max=odds_max,
     )
+    query = bets_mongo_query(user_id, **filters)
+    cursor = db.bets.find(query, bet_projection(include_legs)).sort("date", -1)
+    fetch_limit = limit if limit and limit > 0 else 10000
+    if limit and limit > 0:
+        cursor = cursor.limit(limit)
+    bets = await cursor.to_list(fetch_limit)
+    return filter_bets(bets, **filters)
 
 
 @api_router.post("/bets", response_model=Bet)
@@ -983,16 +1007,63 @@ async def get_ticket_type_analytics(request: Request, filters: dict = Depends(an
     return compute_breakdown(bets, "ticket_type")
 
 
+@api_router.get("/analytics/summary")
+async def get_analytics_summary(
+    request: Request,
+    days: Optional[str] = None,
+    filters: dict = Depends(analytics_filters),
+):
+    user_id = await get_current_user(request)
+    option_filters = {
+        "date_from": filters.get("date_from"),
+        "date_to": filters.get("date_to"),
+    }
+    option_bets = await filtered_user_bets(user_id, **option_filters)
+    data_bets = filter_bets(
+        option_bets,
+        sport=filters.get("sport"),
+        bookie=filters.get("bookie"),
+        tipster=filters.get("tipster"),
+    )
+    try:
+        start_date, end_date = chart_date_bounds(
+            days=days,
+            date_from=filters.get("date_from"),
+            date_to=filters.get("date_to"),
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid days") from None
+    chart_bets = filter_bets(
+        option_bets,
+        date_from=start_date,
+        date_to=end_date,
+        sport=filters.get("sport"),
+        bookie=filters.get("bookie"),
+        tipster=filters.get("tipster"),
+    )
+    return build_analytics_summary(data_bets, option_bets, chart_bets)
+
+
 @api_router.get("/bets/recent")
 async def get_recent_bets(request: Request, limit: int = 10):
     user_id = await get_current_user(request)
 
     bets = await db.bets.find(
         {"user_id": user_id},
-        {"_id": 0}
+        LIST_PROJECTION,
     ).sort([("date", -1), ("time", -1)]).limit(limit).to_list(limit)
 
     return bets
+
+
+@api_router.get("/bets/source-ids")
+async def get_bet_source_ids(request: Request, bookie: Optional[str] = None):
+    user_id = await get_current_user(request)
+    query = {"user_id": user_id, "source_id": {"$exists": True, "$nin": [None, ""]}}
+    if bookie:
+        query["bookie"] = bookie
+    rows = await db.bets.find(query, {"_id": 0, "source_id": 1, "status": 1}).to_list(10000)
+    return rows
 
 
 # Bookmaker Routes
@@ -1160,39 +1231,46 @@ async def import_coolbet_bets(request: Request):
     updated = 0
     skipped = 0
     now = datetime.now(timezone.utc)
+    mapped_tickets = []
 
     for ticket in tickets:
         try:
             if not isinstance(ticket, dict) or not ticket.get("id"):
                 skipped += 1
                 continue
-
-            mapped = map_coolbet_ticket(ticket)
-            source_id = mapped["source_id"]
-            existing = await db.bets.find_one(
-                {"user_id": user_id, "source_id": source_id},
-                {"_id": 0, "bet_id": 1, "created_at": 1},
-            )
-
-            doc = {
-                **mapped,
-                "user_id": user_id,
-                "bet_id": existing["bet_id"] if existing else f"bet_{uuid.uuid4().hex[:12]}",
-                "created_at": existing["created_at"] if existing else now,
-            }
-
-            if existing:
-                await db.bets.replace_one(
-                    {"bet_id": existing["bet_id"], "user_id": user_id},
-                    doc,
-                )
-                updated += 1
-            else:
-                await db.bets.insert_one(doc)
-                imported += 1
+            mapped_tickets.append(map_coolbet_ticket(ticket))
         except Exception as e:
-            logging.error(f"Error importing Coolbet ticket: {e}")
+            logging.error(f"Error mapping Coolbet ticket: {e}")
             skipped += 1
+
+    source_ids = [mapped["source_id"] for mapped in mapped_tickets if mapped.get("source_id")]
+    existing_docs = []
+    if source_ids:
+        existing_docs = await db.bets.find(
+            {"user_id": user_id, "source_id": {"$in": source_ids}},
+            {"_id": 0, "bet_id": 1, "source_id": 1, "created_at": 1},
+        ).to_list(len(source_ids))
+    existing_by_source = {doc["source_id"]: doc for doc in existing_docs}
+
+    ops = []
+    for mapped in mapped_tickets:
+        source_id = mapped.get("source_id")
+        existing = existing_by_source.get(source_id)
+        doc = {
+            **mapped,
+            "user_id": user_id,
+            "bet_id": existing["bet_id"] if existing else f"bet_{uuid.uuid4().hex[:12]}",
+            "created_at": existing["created_at"] if existing else now,
+        }
+        if existing:
+            ops.append(ReplaceOne({"bet_id": existing["bet_id"], "user_id": user_id}, doc))
+            updated += 1
+        else:
+            ops.append(InsertOne(doc))
+            imported += 1
+
+    if ops:
+        await db.bets.bulk_write(ops, ordered=False)
 
     await db.users.update_one(
         {"user_id": user_id},
@@ -1235,8 +1313,18 @@ async def export_bets(request: Request):
     })
 
 
+@api_router.get("/bets/{bet_id}", response_model=Bet)
+async def get_bet(request: Request, bet_id: str):
+    user_id = await get_current_user(request)
+    bet_doc = await db.bets.find_one({"bet_id": bet_id, "user_id": user_id}, {"_id": 0})
+    if not bet_doc:
+        raise HTTPException(status_code=404, detail="Bet not found")
+    return bet_doc
+
+
 # Chrome extension uses Authorization Bearer (not cookies). unpacked IDs change,
 # so allow any chrome-extension:// origin in addition to CORS_ORIGINS (Vercel etc.).
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -1279,28 +1367,77 @@ def _merge_score_and_odds(score_event, odds_event, sport_key, sport_title):
     return normalize_event(combined, best_h2h(combined))
 
 
-async def _matches_for_sport_keys(sport_keys, sports):
-    titles = _sport_title_map(sports)
-    matches = []
-    for key in sport_keys:
-        scores_rows = await odds_client.get_json(
+SPORT_FETCH_CONCURRENCY = 3
+MATCHES_FETCH_BUDGET_SECONDS = 22.0
+
+
+async def _sport_endpoint_rows(path, params, ttl_seconds):
+    try:
+        return await odds_client.get_json(path, params, ttl_seconds=ttl_seconds), None
+    except OddsApiError as err:
+        logger.warning("Odds API feilet for %s: %s", path, err.detail)
+        return [], err
+
+
+async def _matches_for_one_sport(key, titles):
+    (scores_rows, scores_err), (odds_rows, odds_err) = await asyncio.gather(
+        _sport_endpoint_rows(
             f"/sports/{key}/scores",
             {"daysFrom": "3"},
-            ttl_seconds=TTL_SCORES,
-        )
-        odds_rows = await odds_client.get_json(
+            TTL_SCORES,
+        ),
+        _sport_endpoint_rows(
             f"/sports/{key}/odds",
             {"regions": "eu", "markets": "h2h", "oddsFormat": "decimal"},
-            ttl_seconds=TTL_ODDS,
-        )
-        scores_map = {row["id"]: row for row in scores_rows or [] if row.get("id")}
-        odds_map = {row["id"]: row for row in odds_rows or [] if row.get("id")}
-        title = titles.get(key) or key
-        for event_id in dict.fromkeys([*scores_map, *odds_map]):
-            matches.append(
-                _merge_score_and_odds(scores_map.get(event_id), odds_map.get(event_id), key, title)
-            )
-    return matches
+            TTL_ODDS,
+        ),
+    )
+    errors = [err for err in (scores_err, odds_err) if err]
+    if not scores_rows and not odds_rows:
+        return preferred_odds_fetch_error(errors) if errors else []
+    scores_map = {row["id"]: row for row in scores_rows or [] if row.get("id")}
+    odds_map = {row["id"]: row for row in odds_rows or [] if row.get("id")}
+    title = titles.get(key) or key
+    return [
+        _merge_score_and_odds(scores_map.get(event_id), odds_map.get(event_id), key, title)
+        for event_id in dict.fromkeys([*scores_map, *odds_map])
+    ]
+
+
+async def _matches_for_sport_keys(sport_keys, sports):
+    titles = _sport_title_map(sports)
+    unique_keys = [key for key in dict.fromkeys(sport_keys or []) if key]
+    if not unique_keys:
+        return []
+    sem = asyncio.Semaphore(SPORT_FETCH_CONCURRENCY)
+
+    async def guarded(key):
+        async with sem:
+            try:
+                return await _matches_for_one_sport(key, titles)
+            except OddsApiError as err:
+                logger.warning("Odds API feilet for sport_key=%s: %s", key, err.detail)
+                return err
+
+    tasks = [asyncio.create_task(guarded(key)) for key in unique_keys]
+    done, pending = await asyncio.wait(tasks, timeout=MATCHES_FETCH_BUDGET_SECONDS)
+    timed_out = []
+    for task in pending:
+        task.cancel()
+        timed_out.append(OddsApiError(502, "Odds API utilgjengelig (timeout)"))
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    results = []
+    for task in done:
+        try:
+            results.append(task.result())
+        except OddsApiError as err:
+            results.append(err)
+        except Exception:
+            results.append(OddsApiError(502, "Odds API utilgjengelig"))
+    results.extend(timed_out)
+    return merge_sport_fetch_results(results)
 
 
 async def _favorite_state(user_id: str):
@@ -1308,16 +1445,13 @@ async def _favorite_state(user_id: str):
     teams = await _user_docs(db.favorite_teams, user_id)
     events = await _user_docs(db.favorite_events, user_id)
     league_keys = [row.get("sport_key") for row in leagues if row.get("sport_key")]
-    team_keys = [row.get("sport_key") for row in teams if row.get("sport_key")]
-    event_keys = [row.get("sport_key") for row in events if row.get("sport_key")]
     event_ids = [row.get("event_id") for row in events if row.get("event_id")]
-    sport_keys = list(dict.fromkeys([*league_keys, *team_keys, *event_keys]))
     return {
         "leagues": leagues,
         "teams": teams,
         "event_ids": event_ids,
         "league_keys": league_keys,
-        "sport_keys": sport_keys,
+        "sport_keys": favorite_sport_keys(league_keys, teams, events),
     }
 
 
@@ -1501,6 +1635,30 @@ async def search_favorites(request: Request, query: str = ""):
 app.include_router(api_router)
 
 
+@app.on_event("startup")
+async def ensure_indexes():
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    try:
+        await db.bets.create_index([("user_id", 1), ("date", -1)], name="bets_user_date")
+        await db.bets.create_index(
+            [("user_id", 1), ("status", 1), ("date", -1)],
+            name="bets_user_status_date",
+        )
+        await db.bets.create_index(
+            [("user_id", 1), ("bookie", 1), ("source_id", 1)],
+            name="bets_user_bookie_source",
+            unique=True,
+            partialFilterExpression={"source_id": {"$type": "string"}},
+        )
+        await db.user_sessions.create_index("session_token", unique=True, name="sessions_token")
+        await db.users.create_index("user_id", name="users_user_id")
+    except Exception:
+        logging.exception("Could not ensure Mongo indexes")
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        await sportsdb_http.aclose()
     client.close()

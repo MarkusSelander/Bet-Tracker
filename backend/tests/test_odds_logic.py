@@ -1,8 +1,10 @@
 from odds_logic import (
     best_h2h,
     favorite_matches,
+    favorite_sport_keys,
     filter_matches,
     map_event_markets,
+    merge_sport_fetch_results,
     search_event_sport_keys,
     search_leagues_and_teams,
     sport_tab_keys,
@@ -219,6 +221,80 @@ def test_filter_matches_live_finished_scheduled_odds():
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="finished")] == ["done"]
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="scheduled")] == ["soon", "priced"]
     assert [row["id"] for row in filter_matches(rows, date="2026-09-11", status_filter="odds")] == ["live", "done", "priced"]
+
+
+def test_filter_matches_uses_oslo_calendar_date():
+    late = _match(id="late", commence_time="2026-09-11T22:30:00Z")
+    assert [row["id"] for row in filter_matches([late], date="2026-09-12", status_filter="all")] == ["late"]
+    assert [row["id"] for row in filter_matches([late], date="2026-09-11", status_filter="all")] == []
+
+
+def test_favorite_sport_keys_only_from_pins_teams_and_starred_events():
+    keys = favorite_sport_keys(
+        league_keys=["soccer_epl", "", None],
+        teams=[
+            {"name": "Brann", "sport_key": "soccer_norway_eliteserien"},
+            {"name": "Ghost", "sport_key": ""},
+        ],
+        events=[
+            {"event_id": "star-1", "sport_key": "soccer_epl"},
+            {"event_id": "star-2", "sport_key": None},
+        ],
+    )
+    assert keys == ["soccer_epl", "soccer_norway_eliteserien"]
+    assert "tennis_atp" not in keys
+    assert "" not in keys
+
+
+def test_favorite_matches_ignores_empty_sport_key_and_unrelated_sports():
+    rows = [
+        _match(
+            id="tennis",
+            sport_key="tennis_atp",
+            sport_title="ATP US Open",
+            home_team="Frances Tiafoe",
+            away_team="Ben Shelton",
+        ),
+        _match(id="brann", sport_key="soccer_norway_eliteserien", home_team="Brann", away_team="Molde"),
+        _match(id="city", sport_key="soccer_epl", home_team="Manchester City", away_team="Arsenal"),
+    ]
+    selected = favorite_matches(
+        rows,
+        league_keys=["", None],
+        teams=[
+            {"name": "Brann", "sport_key": "soccer_norway_eliteserien"},
+            {"name": "Manchester City", "sport_key": "soccer_epl"},
+            {"name": "Frances Tiafoe", "sport_key": ""},
+        ],
+        event_ids=[],
+    )
+    assert [row["id"] for row in selected] == ["brann", "city"]
+
+
+def test_merge_sport_fetch_results_returns_partial_matches():
+    from odds_client import OddsApiError
+
+    ok = [_match(id="city", sport_key="soccer_epl", home_team="Manchester City", away_team="Arsenal")]
+    merged = merge_sport_fetch_results([
+        ok,
+        OddsApiError(502, "Odds API utilgjengelig (500)"),
+    ])
+    assert [row["id"] for row in merged] == ["city"]
+
+
+def test_merge_sport_fetch_results_raises_429_when_nothing_loaded():
+    from odds_client import OddsApiError
+
+    try:
+        merge_sport_fetch_results([
+            OddsApiError(502, "Odds API utilgjengelig (timeout)"),
+            OddsApiError(429, "Odds API-kvote brukt opp (429)"),
+        ])
+    except OddsApiError as err:
+        assert err.status_code == 429
+        assert "429" in err.detail
+    else:
+        raise AssertionError("expected OddsApiError")
 
 
 def test_favorite_matches_is_union_of_league_team_and_event():

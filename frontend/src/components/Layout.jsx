@@ -1,6 +1,7 @@
 import { Menu } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import PageFallback from './PageFallback';
 import Sidebar from './Sidebar';
 
 export default function Layout({ user }) {
@@ -32,7 +33,9 @@ export default function Layout({ user }) {
       <Sidebar user={user} mobileOpen={menuOpen} onClose={() => setMenuOpen(false)} />
 
       <main className="lg:ml-64 p-4 lg:p-8 relative z-0">
-        <Outlet context={{ user }} />
+        <Suspense fallback={<PageFallback />}>
+          <Outlet context={{ user }} />
+        </Suspense>
       </main>
     </div>
   );

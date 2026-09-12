@@ -49,6 +49,7 @@
     "react-dom": "^19.0.0",
     "react-resizable-panels": "^2.1.7",
     "react-router-dom": "^7.1.1",
+    "@tanstack/react-query": "^5.90.2",
     "recharts": "^2.15.0",
     "sonner": "^1.7.3",
     "tailwind-merge": "^2.6.0",
@@ -73,7 +74,7 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "CI=false craco build",
+    "build": "CI=false GENERATE_SOURCEMAP=false craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "lint": "eslint src --ext .js,.jsx",

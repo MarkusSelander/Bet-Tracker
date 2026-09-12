@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchWithTimeout, setSessionToken } from '../lib/fetch';
+import { queryClient } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -60,7 +61,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     if (!BACKEND_URL) {
       throw new Error('REACT_APP_BACKEND_URL is not defined');
     }
@@ -90,11 +91,12 @@ export const AuthProvider = ({ children }) => {
     const userData = await response.json();
     if (userData.session_token) setSessionToken(userData.session_token);
     delete userData.session_token;
+    queryClient.clear();
     setUser(userData);
     return userData;
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     authCheckId.current += 1;
     try {
       if (BACKEND_URL) {
@@ -107,10 +109,20 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       setSessionToken(null);
+      queryClient.clear();
       setUser(null);
       setLoading(false);
     }
-  };
+  }, []);
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  const updateUser = useCallback((patch) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, loading, login, logout, updateUser }),
+    [user, loading, login, logout, updateUser]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

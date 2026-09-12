@@ -56,6 +56,58 @@ def filter_bets(bets: List[Dict[str, Any]], **filters: Any) -> List[Dict[str, An
     return [bet for bet in bets if matches(bet)]
 
 
+def bets_mongo_query(user_id: str, **filters: Any) -> Dict[str, Any]:
+    query: Dict[str, Any] = {"user_id": user_id}
+    date_from = filters.get("date_from")
+    date_to = filters.get("date_to")
+    if _has_value(date_from) or _has_value(date_to):
+        date_q: Dict[str, Any] = {}
+        if _has_value(date_from):
+            date_q["$gte"] = date_from
+        if _has_value(date_to):
+            date_q["$lte"] = date_to
+        query["date"] = date_q
+    for field in ("sport", "bookie", "tipster", "league", "ticket_type", "status"):
+        value = filters.get(field)
+        if _has_value(value):
+            query[field] = value
+    odds_min = filters.get("odds_min")
+    odds_max = filters.get("odds_max")
+    if odds_min is not None or odds_max is not None:
+        odds_q: Dict[str, Any] = {}
+        if odds_min is not None:
+            odds_q["$gte"] = odds_min
+        if odds_max is not None:
+            odds_q["$lte"] = odds_max
+        query["odds"] = odds_q
+    return query
+
+
+def unique_names(rows: List[Dict[str, Any]]) -> List[str]:
+    names = sorted({row.get("name") for row in rows if row.get("name")})
+    return names
+
+
+def build_analytics_summary(
+    bets: List[Dict[str, Any]],
+    option_bets: List[Dict[str, Any]],
+    chart_bets: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "stats": compute_stats(bets),
+        "chart": build_chart_data(chart_bets),
+        "sports": compute_breakdown(bets, "sport"),
+        "leagues": compute_breakdown(bets, "league"),
+        "odds_range": compute_odds_range_breakdown(bets),
+        "bookmakers": compute_breakdown(bets, "bookie"),
+        "tipsters": compute_breakdown(bets, "tipster", skip_empty=True),
+        "ticket_types": compute_breakdown(bets, "ticket_type"),
+        "sport_options": unique_names(compute_breakdown(option_bets, "sport")),
+        "bookie_options": unique_names(compute_breakdown(option_bets, "bookie")),
+        "tipster_options": unique_names(compute_breakdown(option_bets, "tipster", skip_empty=True)),
+    }
+
+
 def _empty_group(name: str) -> Dict[str, Any]:
     return {
         "name": name,
@@ -197,6 +249,10 @@ def build_chart_data(bets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return chart_data
 
 
+def _bet_chrono_key(bet: Dict[str, Any]) -> Tuple[str, str]:
+    return (bet.get("date") or "", bet.get("time") or "00:00:00")
+
+
 def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
     settled = [bet for bet in all_bets if bet.get("status") in SETTLED_STATUSES]
     total_stake = sum(bet.get("stake", 0) for bet in settled)
@@ -215,27 +271,19 @@ def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
     temp_win_streak = 0
     temp_loss_streak = 0
 
-    for bet in all_bets:
+    for bet in sorted(all_bets, key=_bet_chrono_key):
         status = bet.get("status")
         if status == "won":
             temp_win_streak += 1
             temp_loss_streak = 0
-            if current_streak_type == "won" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "won"
-            else:
-                current_streak = 1
-                current_streak_type = "won"
+            current_streak = temp_win_streak
+            current_streak_type = "won"
             best_win_streak = max(best_win_streak, temp_win_streak)
         elif status == "lost":
             temp_loss_streak += 1
             temp_win_streak = 0
-            if current_streak_type == "lost" or current_streak_type is None:
-                current_streak += 1
-                current_streak_type = "lost"
-            else:
-                current_streak = 1
-                current_streak_type = "lost"
+            current_streak = temp_loss_streak
+            current_streak_type = "lost"
             worst_loss_streak = max(worst_loss_streak, temp_loss_streak)
 
     decided = len(won_bets) + len(lost_bets)

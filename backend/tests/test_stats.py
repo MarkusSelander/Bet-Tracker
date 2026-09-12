@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 
 from stats import (
+    bets_mongo_query,
+    build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
     compute_breakdown,
@@ -276,4 +278,106 @@ def test_chart_omitted_days_uses_range_or_defaults_to_30():
     assert ranged == ("2026-02-01", "2026-02-28")
     assert defaulted == ("2026-08-11", None)
     assert numeric == ("2026-08-11", None)
+
+
+def test_bets_mongo_query_builds_match_for_hot_filters():
+    query = bets_mongo_query(
+        "user_1",
+        date_from="2026-01-01",
+        date_to="2026-01-31",
+        status="pending",
+        bookie="Coolbet",
+        sport="Football",
+        odds_min=1.5,
+        odds_max=2.0,
+    )
+
+    assert query["user_id"] == "user_1"
+    assert query["date"] == {"$gte": "2026-01-01", "$lte": "2026-01-31"}
+    assert query["status"] == "pending"
+    assert query["bookie"] == "Coolbet"
+    assert query["sport"] == "Football"
+    assert query["odds"] == {"$gte": 1.5, "$lte": 2.0}
+
+
+def test_bets_mongo_query_omits_empty_filters():
+    query = bets_mongo_query("user_1", sport="", bookie=None, status="won")
+    assert query == {"user_id": "user_1", "status": "won"}
+
+
+def test_analytics_summary_reuses_existing_aggregates():
+    bets = [
+        _bet(sport="Football", bookie="Coolbet", tipster="Anna", league="Eliteserien"),
+        _bet(sport="Tennis", bookie="Unibet", tipster="Bo", league="ATP", status="lost", stake=50, result=-50),
+    ]
+    football = [bets[0]]
+    summary = build_analytics_summary(football, bets, football)
+
+    assert summary["stats"]["total_bets"] == 1
+    assert summary["stats"] == compute_stats(football)
+    assert summary["sports"] == compute_breakdown(football, "sport")
+    assert "Football" in summary["sport_options"]
+    assert "Tennis" in summary["sport_options"]
+    assert summary["chart"] == build_chart_data(football)
+
+
+def test_current_streak_uses_chronological_order_not_list_order():
+    bets = [
+        _bet(date="2026-03-04", time="10:00:00", status="won"),
+        _bet(date="2026-03-01", time="20:00:00", status="won"),
+        _bet(date="2026-03-03", time="21:00:00", status="won"),
+        _bet(date="2026-03-02", time="10:00:00", status="lost"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 2
+    assert stats["current_streak_type"] == "won"
+    assert stats["best_win_streak"] == 2
+    assert stats["worst_loss_streak"] == 1
+
+
+def test_streak_orders_same_day_bets_by_time():
+    bets = [
+        _bet(date="2026-03-01", time="22:00:00", status="lost"),
+        _bet(date="2026-03-01", time="09:00:00", status="won"),
+        _bet(date="2026-03-01", time="15:00:00", status="won"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 1
+    assert stats["current_streak_type"] == "lost"
+
+
+def test_streak_skips_pending_push_and_cashed():
+    bets = [
+        _bet(date="2026-03-06", time="12:00:00", status="cashed"),
+        _bet(date="2026-03-01", time="12:00:00", status="won"),
+        _bet(date="2026-03-04", time="12:00:00", status="push"),
+        _bet(date="2026-03-03", time="12:00:00", status="won"),
+        _bet(date="2026-03-02", time="12:00:00", status="pending"),
+        _bet(date="2026-03-05", time="12:00:00", status="won"),
+    ]
+
+    stats = compute_stats(bets)
+
+    assert stats["current_streak"] == 3
+    assert stats["current_streak_type"] == "won"
+    assert stats["best_win_streak"] == 3
+
+
+def test_streak_is_empty_when_no_won_or_lost_bets():
+    stats = compute_stats(
+        [
+            _bet(status="pending"),
+            _bet(status="push"),
+            _bet(status="cashed"),
+        ]
+    )
+
+    assert stats["current_streak"] == 0
+    assert stats["current_streak_type"] is None
+    assert stats["best_win_streak"] == 0
+    assert stats["worst_loss_streak"] == 0
 
