@@ -31,6 +31,7 @@ def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> lis
     for tid in ids:
         paths.extend(
             [
+                f"/s/sbgate/bets/tickets/{tid}?{query}&ticketId={tid}",
                 f"/s/sbgate/bets/{tid}?{query}",
                 f"/s/sbgate/bets/ticket/{tid}?{query}",
             ]
@@ -39,7 +40,7 @@ def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> lis
 
 
 def _stored_leg_count(ticket: Dict[str, Any]) -> int:
-    for key in ("matches", "legs"):
+    for key in ("uniqueSelections", "unique_selections", "matches", "legs"):
         value = ticket.get(key)
         if isinstance(value, list) and value:
             return len(value)
@@ -86,7 +87,14 @@ def unwrap_ticket_payload(detail: Any) -> Dict[str, Any]:
     for candidate in candidates:
         if any(
             isinstance(candidate.get(key), list) and candidate.get(key)
-            for key in ("matches", "bets", "legs", "selections")
+            for key in (
+                "uniqueSelections",
+                "unique_selections",
+                "matches",
+                "bets",
+                "legs",
+                "selections",
+            )
         ):
             return candidate
     return detail
@@ -95,7 +103,7 @@ def unwrap_ticket_payload(detail: Any) -> Dict[str, Any]:
 def merge_ticket_details(ticket: Dict[str, Any], detail: Any) -> Dict[str, Any]:
     payload = unwrap_ticket_payload(detail)
     merged = {**ticket}
-    for key in ("matches", "bets", "legs"):
+    for key in ("matches", "bets", "legs", "uniqueSelections", "unique_selections"):
         if payload.get(key):
             merged[key] = payload[key]
     if payload.get("selections") and not merged.get("matches"):
@@ -134,11 +142,14 @@ def should_stop_pagination(
     has_next_page: bool,
     known_ids: Optional[Set[str]] = None,
     pending_ids: Optional[Set[str]] = None,
+    incomplete_ids: Optional[Set[str]] = None,
 ) -> bool:
     tickets = list(tickets)
     if not has_next_page or len(tickets) == 0:
         return True
     if pending_ids:
+        return False
+    if incomplete_ids:
         return False
     if not known_ids:
         return False
@@ -147,3 +158,50 @@ def should_stop_pagination(
     if any(str(ticket.get("status") or "").upper() in OPEN_STATUSES for ticket in tickets):
         return False
     return True
+
+
+def _stored_bet_leg_count(bet: Dict[str, Any]) -> int:
+    if bet.get("legs_count") is not None:
+        try:
+            return int(bet["legs_count"])
+        except (TypeError, ValueError):
+            pass
+    legs = bet.get("legs")
+    if isinstance(legs, list):
+        return len(legs)
+    return 0
+
+
+def is_incomplete_stored_bet(bet: Dict[str, Any]) -> bool:
+    if not bet.get("source_id"):
+        return False
+    total = int(bet.get("total_matches") or 1)
+    ticket_type = str(bet.get("ticket_type") or "").lower()
+    if total <= 1 and ticket_type not in COMBO_TYPES:
+        return False
+    return _stored_bet_leg_count(bet) < max(total, 2)
+
+
+def collect_incomplete_ids_from_bets(bets: Iterable[Dict[str, Any]]) -> list:
+    return [bet["source_id"] for bet in bets if is_incomplete_stored_bet(bet)]
+
+
+def tickets_to_import(
+    tickets: Iterable[Dict[str, Any]],
+    known_ids: Optional[Set[str]] = None,
+    pending_ids: Optional[Set[str]] = None,
+    incomplete_ids: Optional[Set[str]] = None,
+) -> list:
+    tickets = list(tickets)
+    if not known_ids:
+        return tickets
+    pending_ids = pending_ids or set()
+    incomplete_ids = incomplete_ids or set()
+    return [
+        ticket
+        for ticket in tickets
+        if ticket.get("id") not in known_ids
+        or str(ticket.get("status") or "").upper() in OPEN_STATUSES
+        or ticket.get("id") in pending_ids
+        or ticket.get("id") in incomplete_ids
+    ]

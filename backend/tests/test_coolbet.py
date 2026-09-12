@@ -177,3 +177,204 @@ def test_map_combo_stores_legs_from_details():
     assert len(bet["legs"]) == 2
     assert bet["legs"][1]["match"] == "Rosenborg - Viking"
     assert bet["total_matches"] == 2
+
+
+def _combo_ticket_detail_payload():
+    return {
+        "bets": [
+            {
+                "id": "BET-UUID",
+                "stake": 1000,
+                "initial_stake": 1000,
+                "created_at": "2026-09-12T03:36:17.959Z",
+                "expected_result_date": "2026-09-12T22:25:00.000Z",
+                "leg_count": 2,
+                "max_win": 2590,
+                "outcome_ids": [1702567143, 1712054724],
+                "status": "PENDING",
+                "total_odds": 2.59,
+            }
+        ],
+        "systemsMeta": None,
+        "ticket": {
+            "id": "TICKET-UUID",
+            "ticket_type": "combo",
+            "currency": "NOK",
+            "display_id": 2004,
+            "first_bet_odds": 2.59,
+            "status": "PENDING",
+            "total_matches": 2,
+            "total_stake": 1000,
+            "cashout_amount": None,
+            "expected_result_date": "2026-09-12T22:25:00.000Z",
+        },
+        "uniqueSelections": [
+            {
+                "outcome_id": 1702567143,
+                "outcome_name": "Liverpool",
+                "market_name": "Match Result (1X2)",
+                "league_name": "Premier League",
+                "sport_name": "Football",
+                "sportName": "Football",
+                "match_name": "Some Home - Liverpool",
+                "odds": 1.48,
+                "display_odds": "1.48",
+                "product": "PREMATCH",
+                "status": "PENDING",
+            },
+            {
+                "outcome_id": 1712054724,
+                "outcome_name": "Sabalenka, A",
+                "market_name": "Match Result",
+                "marketTypeName": "Match Result",
+                "categoryName": "WTA US Open",
+                "league_name": "WTA US Open",
+                "sport_name": "Tennis",
+                "sportName": "Tennis",
+                "match_name": "Sabalenka, A - Rybakina, E",
+                "match_start": "2026-09-12T20:05:00.000Z",
+                "odds": 1.75,
+                "display_odds": "1.75",
+                "product": "PREMATCH",
+                "status": "PENDING",
+            },
+        ],
+    }
+
+
+def test_map_combo_stores_all_unique_selections_as_legs():
+    history_ticket = _ticket(
+        id="TICKET-UUID",
+        display_id=2004,
+        created_at="2026-09-12T03:36:17.959Z",
+        status="PENDING",
+        total_stake=1000,
+        max_win=2590,
+        remaining_max_win=2590,
+        ticket_type="combo",
+        total_matches=2,
+        first_bet_odds=2.59,
+        first_match={
+            "sport_name": "Football",
+            "match_name": "Some Home - Liverpool",
+            "league_name": "Premier League",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Liverpool",
+        },
+        uniqueSelections=_combo_ticket_detail_payload()["uniqueSelections"],
+        bets=_combo_ticket_detail_payload()["bets"],
+    )
+
+    bet = map_coolbet_ticket(history_ticket)
+
+    assert bet["game"] == "Some Home - Liverpool (+1)"
+    assert bet["ticket_type"] == "combo"
+    assert bet["total_matches"] == 2
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][0] == {
+        "match": "Some Home - Liverpool",
+        "market": "Match Result (1X2)",
+        "outcome": "Liverpool",
+        "sport": "Football",
+        "league": "Premier League",
+        "odds": 1.48,
+        "status": "pending",
+        "product": "PREMATCH",
+    }
+    assert bet["legs"][1] == {
+        "match": "Sabalenka, A - Rybakina, E",
+        "market": "Match Result",
+        "outcome": "Sabalenka, A",
+        "sport": "Tennis",
+        "league": "WTA US Open",
+        "odds": 1.75,
+        "status": "pending",
+        "product": "PREMATCH",
+    }
+
+
+def test_extract_legs_prefers_unique_selections_over_first_match():
+    legs = extract_legs(
+        {
+            "first_match": {
+                "match_name": "Some Home - Liverpool",
+                "market_name": "Match Result (1X2)",
+                "outcome_name": "Liverpool",
+            },
+            **_combo_ticket_detail_payload(),
+        }
+    )
+
+    assert len(legs) == 2
+    assert legs[0]["match"] == "Some Home - Liverpool"
+    assert legs[1]["match"] == "Sabalenka, A - Rybakina, E"
+    assert legs[1]["product"] == "PREMATCH"
+
+
+def test_merged_ticket_detail_import_stores_all_legs():
+    from coolbet_sync import merge_ticket_details
+
+    history = _ticket(
+        id="TICKET-UUID",
+        display_id=2004,
+        created_at="2026-09-12T03:36:17.959Z",
+        status="PENDING",
+        total_stake=1000,
+        max_win=2590,
+        remaining_max_win=2590,
+        ticket_type="combo",
+        total_matches=2,
+        first_bet_odds=2.59,
+        first_match={
+            "sport_name": "Football",
+            "match_name": "Some Home - Liverpool",
+            "league_name": "Premier League",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Liverpool",
+        },
+    )
+    merged = merge_ticket_details(history, _combo_ticket_detail_payload())
+    bet = map_coolbet_ticket(merged)
+
+    assert len(merged["uniqueSelections"]) == 2
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][1]["match"] == "Sabalenka, A - Rybakina, E"
+    assert bet["total_matches"] == 2
+
+
+def test_merged_settled_combo_detail_overwrites_single_stored_leg():
+    from coolbet_sync import merge_ticket_details
+
+    history = _ticket(
+        id="TICKET-UUID",
+        display_id=2004,
+        created_at="2026-09-12T03:36:17.959Z",
+        status="WON",
+        total_stake=1000,
+        max_win=2590,
+        remaining_max_win=2590,
+        ticket_type="combo",
+        total_matches=5,
+        first_bet_odds=2.59,
+        first_match={
+            "sport_name": "Football",
+            "match_name": "Some Home - Liverpool",
+            "league_name": "Premier League",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Liverpool",
+        },
+        legs=[{"match": "Some Home - Liverpool"}],
+    )
+    payload = _combo_ticket_detail_payload()
+    payload["bets"][0]["status"] = "WON"
+    payload["ticket"]["status"] = "WON"
+    payload["uniqueSelections"][0]["status"] = "WON"
+    payload["uniqueSelections"][1]["status"] = "WON"
+    merged = merge_ticket_details(history, payload)
+    bet = map_coolbet_ticket(merged)
+
+    assert history["status"] == "WON"
+    assert len(merged["uniqueSelections"]) == 2
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][1]["match"] == "Sabalenka, A - Rybakina, E"
+    assert bet["status"] == "won"

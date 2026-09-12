@@ -4,6 +4,7 @@ const {
   HISTORY_PATH,
   authHeaders,
   betsUrl,
+  collectIncompleteIdsFromBets,
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
   computeSyncProgress,
@@ -103,6 +104,21 @@ test("keeps paging while Bet Tracker still has unseen pending tickets", () => {
   );
 });
 
+test("keeps paging while Bet Tracker still has incomplete settled combos", () => {
+  assert.equal(
+    shouldStopPagination({
+      tickets: [
+        { id: "a", status: "LOST" },
+        { id: "b", status: "WON" },
+      ],
+      hasNextPage: true,
+      knownIds: new Set(["a", "b"]),
+      incompleteIds: new Set(["older-combo"]),
+    }),
+    false
+  );
+});
+
 test("collectPendingIdsFromBets keeps only open tracker bets", () => {
   assert.deepEqual(
     collectPendingIdsFromBets([
@@ -111,6 +127,42 @@ test("collectPendingIdsFromBets keeps only open tracker bets", () => {
       { status: "pending" },
     ]),
     ["open"]
+  );
+});
+
+test("collectIncompleteIdsFromBets keeps combos with fewer stored legs than total_matches", () => {
+  assert.deepEqual(
+    collectIncompleteIdsFromBets([
+      {
+        source_id: "incomplete-settled",
+        status: "won",
+        ticket_type: "combo",
+        total_matches: 5,
+        legs_count: 1,
+      },
+      {
+        source_id: "complete-settled",
+        status: "lost",
+        ticket_type: "combo",
+        total_matches: 2,
+        legs_count: 2,
+      },
+      {
+        source_id: "single",
+        status: "won",
+        ticket_type: "single",
+        total_matches: 1,
+        legs_count: 1,
+      },
+      {
+        source_id: "incomplete-pending",
+        status: "pending",
+        ticket_type: "combo",
+        total_matches: 3,
+        legs: [{ match: "A - B" }],
+      },
+    ]),
+    ["incomplete-settled", "incomplete-pending"]
   );
 });
 
@@ -172,6 +224,30 @@ test("skips detail fetch for known settled combos", () => {
   assert.equal(shouldFetchTicketDetails(combo, new Set()), true);
 });
 
+test("fetches details for known settled combos missing stored legs", () => {
+  const combo = { id: "a", total_matches: 5, ticket_type: "combo", status: "WON" };
+  const known = new Set(["a"]);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set(["a"])), true);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
+});
+
+test("reimports known settled tickets that are missing stored legs", () => {
+  const tickets = [
+    { id: "complete-won", status: "WON" },
+    { id: "incomplete-combo", status: "WON" },
+  ];
+  const imported = ticketsToImport(
+    tickets,
+    new Set(["complete-won", "incomplete-combo"]),
+    new Set(),
+    new Set(["incomplete-combo"])
+  );
+  assert.deepEqual(
+    imported.map((ticket) => ticket.id),
+    ["incomplete-combo"]
+  );
+});
+
 test("import only unknown or open tickets when known ids exist", () => {
   const tickets = [
     { id: "old", status: "WON" },
@@ -206,7 +282,12 @@ test("combo tickets need details until matches exist", () => {
 
 test("ticket detail paths include ticket id", () => {
   const paths = ticketDetailPaths("26090221-4ce1-4145-b10d-387fb0146ecd", 1949);
-  assert.ok(paths[0].startsWith("/s/sbgate/bets/26090221-4ce1-4145-b10d-387fb0146ecd"));
+  assert.ok(
+    paths.some((path) =>
+      path.startsWith("/s/sbgate/bets/tickets/26090221-4ce1-4145-b10d-387fb0146ecd?")
+    )
+  );
+  assert.ok(paths.some((path) => path.includes("ticketId=26090221-4ce1-4145-b10d-387fb0146ecd")));
   assert.ok(paths[0].includes("language=eu"));
   assert.ok(paths.some((path) => path.includes("/s/sbgate/bets/ticket/")));
   assert.ok(paths.some((path) => path.startsWith("/s/sbgate/bets/1949?")));
@@ -228,6 +309,37 @@ test("mergeTicketDetails unwraps nested ticket payloads", () => {
   );
   assert.equal(merged.matches[1].match_name, "C - D");
   assert.equal(needsTicketDetails(merged), false);
+});
+
+test("mergeTicketDetails copies uniqueSelections from ticket detail", () => {
+  const merged = mergeTicketDetails(
+    {
+      id: "TICKET-UUID",
+      total_matches: 2,
+      ticket_type: "combo",
+      first_match: { match_name: "Some Home - Liverpool" },
+    },
+    {
+      bets: [{ leg_count: 2, outcome_ids: [1, 2], status: "PENDING" }],
+      ticket: { id: "TICKET-UUID", ticket_type: "combo", total_matches: 2 },
+      uniqueSelections: [
+        { match_name: "Some Home - Liverpool", outcome_name: "Liverpool" },
+        { match_name: "Sabalenka, A - Rybakina, E", outcome_name: "Sabalenka, A" },
+      ],
+    }
+  );
+  assert.equal(merged.uniqueSelections.length, 2);
+  assert.equal(merged.uniqueSelections[1].match_name, "Sabalenka, A - Rybakina, E");
+  assert.equal(needsTicketDetails(merged), false);
+  assert.equal(
+    needsTicketDetails({
+      id: "TICKET-UUID",
+      total_matches: 2,
+      ticket_type: "combo",
+      bets: [{ leg_count: 2, outcome_ids: [1, 2] }],
+    }),
+    true
+  );
 });
 
 test("formatLastSync says never only when no timestamp exists", () => {

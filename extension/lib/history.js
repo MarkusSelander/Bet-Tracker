@@ -73,6 +73,26 @@
       .map((bet) => bet.source_id);
   }
 
+  function storedBetLegCount(bet) {
+    if (bet && bet.legs_count != null && Number.isFinite(Number(bet.legs_count))) {
+      return Number(bet.legs_count);
+    }
+    if (Array.isArray(bet && bet.legs)) return bet.legs.length;
+    return 0;
+  }
+
+  function isIncompleteStoredBet(bet) {
+    if (!bet || !bet.source_id) return false;
+    const total = Number(bet.total_matches || 1);
+    const type = String(bet.ticket_type || "").toLowerCase();
+    if (total <= 1 && !COMBO_TYPES[type]) return false;
+    return storedBetLegCount(bet) < Math.max(total, 2);
+  }
+
+  function collectIncompleteIdsFromBets(bets) {
+    return (bets || []).filter(isIncompleteStoredBet).map((bet) => bet.source_id);
+  }
+
   function isOpenTicket(ticket) {
     const status = String((ticket && ticket.status) || "").toUpperCase();
     return Boolean(OPEN_STATUSES[status]);
@@ -82,30 +102,33 @@
     return Boolean(pendingIds && ticket && pendingIds.has(ticket.id));
   }
 
-  function shouldStopPagination({ tickets, hasNextPage, knownIds, pendingIds }) {
+  function shouldStopPagination({ tickets, hasNextPage, knownIds, pendingIds, incompleteIds }) {
     if (!hasNextPage || !tickets || tickets.length === 0) return true;
     if (pendingIds && pendingIds.size > 0) return false;
+    if (incompleteIds && incompleteIds.size > 0) return false;
     if (!knownIds || knownIds.size === 0) return false;
     const allKnown = tickets.every((ticket) => knownIds.has(ticket.id));
     if (!allKnown) return false;
     return !tickets.some((ticket) => isOpenTicket(ticket));
   }
 
-  function shouldFetchTicketDetails(ticket, knownIds, pendingIds) {
+  function shouldFetchTicketDetails(ticket, knownIds, pendingIds, incompleteIds) {
     if (!needsTicketDetails(ticket)) return false;
     if (shouldRefreshKnownTicket(ticket, pendingIds)) return true;
+    if (shouldRefreshKnownTicket(ticket, incompleteIds)) return true;
     if (!knownIds || knownIds.size === 0) return true;
     if (!knownIds.has(ticket.id)) return true;
     return isOpenTicket(ticket);
   }
 
-  function ticketsToImport(tickets, knownIds, pendingIds) {
+  function ticketsToImport(tickets, knownIds, pendingIds, incompleteIds) {
     if (!knownIds || knownIds.size === 0) return tickets || [];
     return (tickets || []).filter(
       (ticket) =>
         !knownIds.has(ticket.id) ||
         isOpenTicket(ticket) ||
-        shouldRefreshKnownTicket(ticket, pendingIds)
+        shouldRefreshKnownTicket(ticket, pendingIds) ||
+        shouldRefreshKnownTicket(ticket, incompleteIds)
     );
   }
 
@@ -118,12 +141,22 @@
     const paths = [];
     for (const rawId of ids) {
       const id = encodeURIComponent(rawId);
-      paths.push(`/s/sbgate/bets/${id}?${query}`, `/s/sbgate/bets/ticket/${id}?${query}`);
+      paths.push(
+        `/s/sbgate/bets/tickets/${id}?${query}&ticketId=${id}`,
+        `/s/sbgate/bets/${id}?${query}`,
+        `/s/sbgate/bets/ticket/${id}?${query}`
+      );
     }
     return paths;
   }
 
   function storedLegCount(ticket) {
+    if (Array.isArray(ticket.uniqueSelections) && ticket.uniqueSelections.length > 0) {
+      return ticket.uniqueSelections.length;
+    }
+    if (Array.isArray(ticket.unique_selections) && ticket.unique_selections.length > 0) {
+      return ticket.unique_selections.length;
+    }
     if (Array.isArray(ticket.matches) && ticket.matches.length > 0) return ticket.matches.length;
     if (Array.isArray(ticket.legs) && ticket.legs.length > 0) return ticket.legs.length;
     if (!Array.isArray(ticket.bets)) return 0;
@@ -162,6 +195,8 @@
 
     for (const candidate of candidates) {
       if (
+        (Array.isArray(candidate.uniqueSelections) && candidate.uniqueSelections.length > 0) ||
+        (Array.isArray(candidate.unique_selections) && candidate.unique_selections.length > 0) ||
         (Array.isArray(candidate.matches) && candidate.matches.length > 0) ||
         (Array.isArray(candidate.bets) && candidate.bets.length > 0) ||
         (Array.isArray(candidate.legs) && candidate.legs.length > 0) ||
@@ -179,6 +214,8 @@
     if (payload.matches) merged.matches = payload.matches;
     if (payload.bets) merged.bets = payload.bets;
     if (payload.legs) merged.legs = payload.legs;
+    if (payload.uniqueSelections) merged.uniqueSelections = payload.uniqueSelections;
+    if (payload.unique_selections) merged.unique_selections = payload.unique_selections;
     if (payload.selections && !merged.matches) merged.matches = payload.selections;
     return merged;
   }
@@ -282,6 +319,7 @@
     PAGE_SIZE,
     authHeaders,
     betsUrl,
+    collectIncompleteIdsFromBets,
     collectKnownIdsFromBets,
     collectPendingIdsFromBets,
     collectTicketIds,

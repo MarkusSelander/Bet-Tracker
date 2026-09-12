@@ -66,11 +66,24 @@ def calculate_result(ticket: Dict[str, Any], status: str) -> float:
     return round(float(payout) - stake, 2)
 
 
+def _unique_selections(source: Dict[str, Any]) -> list:
+    for key in ("uniqueSelections", "unique_selections"):
+        value = source.get(key)
+        if isinstance(value, list) and any(isinstance(item, dict) for item in value):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
 def _raw_match_dicts(ticket: Dict[str, Any]) -> list:
     buckets = [ticket]
     nested = ticket.get("ticket")
     if isinstance(nested, dict):
         buckets.append(nested)
+
+    for source in buckets:
+        selections = _unique_selections(source)
+        if selections:
+            return selections
 
     found: list = []
     for source in buckets:
@@ -100,6 +113,8 @@ def extract_legs(ticket: Dict[str, Any]) -> list:
             or item.get("market_name")
             or match.get("market")
             or item.get("market")
+            or match.get("marketTypeName")
+            or item.get("marketTypeName")
         )
         outcome = (
             match.get("outcome_name")
@@ -118,10 +133,15 @@ def extract_legs(ticket: Dict[str, Any]) -> list:
                 "match": name,
                 "market": market,
                 "outcome": outcome,
-                "sport": normalize_sport(match.get("sport_name") or match.get("sport")),
-                "league": match.get("league_name") or match.get("league"),
+                "sport": normalize_sport(
+                    match.get("sport_name") or match.get("sportName") or match.get("sport")
+                ),
+                "league": match.get("league_name")
+                or match.get("league")
+                or match.get("categoryName"),
                 "odds": float(odds) if odds is not None else None,
                 "status": str(status).lower() if status else None,
+                "product": match.get("product") or item.get("product"),
             }
         )
     return legs

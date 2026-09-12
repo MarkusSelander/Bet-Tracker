@@ -142,6 +142,7 @@ async function runSync(reason) {
 
       let knownIds = Array.isArray(config.knownIds) ? config.knownIds : [];
       let pendingIds = [];
+      let incompleteIds = [];
       const betsResponse = await fetch(CoolbetHistory.betsUrl(config.apiUrl, "Coolbet"), {
         headers: CoolbetHistory.authHeaders(config.sessionToken),
         credentials: "omit",
@@ -149,6 +150,7 @@ async function runSync(reason) {
       if (betsResponse.ok) {
         const bets = await betsResponse.json();
         pendingIds = CoolbetHistory.collectPendingIdsFromBets(bets);
+        incompleteIds = CoolbetHistory.collectIncompleteIdsFromBets(bets);
         if (knownIds.length === 0) {
           knownIds = CoolbetHistory.collectKnownIdsFromBets(bets);
           if (knownIds.length) await setState({ knownIds });
@@ -163,6 +165,7 @@ async function runSync(reason) {
         auth,
         knownIds,
         pendingIds,
+        incompleteIds,
       });
 
       if (!result || result.status === "need_coolbet") {
@@ -183,7 +186,8 @@ async function runSync(reason) {
       const tickets = CoolbetHistory.ticketsToImport(
         fetched,
         new Set(knownIds),
-        new Set(pendingIds)
+        new Set(pendingIds),
+        new Set(incompleteIds)
       );
       const nextKnownIds = Array.from(
         new Set([...knownIds, ...CoolbetHistory.collectTicketIds(fetched)])

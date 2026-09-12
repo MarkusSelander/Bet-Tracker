@@ -343,7 +343,14 @@ def test_pending_list_does_not_return_settled_bets():
 
 def test_source_ids_returns_compact_rows():
     bets = [
-        {"source_id": "ticket-a", "status": "pending", "bookie": "Coolbet", "legs": [{"x": 1}]},
+        {
+            "source_id": "ticket-a",
+            "status": "pending",
+            "bookie": "Coolbet",
+            "ticket_type": "combo",
+            "total_matches": 3,
+            "legs": [{"x": 1}],
+        },
         {"source_id": "ticket-b", "status": "won", "bookie": "Coolbet"},
     ]
     auth, db_find = _auth_and_bets(bets)
@@ -353,8 +360,20 @@ def test_source_ids_returns_compact_rows():
 
     assert response.status_code == 200
     assert response.json() == [
-        {"source_id": "ticket-a", "status": "pending"},
-        {"source_id": "ticket-b", "status": "won"},
+        {
+            "source_id": "ticket-a",
+            "status": "pending",
+            "ticket_type": "combo",
+            "total_matches": 3,
+            "legs_count": 1,
+        },
+        {
+            "source_id": "ticket-b",
+            "status": "won",
+            "ticket_type": None,
+            "total_matches": None,
+            "legs_count": 0,
+        },
     ]
 
 

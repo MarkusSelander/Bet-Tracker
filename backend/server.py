@@ -1062,8 +1062,30 @@ async def get_bet_source_ids(request: Request, bookie: Optional[str] = None):
     query = {"user_id": user_id, "source_id": {"$exists": True, "$nin": [None, ""]}}
     if bookie:
         query["bookie"] = bookie
-    rows = await db.bets.find(query, {"_id": 0, "source_id": 1, "status": 1}).to_list(10000)
-    return rows
+    rows = await db.bets.find(
+        query,
+        {
+            "_id": 0,
+            "source_id": 1,
+            "status": 1,
+            "ticket_type": 1,
+            "total_matches": 1,
+            "legs": 1,
+        },
+    ).to_list(10000)
+    compact = []
+    for row in rows:
+        legs = row.get("legs")
+        compact.append(
+            {
+                "source_id": row.get("source_id"),
+                "status": row.get("status"),
+                "ticket_type": row.get("ticket_type"),
+                "total_matches": row.get("total_matches"),
+                "legs_count": len(legs) if isinstance(legs, list) else 0,
+            }
+        )
+    return compact
 
 
 # Bookmaker Routes
