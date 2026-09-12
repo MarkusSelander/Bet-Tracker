@@ -123,9 +123,13 @@
     return (tickets || []).filter(hasImportableComboLegs).length;
   }
 
-  function shouldFetchTicketDetails(ticket, _knownIds, _pendingIds, _incompleteIds) {
-    // Always fetch UUID detail for combos missing legs — including known/settled.
-    return needsTicketDetails(ticket);
+  function shouldFetchTicketDetails(ticket, knownIds, pendingIds, incompleteIds) {
+    if (!needsTicketDetails(ticket)) return false;
+    if (shouldRefreshKnownTicket(ticket, pendingIds)) return true;
+    if (shouldRefreshKnownTicket(ticket, incompleteIds)) return true;
+    if (!knownIds || knownIds.size === 0) return true;
+    if (!knownIds.has(ticket.id)) return true;
+    return isOpenTicket(ticket);
   }
 
   function ticketsToImport(tickets, knownIds, pendingIds, incompleteIds) {
@@ -135,8 +139,7 @@
         !knownIds.has(ticket.id) ||
         isOpenTicket(ticket) ||
         shouldRefreshKnownTicket(ticket, pendingIds) ||
-        shouldRefreshKnownTicket(ticket, incompleteIds) ||
-        hasImportableComboLegs(ticket)
+        shouldRefreshKnownTicket(ticket, incompleteIds)
     );
   }
 

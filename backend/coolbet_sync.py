@@ -179,6 +179,26 @@ def collect_incomplete_ids_from_bets(bets: Iterable[Dict[str, Any]]) -> list:
     return [bet["source_id"] for bet in bets if is_incomplete_stored_bet(bet)]
 
 
+def should_fetch_ticket_details(
+    ticket: Dict[str, Any],
+    known_ids: Optional[Set[str]] = None,
+    pending_ids: Optional[Set[str]] = None,
+    incomplete_ids: Optional[Set[str]] = None,
+) -> bool:
+    if not needs_ticket_details(ticket):
+        return False
+    ticket_id = ticket.get("id")
+    if pending_ids and ticket_id in pending_ids:
+        return True
+    if incomplete_ids and ticket_id in incomplete_ids:
+        return True
+    if not known_ids:
+        return True
+    if ticket_id not in known_ids:
+        return True
+    return str(ticket.get("status") or "").upper() in OPEN_STATUSES
+
+
 def tickets_to_import(
     tickets: Iterable[Dict[str, Any]],
     known_ids: Optional[Set[str]] = None,
@@ -197,13 +217,4 @@ def tickets_to_import(
         or str(ticket.get("status") or "").upper() in OPEN_STATUSES
         or ticket.get("id") in pending_ids
         or ticket.get("id") in incomplete_ids
-        or _has_importable_combo_legs(ticket)
     ]
-
-
-def _has_importable_combo_legs(ticket: Dict[str, Any]) -> bool:
-    total = int(ticket.get("total_matches") or 1)
-    ticket_type = str(ticket.get("ticket_type") or "").lower()
-    if total <= 1 and ticket_type not in COMBO_TYPES:
-        return False
-    return _stored_leg_count(ticket) >= 2
