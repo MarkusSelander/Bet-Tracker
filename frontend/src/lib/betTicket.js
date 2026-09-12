@@ -1,3 +1,5 @@
+import { parseGameExtras } from './betsDisplay.js';
+
 export const CORE_FIELDS = ['game', 'status', 'bet', 'stake', 'odds', 'sport', 'tipster', 'bookie'];
 
 export const DETAIL_FIELDS = [
@@ -166,7 +168,9 @@ export function ticketViewLegs(bet) {
 export function ticketLegCount(bet) {
   const stored = ticketViewLegs(bet).length;
   const total = Number(bet?.total_matches) || 0;
-  return Math.max(stored, total);
+  const parsed = parseGameExtras(bet?.game);
+  const fromGame = parsed.extra > 0 ? parsed.extra + (parsed.name ? 1 : 0) : 0;
+  return Math.max(stored, total, fromGame);
 }
 
 export function formatLegKickoff(value) {

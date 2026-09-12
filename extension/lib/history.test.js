@@ -7,6 +7,7 @@ const {
   collectIncompleteIdsFromBets,
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
+  mergeKnownIds,
   computeSyncProgress,
   formatLastSync,
   historyQuery,
@@ -153,7 +154,7 @@ test("stops when page is all known settled tickets", () => {
   );
 });
 
-test("continues when unknown or pending tickets remain", () => {
+test("continues while the oldest ticket on the page is still unknown", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -165,17 +166,31 @@ test("continues when unknown or pending tickets remain", () => {
     }),
     false
   );
+});
+
+test("stops once newest-first page reaches an already-imported ticket", () => {
+  assert.equal(
+    shouldStopPagination({
+      tickets: [
+        { id: "new", status: "WON" },
+        { id: "a", status: "LOST" },
+      ],
+      hasNextPage: true,
+      knownIds: new Set(["a"]),
+    }),
+    true
+  );
   assert.equal(
     shouldStopPagination({
       tickets: [{ id: "a", status: "PENDING" }],
       hasNextPage: true,
       knownIds: new Set(["a"]),
     }),
-    false
+    true
   );
 });
 
-test("keeps paging while Bet Tracker still has unseen pending tickets", () => {
+test("does not walk older pages just because pending or incomplete ids remain", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -185,21 +200,21 @@ test("keeps paging while Bet Tracker still has unseen pending tickets", () => {
       hasNextPage: true,
       knownIds: new Set(["a", "b"]),
       pendingIds: new Set(["older-open"]),
+      incompleteIds: new Set(["older-combo"]),
     }),
-    false
+    true
   );
 });
 
-test("keeps paging while Bet Tracker still has incomplete settled combos", () => {
+test("first sync with no known ids keeps paging while Coolbet has more history", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
-        { id: "a", status: "LOST" },
-        { id: "b", status: "WON" },
+        { id: "a", status: "WON" },
+        { id: "b", status: "LOST" },
       ],
       hasNextPage: true,
-      knownIds: new Set(["a", "b"]),
-      incompleteIds: new Set(["older-combo"]),
+      knownIds: new Set(),
     }),
     false
   );
@@ -263,6 +278,14 @@ test("collectKnownIdsFromBets uses backend source_id", () => {
   );
 });
 
+test("mergeKnownIds unions local cache with backend source ids", () => {
+  assert.deepEqual(
+    mergeKnownIds(["ticket-a"], [{ source_id: "ticket-b" }, { source_id: "ticket-a" }]),
+    ["ticket-a", "ticket-b"]
+  );
+  assert.deepEqual(mergeKnownIds([], [{ source_id: "ticket-c" }]), ["ticket-c"]);
+});
+
 test("bets url uses source-ids endpoint", () => {
   assert.equal(
     betsUrl("https://api.example.com/", "Coolbet"),
@@ -286,16 +309,16 @@ test("reimports known tickets that settled after we stored them as pending", () 
   );
 });
 
-test("fetches combo details when a known ticket is still pending in Bet Tracker", () => {
+test("does not fetch ticket details for known complete combos even when still pending", () => {
   const combo = {
     id: "was-open",
     total_matches: 2,
     ticket_type: "combo",
-    status: "LOST",
+    status: "PENDING",
   };
   assert.equal(
-    shouldFetchTicketDetails(combo, new Set(["was-open"]), new Set(["was-open"])),
-    true
+    shouldFetchTicketDetails(combo, new Set(["was-open"]), new Set(["was-open"]), new Set()),
+    false
   );
 });
 
@@ -305,7 +328,7 @@ test("skips ticket details for known complete combos even if the list payload ha
   const fresh = { id: "c", total_matches: 2, ticket_type: "combo", status: "WON" };
   const known = new Set(["a", "b"]);
   assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
-  assert.equal(shouldFetchTicketDetails(pending, known, new Set(["b"]), new Set()), true);
+  assert.equal(shouldFetchTicketDetails(pending, known, new Set(["b"]), new Set()), false);
   assert.equal(shouldFetchTicketDetails(fresh, known, new Set(), new Set()), true);
   assert.equal(shouldFetchTicketDetails(combo, new Set()), true);
 });
@@ -422,7 +445,7 @@ test("Chelsea-Hull list ticket has no uniqueSelections and needs a UUID detail f
   assert.equal(list.uniqueSelections, undefined);
   assert.equal(needsTicketDetails(list), true);
   const known = new Set([CHELSEA_HULL_UUID]);
-  assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set()), true);
+  assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set()), false);
   assert.equal(
     shouldFetchTicketDetails({ ...list, status: "WON" }, known, new Set(), new Set()),
     false

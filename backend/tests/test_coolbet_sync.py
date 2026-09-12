@@ -70,35 +70,43 @@ def test_should_stop_when_page_is_all_known_settled_tickets():
     )
 
 
-def test_should_continue_when_unknown_or_open_tickets_remain():
+def test_should_continue_while_oldest_ticket_on_page_is_unknown():
     known = {"a"}
     assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "WON"}, {"id": "new", "status": "WON"}],
         has_next_page=True,
         known_ids=known,
     )
-    assert not should_stop_pagination(
+
+
+def test_should_stop_once_newest_first_page_reaches_known_ticket():
+    assert should_stop_pagination(
+        tickets=[{"id": "new", "status": "WON"}, {"id": "a", "status": "LOST"}],
+        has_next_page=True,
+        known_ids={"a"},
+    )
+    assert should_stop_pagination(
         tickets=[{"id": "a", "status": "PENDING"}],
         has_next_page=True,
-        known_ids=known,
+        known_ids={"a"},
     )
 
 
-def test_should_continue_when_tracker_still_has_unseen_pending_tickets():
-    assert not should_stop_pagination(
+def test_should_not_walk_older_pages_for_pending_or_incomplete_ids():
+    assert should_stop_pagination(
         tickets=[{"id": "a", "status": "LOST"}, {"id": "b", "status": "LOST"}],
         has_next_page=True,
         known_ids={"a", "b"},
         pending_ids={"older-open"},
+        incomplete_ids={"older-combo"},
     )
 
 
-def test_should_continue_when_tracker_still_has_incomplete_settled_combos():
+def test_first_sync_without_known_ids_keeps_paging():
     assert not should_stop_pagination(
-        tickets=[{"id": "a", "status": "LOST"}, {"id": "b", "status": "WON"}],
+        tickets=[{"id": "a", "status": "WON"}, {"id": "b", "status": "LOST"}],
         has_next_page=True,
-        known_ids={"a", "b"},
-        incomplete_ids={"older-combo"},
+        known_ids=set(),
     )
 
 
@@ -165,6 +173,16 @@ def test_tickets_to_import_skips_known_complete_combo_even_with_detail_legs():
     }
     imported = tickets_to_import([ticket], known_ids={uuid}, pending_ids=set(), incomplete_ids=set())
     assert imported == []
+
+
+def test_should_not_fetch_details_for_known_complete_pending_combo():
+    ticket = {
+        "id": "was-open",
+        "total_matches": 2,
+        "ticket_type": "combo",
+        "status": "PENDING",
+    }
+    assert should_fetch_ticket_details(ticket, {"was-open"}, {"was-open"}, set()) is False
 
 
 def test_should_fetch_ticket_details_skips_complete_and_keeps_incomplete_settled():

@@ -67,6 +67,10 @@
     return (bets || []).map((bet) => bet && bet.source_id).filter(Boolean);
   }
 
+  function mergeKnownIds(localIds, bets) {
+    return Array.from(new Set([...(localIds || []), ...collectKnownIdsFromBets(bets)]));
+  }
+
   function collectPendingIdsFromBets(bets) {
     return (bets || [])
       .filter((bet) => bet && bet.source_id && bet.status === "pending")
@@ -102,14 +106,11 @@
     return Boolean(pendingIds && ticket && pendingIds.has(ticket.id));
   }
 
-  function shouldStopPagination({ tickets, hasNextPage, knownIds, pendingIds, incompleteIds }) {
+  function shouldStopPagination({ tickets, hasNextPage, knownIds }) {
     if (!hasNextPage || !tickets || tickets.length === 0) return true;
-    if (pendingIds && pendingIds.size > 0) return false;
-    if (incompleteIds && incompleteIds.size > 0) return false;
     if (!knownIds || knownIds.size === 0) return false;
-    const allKnown = tickets.every((ticket) => knownIds.has(ticket.id));
-    if (!allKnown) return false;
-    return !tickets.some((ticket) => isOpenTicket(ticket));
+    const last = tickets[tickets.length - 1];
+    return Boolean(last && last.id && knownIds.has(last.id));
   }
 
   function hasImportableComboLegs(ticket) {
@@ -123,13 +124,12 @@
     return (tickets || []).filter(hasImportableComboLegs).length;
   }
 
-  function shouldFetchTicketDetails(ticket, knownIds, pendingIds, incompleteIds) {
+  function shouldFetchTicketDetails(ticket, knownIds, _pendingIds, incompleteIds) {
     if (!needsTicketDetails(ticket)) return false;
-    if (shouldRefreshKnownTicket(ticket, pendingIds)) return true;
     if (shouldRefreshKnownTicket(ticket, incompleteIds)) return true;
     if (!knownIds || knownIds.size === 0) return true;
     if (!knownIds.has(ticket.id)) return true;
-    return isOpenTicket(ticket);
+    return false;
   }
 
   function ticketsToImport(tickets, knownIds, pendingIds, incompleteIds) {
@@ -326,6 +326,7 @@
     collectIncompleteIdsFromBets,
     collectKnownIdsFromBets,
     collectPendingIdsFromBets,
+    mergeKnownIds,
     collectTicketIds,
     countComboTicketsWithLegs,
     computeSyncProgress,

@@ -39,13 +39,13 @@ export function useBet(betId, { enabled = true } = {}) {
 export function useRecentBets(limit = 8) {
   return useQuery({
     queryKey: queryKeys.recentBets(limit),
-    queryFn: async () => asArray(await fetchJson(`/api/bets/recent?limit=${limit}`)),
+    queryFn: async () => asArray(await fetchJson(`/api/bets/recent?limit=${limit}&include_legs=true`)),
     staleTime: STALE_LIST_MS,
   });
 }
 
 export function usePendingBets(limit) {
-  const search = limit ? `status=pending&limit=${limit}` : 'status=pending';
+  const search = limit ? `status=pending&limit=${limit}&include_legs=true` : 'status=pending&include_legs=true';
   return useQuery({
     queryKey: queryKeys.pendingBets(limit || 'all'),
     queryFn: async () => asArray(await fetchJson(`/api/bets?${search}`)),
