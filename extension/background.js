@@ -228,6 +228,7 @@ async function runSync(reason) {
           imported: summary.imported || 0,
           updated: summary.updated || 0,
           skipped: summary.skipped || 0,
+          comboLegs: CoolbetHistory.countComboTicketsWithLegs(tickets),
           reason,
         },
         knownIds: nextKnownIds,
