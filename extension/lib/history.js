@@ -112,13 +112,20 @@
     return !tickets.some((ticket) => isOpenTicket(ticket));
   }
 
-  function shouldFetchTicketDetails(ticket, knownIds, pendingIds, incompleteIds) {
-    if (!needsTicketDetails(ticket)) return false;
-    if (shouldRefreshKnownTicket(ticket, pendingIds)) return true;
-    if (shouldRefreshKnownTicket(ticket, incompleteIds)) return true;
-    if (!knownIds || knownIds.size === 0) return true;
-    if (!knownIds.has(ticket.id)) return true;
-    return isOpenTicket(ticket);
+  function hasImportableComboLegs(ticket) {
+    const total = Number((ticket && ticket.total_matches) || 1);
+    const type = String((ticket && ticket.ticket_type) || "").toLowerCase();
+    if (total <= 1 && !COMBO_TYPES[type]) return false;
+    return storedLegCount(ticket) >= 2;
+  }
+
+  function countComboTicketsWithLegs(tickets) {
+    return (tickets || []).filter(hasImportableComboLegs).length;
+  }
+
+  function shouldFetchTicketDetails(ticket, _knownIds, _pendingIds, _incompleteIds) {
+    // Always fetch UUID detail for combos missing legs — including known/settled.
+    return needsTicketDetails(ticket);
   }
 
   function ticketsToImport(tickets, knownIds, pendingIds, incompleteIds) {
@@ -128,7 +135,8 @@
         !knownIds.has(ticket.id) ||
         isOpenTicket(ticket) ||
         shouldRefreshKnownTicket(ticket, pendingIds) ||
-        shouldRefreshKnownTicket(ticket, incompleteIds)
+        shouldRefreshKnownTicket(ticket, incompleteIds) ||
+        hasImportableComboLegs(ticket)
     );
   }
 
@@ -316,6 +324,7 @@
     collectKnownIdsFromBets,
     collectPendingIdsFromBets,
     collectTicketIds,
+    countComboTicketsWithLegs,
     computeSyncProgress,
     formatLastSync,
     historyQuery,

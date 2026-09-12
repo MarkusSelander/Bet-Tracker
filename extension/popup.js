@@ -34,7 +34,9 @@ function render(state) {
   }
   if (state.lastResult && status === "ok") {
     const r = state.lastResult;
-    resultEl.textContent = `${r.fetched || 0} hentet · ${r.imported || 0} nye · ${r.updated || 0} oppdatert`;
+    const comboLegs = Number(r.comboLegs) || 0;
+    const comboText = comboLegs > 0 ? ` · ${comboLegs} kombier med bein` : "";
+    resultEl.textContent = `${r.fetched || 0} hentet · ${r.imported || 0} nye · ${r.updated || 0} oppdatert${comboText}`;
   } else {
     resultEl.textContent = "";
   }

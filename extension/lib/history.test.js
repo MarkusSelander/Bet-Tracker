@@ -20,7 +20,93 @@ const {
   shouldStopPagination,
   ticketDetailPaths,
   ticketsToImport,
+  countComboTicketsWithLegs,
 } = require("./history.js");
+
+const CHELSEA_HULL_UUID = "26091204-3cbd-47e8-8111-e3517af40f5d";
+
+function chelseaHullHistoryListTicket() {
+  return {
+    id: CHELSEA_HULL_UUID,
+    display_id: 2006,
+    created_at: "2026-09-12T00:05:00.000Z",
+    status: "PENDING",
+    ticket_type: "combo",
+    total_matches: 2,
+    total_stake: 500,
+    first_bet_odds: 1.8848,
+    max_win: 942.4,
+    remaining_max_win: 942.4,
+    product: "PREMATCH",
+    first_match: {
+      sport_name: "Football",
+      match_name: "Chelsea - Hull",
+      league_name: "Premier League",
+      market_name: "Match Result (1X2)",
+      outcome_name: "Chelsea",
+    },
+  };
+}
+
+function chelseaHullTicketDetail() {
+  return {
+    bets: [
+      {
+        id: "BET-UUID",
+        stake: 500,
+        initial_stake: 500,
+        created_at: "2026-09-12T00:05:00.000Z",
+        expected_result_date: "2026-09-12T22:25:00.000Z",
+        leg_count: 2,
+        max_win: 942.4,
+        outcome_ids: [1702568001, 1712054802],
+        status: "PENDING",
+        total_odds: 1.8848,
+      },
+    ],
+    systemsMeta: null,
+    ticket: {
+      id: CHELSEA_HULL_UUID,
+      ticket_type: "combo",
+      currency: "NOK",
+      display_id: 2006,
+      first_bet_odds: 1.8848,
+      status: "PENDING",
+      total_matches: 2,
+      total_stake: 500,
+      cashout_amount: null,
+      expected_result_date: "2026-09-12T22:25:00.000Z",
+    },
+    uniqueSelections: [
+      {
+        outcome_id: 1702568001,
+        outcome_name: "Chelsea",
+        market_name: "Match Result (1X2)",
+        league_name: "Premier League",
+        sport_name: "Football",
+        sportName: "Football",
+        match_name: "Chelsea - Hull",
+        odds: 1.24,
+        display_odds: "1.24",
+        product: "PREMATCH",
+        status: "PENDING",
+      },
+      {
+        outcome_id: 1712054802,
+        outcome_name: "Fukuoka SoftBank Hawks",
+        market_name: "Money Line (Action)",
+        league_name: "Professional Baseball",
+        sport_name: "Baseball",
+        sportName: "Baseball",
+        match_name: "Fukuoka SoftBank Hawks - Chiba Lotte Marines",
+        odds: 1.52,
+        display_odds: "1.52",
+        product: "PREMATCH",
+        status: "PENDING",
+      },
+    ],
+  };
+}
 
 test("history query matches Coolbet API contract", () => {
   const query = historyQuery(2);
@@ -213,12 +299,12 @@ test("fetches combo details when a known ticket is still pending in Bet Tracker"
   );
 });
 
-test("skips detail fetch for known settled combos", () => {
+test("fetches details for every combo missing legs, including known settled", () => {
   const combo = { id: "a", total_matches: 2, ticket_type: "combo", status: "WON" };
   const pending = { id: "b", total_matches: 2, ticket_type: "combo", status: "PENDING" };
   const fresh = { id: "c", total_matches: 2, ticket_type: "combo", status: "WON" };
   const known = new Set(["a", "b"]);
-  assert.equal(shouldFetchTicketDetails(combo, known), false);
+  assert.equal(shouldFetchTicketDetails(combo, known), true);
   assert.equal(shouldFetchTicketDetails(pending, known), true);
   assert.equal(shouldFetchTicketDetails(fresh, known), true);
   assert.equal(shouldFetchTicketDetails(combo, new Set()), true);
@@ -228,7 +314,7 @@ test("fetches details for known settled combos missing stored legs", () => {
   const combo = { id: "a", total_matches: 5, ticket_type: "combo", status: "WON" };
   const known = new Set(["a"]);
   assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set(["a"])), true);
-  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), true);
 });
 
 test("reimports known settled tickets that are missing stored legs", () => {
@@ -306,6 +392,63 @@ test("ticket detail paths skip numeric display ids used as ticket id", () => {
   assert.deepEqual(ticketDetailPaths(2004), []);
   assert.deepEqual(ticketDetailPaths("2004", 2004), []);
   assert.deepEqual(ticketDetailPaths(null, 2004), []);
+});
+
+test("Chelsea-Hull list ticket has no uniqueSelections and always needs a UUID detail fetch", () => {
+  const list = chelseaHullHistoryListTicket();
+  assert.equal(list.uniqueSelections, undefined);
+  assert.equal(needsTicketDetails(list), true);
+  const known = new Set([CHELSEA_HULL_UUID]);
+  assert.equal(shouldFetchTicketDetails(list, known, new Set(), new Set()), true);
+  assert.equal(
+    shouldFetchTicketDetails({ ...list, status: "WON" }, known, new Set(), new Set()),
+    true
+  );
+});
+
+test("Chelsea-Hull detail URL uses list id and never display_id 2006", () => {
+  const list = chelseaHullHistoryListTicket();
+  const paths = ticketDetailPaths(list.id, list.display_id);
+  assert.deepEqual(paths, [
+    `/s/sbgate/bets/tickets/${CHELSEA_HULL_UUID}?language=eu&layout=EUROPEAN&ticketId=${CHELSEA_HULL_UUID}`,
+  ]);
+  for (const path of paths) {
+    assert.equal(path.includes("/tickets/2006"), false);
+    assert.equal(path.includes("2006"), false);
+    assert.match(path, /[?&]ticketId=26091204-3cbd-47e8-8111-e3517af40f5d/);
+  }
+});
+
+test("list uniqueSelections are absent so merge from ticket detail maps both Chelsea-Hull legs", () => {
+  const merged = mergeTicketDetails(chelseaHullHistoryListTicket(), chelseaHullTicketDetail());
+  assert.equal(merged.id, CHELSEA_HULL_UUID);
+  assert.equal(merged.uniqueSelections.length, 2);
+  assert.equal(merged.uniqueSelections[0].match_name, "Chelsea - Hull");
+  assert.equal(
+    merged.uniqueSelections[1].match_name,
+    "Fukuoka SoftBank Hawks - Chiba Lotte Marines"
+  );
+  assert.equal(needsTicketDetails(merged), false);
+  assert.equal(shouldFetchTicketDetails(merged, new Set([CHELSEA_HULL_UUID])), false);
+});
+
+test("existing settled combo with one stored leg is imported after detail merge", () => {
+  const merged = mergeTicketDetails(
+    { ...chelseaHullHistoryListTicket(), status: "WON" },
+    chelseaHullTicketDetail()
+  );
+  const imported = ticketsToImport(
+    [merged],
+    new Set([CHELSEA_HULL_UUID]),
+    new Set(),
+    new Set()
+  );
+  assert.deepEqual(
+    imported.map((ticket) => ticket.id),
+    [CHELSEA_HULL_UUID]
+  );
+  assert.equal(imported[0].uniqueSelections.length, 2);
+  assert.equal(countComboTicketsWithLegs(imported), 1);
 });
 
 test("mergeTicketDetails copies match lists onto history ticket", () => {

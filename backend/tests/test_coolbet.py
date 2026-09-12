@@ -1,4 +1,92 @@
 from coolbet import extract_legs, map_coolbet_ticket
+from coolbet_sync import merge_ticket_details, ticket_detail_paths
+
+CHELSEA_HULL_UUID = "26091204-3cbd-47e8-8111-e3517af40f5d"
+
+
+def _chelsea_hull_history_list_ticket(**overrides):
+    data = {
+        "id": CHELSEA_HULL_UUID,
+        "display_id": 2006,
+        "created_at": "2026-09-12T00:05:00.000Z",
+        "status": "PENDING",
+        "ticket_type": "combo",
+        "total_matches": 2,
+        "total_stake": 500,
+        "first_bet_odds": 1.8848,
+        "max_win": 942.4,
+        "remaining_max_win": 942.4,
+        "product": "PREMATCH",
+        "first_match": {
+            "sport_name": "Football",
+            "match_name": "Chelsea - Hull",
+            "league_name": "Premier League",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Chelsea",
+        },
+    }
+    data.update(overrides)
+    return data
+
+
+def _chelsea_hull_ticket_detail():
+    return {
+        "bets": [
+            {
+                "id": "BET-UUID",
+                "stake": 500,
+                "initial_stake": 500,
+                "created_at": "2026-09-12T00:05:00.000Z",
+                "expected_result_date": "2026-09-12T22:25:00.000Z",
+                "leg_count": 2,
+                "max_win": 942.4,
+                "outcome_ids": [1702568001, 1712054802],
+                "status": "PENDING",
+                "total_odds": 1.8848,
+            }
+        ],
+        "systemsMeta": None,
+        "ticket": {
+            "id": CHELSEA_HULL_UUID,
+            "ticket_type": "combo",
+            "currency": "NOK",
+            "display_id": 2006,
+            "first_bet_odds": 1.8848,
+            "status": "PENDING",
+            "total_matches": 2,
+            "total_stake": 500,
+            "cashout_amount": None,
+            "expected_result_date": "2026-09-12T22:25:00.000Z",
+        },
+        "uniqueSelections": [
+            {
+                "outcome_id": 1702568001,
+                "outcome_name": "Chelsea",
+                "market_name": "Match Result (1X2)",
+                "league_name": "Premier League",
+                "sport_name": "Football",
+                "sportName": "Football",
+                "match_name": "Chelsea - Hull",
+                "odds": 1.24,
+                "display_odds": "1.24",
+                "product": "PREMATCH",
+                "status": "PENDING",
+            },
+            {
+                "outcome_id": 1712054802,
+                "outcome_name": "Fukuoka SoftBank Hawks",
+                "market_name": "Money Line (Action)",
+                "league_name": "Professional Baseball",
+                "sport_name": "Baseball",
+                "sportName": "Baseball",
+                "match_name": "Fukuoka SoftBank Hawks - Chiba Lotte Marines",
+                "odds": 1.52,
+                "display_odds": "1.52",
+                "product": "PREMATCH",
+                "status": "PENDING",
+            },
+        ],
+    }
 
 
 def _ticket(**overrides):
@@ -386,3 +474,58 @@ def test_merged_settled_combo_detail_overwrites_single_stored_leg():
     assert len(bet["legs"]) == 2
     assert bet["legs"][1]["match"] == "Sabalenka, A - Rybakina, E"
     assert bet["status"] == "won"
+
+
+def test_chelsea_hull_list_has_only_first_match():
+    history = _chelsea_hull_history_list_ticket()
+    assert "uniqueSelections" not in history
+    bet = map_coolbet_ticket(history)
+    assert bet["source_id"] == CHELSEA_HULL_UUID
+    assert bet["display_id"] == 2006
+    assert bet["ticket_type"] == "combo"
+    assert bet["total_matches"] == 2
+    assert len(bet["legs"]) == 1
+    assert bet["legs"][0]["match"] == "Chelsea - Hull"
+
+
+def test_chelsea_hull_detail_url_uses_list_uuid_never_display_id():
+    paths = ticket_detail_paths(CHELSEA_HULL_UUID, display_id=2006)
+    assert paths == [
+        f"/s/sbgate/bets/tickets/{CHELSEA_HULL_UUID}?language=eu&layout=EUROPEAN&ticketId={CHELSEA_HULL_UUID}"
+    ]
+    for path in paths:
+        assert "/tickets/2006" not in path
+        assert "2006" not in path
+
+
+def test_chelsea_hull_merged_detail_maps_both_list_legs():
+    merged = merge_ticket_details(_chelsea_hull_history_list_ticket(), _chelsea_hull_ticket_detail())
+    bet = map_coolbet_ticket(merged)
+
+    assert merged["id"] == CHELSEA_HULL_UUID
+    assert len(merged["uniqueSelections"]) == 2
+    assert merged["uniqueSelections"][1]["match_name"] == (
+        "Fukuoka SoftBank Hawks - Chiba Lotte Marines"
+    )
+    assert bet["source_id"] == CHELSEA_HULL_UUID
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][0]["match"] == "Chelsea - Hull"
+    assert bet["legs"][0]["outcome"] == "Chelsea"
+    assert bet["legs"][0]["odds"] == 1.24
+    assert bet["legs"][1]["match"] == "Fukuoka SoftBank Hawks - Chiba Lotte Marines"
+    assert bet["legs"][1]["market"] == "Money Line (Action)"
+    assert bet["legs"][1]["outcome"] == "Fukuoka SoftBank Hawks"
+    assert bet["legs"][1]["sport"] == "Baseball"
+    assert bet["legs"][1]["odds"] == 1.52
+
+
+def test_chelsea_hull_existing_settled_combo_with_one_leg_gets_both_after_merge():
+    history = _chelsea_hull_history_list_ticket(
+        status="WON",
+        legs=[{"match": "Chelsea - Hull"}],
+    )
+    merged = merge_ticket_details(history, _chelsea_hull_ticket_detail())
+    bet = map_coolbet_ticket(merged)
+
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][1]["match"] == "Fukuoka SoftBank Hawks - Chiba Lotte Marines"

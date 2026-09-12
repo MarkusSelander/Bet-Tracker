@@ -23,20 +23,13 @@ def history_query(page_number: int = 1) -> Dict[str, Any]:
 
 
 def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> list:
+    if ticket_id is None or ticket_id == "":
+        return []
+    tid = str(ticket_id)
+    if tid.isdigit():
+        return []
     query = "language=eu&layout=EUROPEAN"
-    ids = [str(ticket_id)]
-    if display_id is not None and str(display_id) not in ids:
-        ids.append(str(display_id))
-    paths = []
-    for tid in ids:
-        paths.extend(
-            [
-                f"/s/sbgate/bets/tickets/{tid}?{query}&ticketId={tid}",
-                f"/s/sbgate/bets/{tid}?{query}",
-                f"/s/sbgate/bets/ticket/{tid}?{query}",
-            ]
-        )
-    return paths
+    return [f"/s/sbgate/bets/tickets/{tid}?{query}&ticketId={tid}"]
 
 
 def _stored_leg_count(ticket: Dict[str, Any]) -> int:
@@ -204,4 +197,13 @@ def tickets_to_import(
         or str(ticket.get("status") or "").upper() in OPEN_STATUSES
         or ticket.get("id") in pending_ids
         or ticket.get("id") in incomplete_ids
+        or _has_importable_combo_legs(ticket)
     ]
+
+
+def _has_importable_combo_legs(ticket: Dict[str, Any]) -> bool:
+    total = int(ticket.get("total_matches") or 1)
+    ticket_type = str(ticket.get("ticket_type") or "").lower()
+    if total <= 1 and ticket_type not in COMBO_TYPES:
+        return False
+    return _stored_leg_count(ticket) >= 2

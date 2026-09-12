@@ -150,6 +150,22 @@ def test_tickets_to_import_reimports_incomplete_settled_combos():
     assert [ticket["id"] for ticket in imported] == ["incomplete-combo"]
 
 
+def test_tickets_to_import_includes_known_settled_combo_after_detail_legs():
+    uuid = "26091204-3cbd-47e8-8111-e3517af40f5d"
+    ticket = {
+        "id": uuid,
+        "status": "WON",
+        "ticket_type": "combo",
+        "total_matches": 2,
+        "uniqueSelections": [
+            {"match_name": "Chelsea - Hull"},
+            {"match_name": "Fukuoka SoftBank Hawks - Chiba Lotte Marines"},
+        ],
+    }
+    imported = tickets_to_import([ticket], known_ids={uuid}, pending_ids=set(), incomplete_ids=set())
+    assert [item["id"] for item in imported] == [uuid]
+
+
 def test_chrome_extension_origin_regex_allows_unpacked_ids():
     origin = "chrome-extension://abcdefghijklmnopqrstuvwxyzabcdef"
     assert re.match(CHROME_EXTENSION_ORIGIN_RE, origin)
@@ -174,15 +190,24 @@ def test_combo_tickets_need_details_until_matches_exist():
 
 
 def test_ticket_detail_paths_include_id():
-    paths = ticket_detail_paths("26090221-4ce1-4145-b10d-387fb0146ecd", display_id=1949)
-    assert any(
-        path.startswith("/s/sbgate/bets/tickets/26090221-4ce1-4145-b10d-387fb0146ecd?")
-        for path in paths
-    )
-    assert any("ticketId=26090221-4ce1-4145-b10d-387fb0146ecd" in path for path in paths)
-    assert "language=eu" in paths[0]
-    assert any("/s/sbgate/bets/ticket/" in path for path in paths)
-    assert any(path.startswith("/s/sbgate/bets/1949?") for path in paths)
+    uuid = "26090221-4ce1-4145-b10d-387fb0146ecd"
+    paths = ticket_detail_paths(uuid, display_id=1949)
+    assert paths == [
+        f"/s/sbgate/bets/tickets/{uuid}?language=eu&layout=EUROPEAN&ticketId={uuid}"
+    ]
+    assert "1949" not in "".join(paths)
+
+
+def test_ticket_detail_paths_never_fetch_display_id_2006():
+    uuid = "26091204-3cbd-47e8-8111-e3517af40f5d"
+    paths = ticket_detail_paths(uuid, display_id=2006)
+    assert paths == [
+        f"/s/sbgate/bets/tickets/{uuid}?language=eu&layout=EUROPEAN&ticketId={uuid}"
+    ]
+    for path in paths:
+        assert "/tickets/2006" not in path
+        assert "2006" not in path
+        assert f"ticketId={uuid}" in path
 
 
 def test_resolve_last_coolbet_sync_at_uses_user_field_then_latest_bet():
