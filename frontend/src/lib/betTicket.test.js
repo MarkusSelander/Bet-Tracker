@@ -233,6 +233,26 @@ test('ticketViewLegs returns stored legs and ticketLegCount prefers total_matche
   assert.equal(ticketLegCount({ ticket_type: 'combo', total_matches: 5, legs: [{ match: 'A' }] }), 5);
 });
 
+test('ticketLegCount does not fall to 0 for combos missing total_matches and legs', () => {
+  assert.equal(
+    ticketLegCount({
+      ticket_type: 'combo',
+      game: 'David Martinez - Den lange (+3)',
+      stake: 700,
+      odds: 2.18,
+    }),
+    4
+  );
+  assert.equal(
+    ticketLegCount({
+      ticket_type: 'combo',
+      total_matches: 2,
+      game: 'Chelsea - Hull (+1)',
+    }),
+    2
+  );
+});
+
 test('formatLegKickoff formats match start for ticket rows', () => {
   const text = formatLegKickoff('2026-09-12T20:05:00.000Z');
   assert.match(text, /12/);

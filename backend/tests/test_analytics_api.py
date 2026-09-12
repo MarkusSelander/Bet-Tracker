@@ -301,6 +301,42 @@ def test_bets_list_omits_legs_by_default():
     assert shown.json()[0]["legs"][0]["match"] == "A - B"
 
 
+def test_recent_bets_include_legs_when_requested():
+    bets = [
+        {
+            "bet_id": "1",
+            "user_id": "user_1",
+            "date": "2026-09-12",
+            "time": "20:00:00",
+            "game": "David Martinez - Den lange (+3)",
+            "bet": "Over 2.5",
+            "status": "lost",
+            "stake": 700,
+            "result": -700,
+            "odds": 2.18,
+            "sport": "Football",
+            "bookie": "Coolbet",
+            "ticket_type": "combo",
+            "total_matches": 4,
+            "legs": [
+                {"match": "David Martinez - Den lange", "outcome": "Over 2.5"},
+                {"match": "A - B", "outcome": "1"},
+            ],
+        }
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        hidden = client.get("/api/bets/recent?limit=8")
+        shown = client.get("/api/bets/recent?limit=8&include_legs=true")
+
+    assert hidden.status_code == 200
+    assert "legs" not in hidden.json()[0] or hidden.json()[0]["legs"] is None
+    assert shown.status_code == 200
+    assert shown.json()[0]["legs"][0]["match"] == "David Martinez - Den lange"
+    assert shown.json()[0]["total_matches"] == 4
+
+
 def test_pending_list_does_not_return_settled_bets():
     bets = [
         {

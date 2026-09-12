@@ -151,10 +151,8 @@ async function runSync(reason) {
         const bets = await betsResponse.json();
         pendingIds = CoolbetHistory.collectPendingIdsFromBets(bets);
         incompleteIds = CoolbetHistory.collectIncompleteIdsFromBets(bets);
-        if (knownIds.length === 0) {
-          knownIds = CoolbetHistory.collectKnownIdsFromBets(bets);
-          if (knownIds.length) await setState({ knownIds });
-        }
+        knownIds = CoolbetHistory.mergeKnownIds(knownIds, bets);
+        if (knownIds.length) await setState({ knownIds });
       }
 
       await setProgress({ phase: "coolbet" });

@@ -140,17 +140,10 @@ def should_stop_pagination(
     tickets = list(tickets)
     if not has_next_page or len(tickets) == 0:
         return True
-    if pending_ids:
-        return False
-    if incomplete_ids:
-        return False
     if not known_ids:
         return False
-    if not all(ticket.get("id") in known_ids for ticket in tickets):
-        return False
-    if any(str(ticket.get("status") or "").upper() in OPEN_STATUSES for ticket in tickets):
-        return False
-    return True
+    last = tickets[-1]
+    return bool(last.get("id") and last.get("id") in known_ids)
 
 
 def _stored_bet_leg_count(bet: Dict[str, Any]) -> int:
@@ -188,15 +181,13 @@ def should_fetch_ticket_details(
     if not needs_ticket_details(ticket):
         return False
     ticket_id = ticket.get("id")
-    if pending_ids and ticket_id in pending_ids:
-        return True
     if incomplete_ids and ticket_id in incomplete_ids:
         return True
     if not known_ids:
         return True
     if ticket_id not in known_ids:
         return True
-    return str(ticket.get("status") or "").upper() in OPEN_STATUSES
+    return False
 
 
 def tickets_to_import(

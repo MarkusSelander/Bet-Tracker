@@ -17,11 +17,31 @@ import { toast } from 'sonner';
 import BetTicketDialog from '../components/BetTicketDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
+import { missingComboLegs } from '../lib/betTicket';
+import { getMatchSummary, getSelectionSummary } from '../lib/betsDisplay';
 import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
-import { useAnalyticsSummary, usePendingBets, useRecentBets } from '../lib/queries';
+import { useAnalyticsSummary, useBet, usePendingBets, useRecentBets } from '../lib/queries';
 
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
+
+function DashboardMatchPreview({ bet, showSelection = true }) {
+  const match = getMatchSummary(bet);
+  const selection = getSelectionSummary(bet);
+  return (
+    <div className="min-w-0">
+      {match.prefix ? <p className="text-xs text-white/80">{match.prefix}:</p> : null}
+      <p className="text-sm truncate">{match.primary || bet.game || '—'}</p>
+      {match.extraCount > 0 ? <p className="text-xs text-accent">og {match.extraCount} mer</p> : null}
+      {showSelection ? (
+        <p className="text-xs text-text-secondary truncate">
+          {selection.primary || bet.bet || '—'}
+          {selection.extraCount > 0 ? ' og mer' : ''}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useOutletContext();
@@ -31,6 +51,9 @@ export default function Dashboard() {
   const { data: summary, isPending: summaryPending, isError: summaryError } = useAnalyticsSummary(dashboardSearch);
   const { data: recentBets = [] } = useRecentBets(8);
   const { data: pendingBets = [] } = usePendingBets();
+  const needsFullBet = Boolean(detailBet) && missingComboLegs(detailBet);
+  const { data: fullDetailBet } = useBet(detailBet?.bet_id, { enabled: needsFullBet });
+  const dialogBet = fullDetailBet || detailBet;
   const stats = summary?.stats || null;
   const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
 
@@ -164,15 +187,12 @@ export default function Dashboard() {
                 role="button"
                 tabIndex={0}
                 data-testid={`pending-bet-${bet.bet_id}`}
-                aria-label={`Vis detaljer for ${bet.game}`}
+                aria-label={`Vis detaljer for ${getMatchSummary(bet).primary || bet.game}`}
                 onClick={() => openBetDetails(bet)}
                 onKeyDown={(event) => handleRowKeyDown(event, bet)}
                 className="flex items-center justify-between gap-3 py-2 border-b border-white/5 last:border-0 cursor-pointer hover:bg-white/5 rounded-md px-1 -mx-1 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
               >
-                <div className="min-w-0">
-                  <p className="text-sm truncate">{bet.game}</p>
-                  <p className="text-xs text-text-secondary truncate">{bet.bet}</p>
-                </div>
+                <DashboardMatchPreview bet={bet} />
                 <div className="text-right shrink-0">
                   <p className="text-sm font-mono">{formatCurrency(bet.stake, currency)}</p>
                   <p className="text-xs text-text-muted">{bet.odds?.toFixed(2)}</p>
@@ -271,13 +291,15 @@ export default function Dashboard() {
                     key={bet.bet_id}
                     data-testid={`recent-bet-${bet.bet_id}`}
                     tabIndex={0}
-                    aria-label={`Vis detaljer for ${bet.game}`}
+                    aria-label={`Vis detaljer for ${getMatchSummary(bet).primary || bet.game}`}
                     onClick={() => openBetDetails(bet)}
                     onKeyDown={(event) => handleRowKeyDown(event, bet)}
                     className="border-b border-[#27272A]/50 cursor-pointer hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
                   >
                     <td className="py-2 pr-3 text-sm font-mono whitespace-nowrap">{bet.date}</td>
-                    <td className="py-2 pr-3 text-sm max-w-[220px] truncate">{bet.game}</td>
+                    <td className="py-2 pr-3 text-sm max-w-[220px]">
+                      <DashboardMatchPreview bet={bet} showSelection={false} />
+                    </td>
                     <td className="py-2 pr-3 text-sm font-mono text-right">{bet.odds.toFixed(2)}</td>
                     <td className="py-2 pr-3 text-sm font-mono text-right">{formatCurrency(bet.stake, currency)}</td>
                     <td className="py-2 pr-3 text-center">
@@ -300,7 +322,7 @@ export default function Dashboard() {
       </div>
 
       <BetTicketDialog
-        bet={detailBet}
+        bet={dialogBet}
         mode="view"
         open={Boolean(detailBet)}
         onOpenChange={(nextOpen) => {

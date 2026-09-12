@@ -1045,12 +1045,12 @@ async def get_analytics_summary(
 
 
 @api_router.get("/bets/recent")
-async def get_recent_bets(request: Request, limit: int = 10):
+async def get_recent_bets(request: Request, limit: int = 10, include_legs: bool = False):
     user_id = await get_current_user(request)
 
     bets = await db.bets.find(
         {"user_id": user_id},
-        LIST_PROJECTION,
+        bet_projection(include_legs),
     ).sort([("date", -1), ("time", -1)]).limit(limit).to_list(limit)
 
     return bets

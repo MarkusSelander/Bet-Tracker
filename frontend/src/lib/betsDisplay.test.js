@@ -43,6 +43,29 @@ test('getMatchSummary prefixes combos and counts extra fixtures', () => {
   assert.equal(summary.extraCount, 1);
 });
 
+test('getMatchSummary uses (+N) game extras when dashboard rows omit legs', () => {
+  const summary = getMatchSummary({
+    ticket_type: 'combo',
+    game: 'David Martinez - Den lange (+3)',
+    bet: 'Over 2.5',
+  });
+  assert.equal(summary.isCombo, true);
+  assert.equal(summary.prefix, 'Kombi');
+  assert.equal(summary.primary, 'David Martinez - Den lange');
+  assert.equal(summary.extraCount, 3);
+});
+
+test('getSelectionSummary keeps first pick when extra fixtures are only in game', () => {
+  const summary = getSelectionSummary({
+    ticket_type: 'combo',
+    game: 'David Martinez - Den lange (+3)',
+    bet: 'Over 2.5',
+    total_matches: 4,
+  });
+  assert.equal(summary.primary, 'Over 2.5');
+  assert.equal(summary.extraCount, 3);
+});
+
 test('getSelectionSummary shows first outcome and remaining count', () => {
   const summary = getSelectionSummary({
     bet: 'Match Result · Santos',
