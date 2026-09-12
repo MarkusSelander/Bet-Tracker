@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import BetDetailsDialog from '../components/BetDetailsDialog';
+import BetTicketDialog from '../components/BetTicketDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { buildCalendarModel, localDateKey, monthRange } from '../lib/calendar';
@@ -365,11 +365,12 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <BetDetailsDialog
+      <BetTicketDialog
         bet={detailBet}
+        mode="view"
         open={Boolean(detailBet)}
-        onOpenChange={(open) => {
-          if (!open) setDetailBet(null);
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setDetailBet(null);
         }}
         currency={currency}
       />

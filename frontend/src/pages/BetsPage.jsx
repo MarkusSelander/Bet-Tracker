@@ -16,11 +16,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import BetDetailsDialog from '../components/BetDetailsDialog';
+import BetTicketDialog from '../components/BetTicketDialog';
 import BookmakerLogo from '../components/BookmakerLogo';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
@@ -38,6 +37,7 @@ import {
   statusDotClass,
   statusTextClass,
 } from '../lib/betsDisplay';
+import { toCreatePayload, toUpdatePayload } from '../lib/betTicket';
 import { fetchWithTimeout } from '../lib/fetch';
 import { ODDS_RANGES, filterBets, parseFilters, toBetsApiSearch, toSearch } from '../lib/filters';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency } from '../lib/format';
@@ -194,9 +194,9 @@ export default function BetsPage() {
   const { user } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseFilters(searchParams);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingBet, setEditingBet] = useState(null);
-  const [detailBet, setDetailBet] = useState(null);
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketMode, setTicketMode] = useState('view');
+  const [ticketBet, setTicketBet] = useState(null);
   const [view, setView] = useState('list');
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
@@ -220,20 +220,6 @@ export default function BetsPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(20);
-
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    time: new Date().toTimeString().slice(0, 8),
-    game: '',
-    bet: '',
-    stake: '',
-    odds: '',
-    status: 'pending',
-    bookie: '',
-    tipster: '',
-    sport: '',
-    notes: '',
-  });
 
   const patchFilters = (patch) => {
     const next = { ...filters, ...patch };
@@ -274,18 +260,33 @@ export default function BetsPage() {
     setCurrentPage(1);
   }, [apiSearch, filters.q, sortKey, sortDir]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const closeTicket = () => {
+    setTicketOpen(false);
+    setTicketBet(null);
+    setTicketMode('view');
+  };
 
+  const openBetDetails = (bet) => {
+    setTicketBet(bet);
+    setTicketMode('view');
+    setTicketOpen(true);
+  };
+
+  const openCreateDialog = () => {
+    setTicketBet(null);
+    setTicketMode('create');
+    setTicketOpen(true);
+  };
+
+  const handleSubmit = async (values) => {
     try {
-      if (editingBet) {
-        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/${editingBet.bet_id}`, {
+      if (ticketMode === 'edit' && ticketBet) {
+        const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/${ticketBet.bet_id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(formData),
+          body: JSON.stringify(toUpdatePayload(values)),
         });
-
         if (!response.ok) throw new Error('Kunne ikke oppdatere spill');
         toast.success('Spill oppdatert');
       } else {
@@ -293,42 +294,17 @@ export default function BetsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({
-            ...formData,
-            stake: parseFloat(formData.stake),
-            odds: parseFloat(formData.odds),
-          }),
+          body: JSON.stringify(toCreatePayload(values)),
         });
-
         if (!response.ok) throw new Error('Kunne ikke opprette spill');
         toast.success('Spill lagt til');
       }
-
-      setIsDialogOpen(false);
-      resetForm();
+      closeTicket();
       await fetchData();
     } catch (error) {
       console.error('Error saving bet:', error);
       toast.error('Kunne ikke lagre spill');
     }
-  };
-
-  const handleEdit = (bet) => {
-    setEditingBet(bet);
-    setFormData({
-      date: bet.date,
-      time: bet.time || '',
-      game: bet.game,
-      bet: bet.bet,
-      stake: bet.stake.toString(),
-      odds: bet.odds.toString(),
-      status: bet.status,
-      bookie: bet.bookie || '',
-      tipster: bet.tipster || '',
-      sport: bet.sport || '',
-      notes: bet.notes || '',
-    });
-    setIsDialogOpen(true);
   };
 
   const handleDelete = async (betId) => {
@@ -351,36 +327,12 @@ export default function BetsPage() {
     }
   };
 
-  const openBetDetails = (bet) => setDetailBet(bet);
-
   const handleRowKeyDown = (event, bet) => {
     if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       openBetDetails(bet);
     }
-  };
-
-  const resetForm = () => {
-    setEditingBet(null);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toTimeString().slice(0, 8),
-      game: '',
-      bet: '',
-      stake: '',
-      odds: '',
-      status: 'pending',
-      bookie: '',
-      tipster: '',
-      sport: '',
-      notes: '',
-    });
-  };
-
-  const openCreateDialog = () => {
-    resetForm();
-    setIsDialogOpen(true);
   };
 
   const handleSort = (key) => {
@@ -840,186 +792,20 @@ export default function BetsPage() {
         </div>
       ) : null}
 
-      <Dialog
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}
-      >
-        <DialogContent className="bg-[#18181B] border-[#27272A] text-white max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingBet ? 'Rediger spill' : 'Nytt spill'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="date">Dato</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="input-enhanced bg-black/20 border-white/10"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="status">Status</Label>
-                <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
-                  <SelectTrigger className="bg-black/20 border-white/10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="won">Vunnet</SelectItem>
-                    <SelectItem value="lost">Tapt</SelectItem>
-                    <SelectItem value="push">Push</SelectItem>
-                    <SelectItem value="pending">Åpen</SelectItem>
-                    <SelectItem value="cashed">Cashout</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="game">Kamp</Label>
-                <Input
-                  id="game"
-                  value={formData.game}
-                  onChange={(e) => setFormData({ ...formData, game: e.target.value })}
-                  placeholder="f.eks. Manchester United vs Liverpool"
-                  className="input-enhanced bg-black/20 border-white/10"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="time">Tid (valgfritt)</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  step="1"
-                  value={formData.time}
-                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                  className="input-enhanced bg-black/20 border-white/10"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="bet">Marked</Label>
-              <Input
-                id="bet"
-                value={formData.bet}
-                onChange={(e) => setFormData({ ...formData, bet: e.target.value })}
-                placeholder="f.eks. Manchester United vinner"
-                className="bg-black/20 border-white/10"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="stake">Innsats</Label>
-                <Input
-                  id="stake"
-                  type="number"
-                  step="0.01"
-                  value={formData.stake}
-                  onChange={(e) => setFormData({ ...formData, stake: e.target.value })}
-                  placeholder="100"
-                  className="bg-black/20 border-white/10"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="odds">Odds</Label>
-                <Input
-                  id="odds"
-                  type="number"
-                  step="0.01"
-                  value={formData.odds}
-                  onChange={(e) => setFormData({ ...formData, odds: e.target.value })}
-                  placeholder="2.50"
-                  className="bg-black/20 border-white/10"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="bookie">Bookmaker (valgfritt)</Label>
-                <Input
-                  id="bookie"
-                  value={formData.bookie}
-                  onChange={(e) => setFormData({ ...formData, bookie: e.target.value })}
-                  placeholder="Bet365"
-                  className="bg-black/20 border-white/10"
-                />
-              </div>
-              <div>
-                <Label htmlFor="sport">Sport (valgfritt)</Label>
-                <Input
-                  id="sport"
-                  value={formData.sport}
-                  onChange={(e) => setFormData({ ...formData, sport: e.target.value })}
-                  placeholder="Fotball"
-                  className="bg-black/20 border-white/10"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="notes">Notater (valgfritt)</Label>
-              <textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Notater om spillet..."
-                className="w-full min-h-[80px] bg-black/20 border border-white/10 rounded-md p-2 text-white resize-y"
-                rows={3}
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="tipster">Tipster (valgfritt)</Label>
-              <Input
-                id="tipster"
-                value={formData.tipster}
-                onChange={(e) => setFormData({ ...formData, tipster: e.target.value })}
-                placeholder="John Doe"
-                className="bg-black/20 border-white/10"
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <Button type="button" variant="secondary" onClick={() => setIsDialogOpen(false)}>
-                Avbryt
-              </Button>
-              <Button type="submit" className="bg-primary hover:bg-primary/90 text-black font-bold">
-                {editingBet ? 'Oppdater' : 'Legg til'}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <BetDetailsDialog
-        bet={detailBet}
-        open={Boolean(detailBet)}
-        onOpenChange={(open) => {
-          if (!open) setDetailBet(null);
-        }}
+      <BetTicketDialog
+        open={ticketOpen}
+        mode={ticketMode}
+        bet={ticketBet}
         currency={currency}
-        onEdit={(bet) => {
-          setDetailBet(null);
-          handleEdit(bet);
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) closeTicket();
         }}
+        onRequestEdit={() => setTicketMode('edit')}
         onDelete={async (bet) => {
           const deleted = await handleDelete(bet.bet_id);
-          if (deleted) setDetailBet(null);
+          if (deleted) closeTicket();
         }}
+        onSubmit={handleSubmit}
       />
     </div>
   );
