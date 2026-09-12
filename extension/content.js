@@ -39,7 +39,7 @@
     return total > 0 ? total : 0;
   }
 
-  async function fetchTickets(auth, knownIds, pendingIds) {
+  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
       accept: "*/*",
@@ -55,6 +55,7 @@
 
     const known = new Set(knownIds || []);
     const remainingPending = new Set(pendingIds || []);
+    const remainingIncomplete = new Set(incompleteIds || []);
     const all = [];
     let page = 1;
 
@@ -78,7 +79,10 @@
       const data = await response.json();
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
       all.push(...tickets);
-      for (const ticket of tickets) remainingPending.delete(ticket.id);
+      for (const ticket of tickets) {
+        remainingPending.delete(ticket.id);
+        remainingIncomplete.delete(ticket.id);
+      }
       const hasNextPage = Boolean(data.hasNextPage);
       reportProgress({
         phase: "history",
@@ -94,6 +98,7 @@
           hasNextPage,
           knownIds: known,
           pendingIds: remainingPending,
+          incompleteIds: remainingIncomplete,
         })
       ) {
         break;
@@ -104,11 +109,14 @@
     }
 
     const pending = new Set(pendingIds || []);
-    const detailsTotal = all.filter((ticket) => CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending)).length;
+    const incomplete = new Set(incompleteIds || []);
+    const detailsTotal = all.filter((ticket) =>
+      CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending, incomplete)
+    ).length;
     const enriched = [];
     let detailsDone = 0;
     for (const ticket of all) {
-      if (!CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending)) {
+      if (!CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending, incomplete)) {
         enriched.push(ticket);
         continue;
       }
@@ -146,7 +154,7 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "FETCH_TICKETS") return undefined;
-    fetchTickets(message.auth, message.knownIds, message.pendingIds)
+    fetchTickets(message.auth, message.knownIds, message.pendingIds, message.incompleteIds)
       .then(sendResponse)
       .catch((err) => sendResponse({ status: "error", error: String(err.message || err), tickets: [] }));
     return true;

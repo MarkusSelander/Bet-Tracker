@@ -4,6 +4,7 @@ const {
   HISTORY_PATH,
   authHeaders,
   betsUrl,
+  collectIncompleteIdsFromBets,
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
   computeSyncProgress,
@@ -103,6 +104,21 @@ test("keeps paging while Bet Tracker still has unseen pending tickets", () => {
   );
 });
 
+test("keeps paging while Bet Tracker still has incomplete settled combos", () => {
+  assert.equal(
+    shouldStopPagination({
+      tickets: [
+        { id: "a", status: "LOST" },
+        { id: "b", status: "WON" },
+      ],
+      hasNextPage: true,
+      knownIds: new Set(["a", "b"]),
+      incompleteIds: new Set(["older-combo"]),
+    }),
+    false
+  );
+});
+
 test("collectPendingIdsFromBets keeps only open tracker bets", () => {
   assert.deepEqual(
     collectPendingIdsFromBets([
@@ -111,6 +127,42 @@ test("collectPendingIdsFromBets keeps only open tracker bets", () => {
       { status: "pending" },
     ]),
     ["open"]
+  );
+});
+
+test("collectIncompleteIdsFromBets keeps combos with fewer stored legs than total_matches", () => {
+  assert.deepEqual(
+    collectIncompleteIdsFromBets([
+      {
+        source_id: "incomplete-settled",
+        status: "won",
+        ticket_type: "combo",
+        total_matches: 5,
+        legs_count: 1,
+      },
+      {
+        source_id: "complete-settled",
+        status: "lost",
+        ticket_type: "combo",
+        total_matches: 2,
+        legs_count: 2,
+      },
+      {
+        source_id: "single",
+        status: "won",
+        ticket_type: "single",
+        total_matches: 1,
+        legs_count: 1,
+      },
+      {
+        source_id: "incomplete-pending",
+        status: "pending",
+        ticket_type: "combo",
+        total_matches: 3,
+        legs: [{ match: "A - B" }],
+      },
+    ]),
+    ["incomplete-settled", "incomplete-pending"]
   );
 });
 
@@ -170,6 +222,30 @@ test("skips detail fetch for known settled combos", () => {
   assert.equal(shouldFetchTicketDetails(pending, known), true);
   assert.equal(shouldFetchTicketDetails(fresh, known), true);
   assert.equal(shouldFetchTicketDetails(combo, new Set()), true);
+});
+
+test("fetches details for known settled combos missing stored legs", () => {
+  const combo = { id: "a", total_matches: 5, ticket_type: "combo", status: "WON" };
+  const known = new Set(["a"]);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set(["a"])), true);
+  assert.equal(shouldFetchTicketDetails(combo, known, new Set(), new Set()), false);
+});
+
+test("reimports known settled tickets that are missing stored legs", () => {
+  const tickets = [
+    { id: "complete-won", status: "WON" },
+    { id: "incomplete-combo", status: "WON" },
+  ];
+  const imported = ticketsToImport(
+    tickets,
+    new Set(["complete-won", "incomplete-combo"]),
+    new Set(),
+    new Set(["incomplete-combo"])
+  );
+  assert.deepEqual(
+    imported.map((ticket) => ticket.id),
+    ["incomplete-combo"]
+  );
 });
 
 test("import only unknown or open tickets when known ids exist", () => {

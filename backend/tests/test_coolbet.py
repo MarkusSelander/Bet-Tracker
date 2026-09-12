@@ -340,3 +340,41 @@ def test_merged_ticket_detail_import_stores_all_legs():
     assert len(bet["legs"]) == 2
     assert bet["legs"][1]["match"] == "Sabalenka, A - Rybakina, E"
     assert bet["total_matches"] == 2
+
+
+def test_merged_settled_combo_detail_overwrites_single_stored_leg():
+    from coolbet_sync import merge_ticket_details
+
+    history = _ticket(
+        id="TICKET-UUID",
+        display_id=2004,
+        created_at="2026-09-12T03:36:17.959Z",
+        status="WON",
+        total_stake=1000,
+        max_win=2590,
+        remaining_max_win=2590,
+        ticket_type="combo",
+        total_matches=5,
+        first_bet_odds=2.59,
+        first_match={
+            "sport_name": "Football",
+            "match_name": "Some Home - Liverpool",
+            "league_name": "Premier League",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Liverpool",
+        },
+        legs=[{"match": "Some Home - Liverpool"}],
+    )
+    payload = _combo_ticket_detail_payload()
+    payload["bets"][0]["status"] = "WON"
+    payload["ticket"]["status"] = "WON"
+    payload["uniqueSelections"][0]["status"] = "WON"
+    payload["uniqueSelections"][1]["status"] = "WON"
+    merged = merge_ticket_details(history, payload)
+    bet = map_coolbet_ticket(merged)
+
+    assert history["status"] == "WON"
+    assert len(merged["uniqueSelections"]) == 2
+    assert len(bet["legs"]) == 2
+    assert bet["legs"][1]["match"] == "Sabalenka, A - Rybakina, E"
+    assert bet["status"] == "won"

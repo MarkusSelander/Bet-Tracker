@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from coolbet_sync import (
     CHROME_EXTENSION_ORIGIN_RE,
     auth_headers,
+    collect_incomplete_ids_from_bets,
     history_query,
     import_url,
     login_payload,
@@ -13,6 +14,7 @@ from coolbet_sync import (
     resolve_last_coolbet_sync_at,
     should_stop_pagination,
     ticket_detail_paths,
+    tickets_to_import,
 )
 
 
@@ -88,6 +90,64 @@ def test_should_continue_when_tracker_still_has_unseen_pending_tickets():
         known_ids={"a", "b"},
         pending_ids={"older-open"},
     )
+
+
+def test_should_continue_when_tracker_still_has_incomplete_settled_combos():
+    assert not should_stop_pagination(
+        tickets=[{"id": "a", "status": "LOST"}, {"id": "b", "status": "WON"}],
+        has_next_page=True,
+        known_ids={"a", "b"},
+        incomplete_ids={"older-combo"},
+    )
+
+
+def test_collect_incomplete_ids_from_bets_keeps_combos_missing_legs():
+    assert collect_incomplete_ids_from_bets(
+        [
+            {
+                "source_id": "incomplete-settled",
+                "status": "won",
+                "ticket_type": "combo",
+                "total_matches": 5,
+                "legs_count": 1,
+            },
+            {
+                "source_id": "complete-settled",
+                "status": "lost",
+                "ticket_type": "combo",
+                "total_matches": 2,
+                "legs_count": 2,
+            },
+            {
+                "source_id": "single",
+                "status": "won",
+                "ticket_type": "single",
+                "total_matches": 1,
+                "legs_count": 1,
+            },
+            {
+                "source_id": "incomplete-pending",
+                "status": "pending",
+                "ticket_type": "combo",
+                "total_matches": 3,
+                "legs": [{"match": "A - B"}],
+            },
+        ]
+    ) == ["incomplete-settled", "incomplete-pending"]
+
+
+def test_tickets_to_import_reimports_incomplete_settled_combos():
+    tickets = [
+        {"id": "complete-won", "status": "WON"},
+        {"id": "incomplete-combo", "status": "WON"},
+    ]
+    imported = tickets_to_import(
+        tickets,
+        known_ids={"complete-won", "incomplete-combo"},
+        pending_ids=set(),
+        incomplete_ids={"incomplete-combo"},
+    )
+    assert [ticket["id"] for ticket in imported] == ["incomplete-combo"]
 
 
 def test_chrome_extension_origin_regex_allows_unpacked_ids():
