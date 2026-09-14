@@ -324,7 +324,9 @@ export default function CalendarPage() {
                       <p className="text-[11px] text-text-muted truncate">
                         {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
                       </p>
-                      <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}>
+                      <span
+                        className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}
+                      >
                         {STATUS_LABELS[bet.status] || bet.status}
                       </span>
                     </div>
