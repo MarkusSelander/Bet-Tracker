@@ -14,6 +14,7 @@ let visibleFooterActions;
 let dialogTitle;
 let submitLabel;
 let missingComboLegs;
+let needsFullTicketBet;
 let potentialReturn;
 let shouldUseTicketLayout;
 let formatLegKickoff;
@@ -35,6 +36,7 @@ before(async () => {
     dialogTitle,
     submitLabel,
     missingComboLegs,
+    needsFullTicketBet,
     potentialReturn,
     shouldUseTicketLayout,
     formatLegKickoff,
@@ -205,6 +207,29 @@ test('missingComboLegs is true when stored legs are fewer than total_matches', (
     false
   );
   assert.equal(missingComboLegs({ ticket_type: 'single', total_matches: 1, legs: [] }), false);
+});
+
+test('needsFullTicketBet when list payload omitted legs or combo is incomplete', () => {
+  assert.equal(needsFullTicketBet(null), false);
+  assert.equal(needsFullTicketBet({ ticket_type: 'single', game: 'Liverpool - Fulham' }), true);
+  assert.equal(needsFullTicketBet({ ticket_type: 'combo', total_matches: 4, game: 'Talbe, F - Shelton, B' }), true);
+  assert.equal(
+    needsFullTicketBet({
+      ticket_type: 'combo',
+      total_matches: 4,
+      legs: [{ match: 'Talbe, F - Shelton, B' }],
+    }),
+    true
+  );
+  assert.equal(
+    needsFullTicketBet({
+      ticket_type: 'combo',
+      total_matches: 2,
+      legs: [{ match: 'A' }, { match: 'B' }],
+    }),
+    false
+  );
+  assert.equal(needsFullTicketBet({ ticket_type: 'single', total_matches: 1, legs: [{ match: 'A - B' }] }), false);
 });
 
 test('shouldUseTicketLayout is only for view mode', () => {

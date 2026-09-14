@@ -57,7 +57,7 @@ export function useCalendarBets(dateFrom, dateTo) {
   const search = `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
   return useQuery({
     queryKey: queryKeys.calendarBets(dateFrom, dateTo),
-    queryFn: async () => asArray(await fetchJson(`/api/bets?${search}`, {}, 15000)),
+    queryFn: async () => asArray(await fetchJson(`/api/bets?${search}&include_legs=true`, {}, 15000)),
     staleTime: STALE_LIST_MS,
     placeholderData: keepPreviousData,
     enabled: Boolean(dateFrom && dateTo),
