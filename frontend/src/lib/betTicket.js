@@ -151,6 +151,12 @@ export function missingComboLegs(bet) {
   return stored < 2;
 }
 
+export function needsFullTicketBet(bet) {
+  if (!bet) return false;
+  if (!Array.isArray(bet.legs)) return true;
+  return missingComboLegs(bet);
+}
+
 export function shouldUseTicketLayout(mode, bet) {
   return mode === 'view' && Boolean(bet);
 }

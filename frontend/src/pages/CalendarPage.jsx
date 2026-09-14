@@ -6,9 +6,10 @@ import BetTicketDialog from '../components/BetTicketDialog';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { buildCalendarModel, localDateKey, monthRange } from '../lib/calendar';
+import { needsFullTicketBet } from '../lib/betTicket';
 import { betsPath, parseFilters, toSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
-import { useCalendarBets } from '../lib/queries';
+import { useBet, useCalendarBets } from '../lib/queries';
 
 const EMPTY_BETS = [];
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -57,6 +58,9 @@ export default function CalendarPage() {
   const filters = parseFilters(searchParams);
   const [detailBet, setDetailBet] = useState(null);
   const currency = user?.currency || 'NOK';
+  const needsFullBet = needsFullTicketBet(detailBet);
+  const { data: fullDetailBet } = useBet(detailBet?.bet_id, { enabled: needsFullBet });
+  const dialogBet = fullDetailBet || detailBet;
   const todayKey = localDateKey();
   const month = filters.month || (filters.date ? filters.date.slice(0, 7) : todayKey.slice(0, 7));
   const [year, monthPart] = month.split('-').map(Number);
@@ -375,7 +379,7 @@ export default function CalendarPage() {
       </div>
 
       <BetTicketDialog
-        bet={detailBet}
+        bet={dialogBet}
         mode="view"
         open={Boolean(detailBet)}
         onOpenChange={(nextOpen) => {
