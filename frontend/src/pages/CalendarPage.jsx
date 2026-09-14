@@ -273,64 +273,71 @@ export default function CalendarPage() {
           </div>
         </div>
 
-        <div className={`lg:col-span-4 ${cardClass} p-6`} data-testid="calendar-day-panel">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-text-muted mb-1">Valgt dag</p>
-              <h2 className="text-base font-bold capitalize">{formatDayHeading(selectedDate)}</h2>
-            </div>
-            <Link
-              to={betsPath({ from: selectedDate, to: selectedDate })}
-              className="text-sm text-primary hover:underline shrink-0"
-              data-testid="calendar-view-bets"
-            >
-              Vis spill →
-            </Link>
-          </div>
-          <p className={`text-sm font-mono font-bold mt-1 ${signedClass(selectedDay.profit)}`}>
-            {selectedDay.profit > 0 ? '+' : ''}
-            {formatCurrency(selectedDay.profit, currency)}
-            <span className="text-text-muted font-sans font-normal">
-              {' '}
-              · {selectedDay.count || selectedDay.bets.length} spill
-              {selectedDay.won || selectedDay.lost ? ` · ${selectedDay.won}W–${selectedDay.lost}L` : ''}
-              {selectedDay.pending ? ` · ${selectedDay.pending} åpne` : ''}
-            </span>
-          </p>
-
-          {selectedDay.bets.length === 0 ? (
-            <p className="text-sm text-text-muted py-10 text-center">Ingen spill denne dagen.</p>
-          ) : (
-            <div className="mt-4 divide-y divide-[#27272A]">
-              {selectedDay.bets.map((bet) => (
-                <button
-                  key={bet.bet_id}
-                  type="button"
-                  data-testid={`calendar-bet-${bet.bet_id}`}
-                  tabIndex={0}
-                  aria-label={`Vis detaljer for ${bet.game}`}
-                  onClick={() => openBetDetails(bet)}
-                  onKeyDown={(event) => handleRowKeyDown(event, bet)}
-                  className="w-full text-left py-3 flex items-start justify-between gap-3 hover:bg-white/5 rounded-md px-1 -mx-1 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
+        <div className="lg:col-span-4 relative min-h-0 max-h-[32rem] lg:max-h-none">
+          <div
+            className={`${cardClass} p-6 flex flex-col overflow-hidden h-full max-h-[32rem] lg:max-h-none lg:absolute lg:inset-0`}
+            data-testid="calendar-day-panel"
+          >
+            <div className="shrink-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-text-muted mb-1">Valgt dag</p>
+                  <h2 className="text-base font-bold capitalize">{formatDayHeading(selectedDate)}</h2>
+                </div>
+                <Link
+                  to={betsPath({ from: selectedDate, to: selectedDate })}
+                  className="text-sm text-primary hover:underline shrink-0"
+                  data-testid="calendar-view-bets"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">{bet.game}</p>
-                    <p className="text-[11px] text-text-muted truncate">
-                      {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
-                    </p>
-                    <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}>
-                      {STATUS_LABELS[bet.status] || bet.status}
-                    </span>
-                  </div>
-                  <span className={`shrink-0 text-sm font-mono font-bold ${signedClass(bet.result)}`}>
-                    {bet.status === 'pending'
-                      ? '—'
-                      : `${bet.result > 0 ? '+' : ''}${formatCurrency(bet.result, currency, 0)}`}
-                  </span>
-                </button>
-              ))}
+                  Vis spill →
+                </Link>
+              </div>
+              <p className={`text-sm font-mono font-bold mt-1 ${signedClass(selectedDay.profit)}`}>
+                {selectedDay.profit > 0 ? '+' : ''}
+                {formatCurrency(selectedDay.profit, currency)}
+                <span className="text-text-muted font-sans font-normal">
+                  {' '}
+                  · {selectedDay.count || selectedDay.bets.length} spill
+                  {selectedDay.won || selectedDay.lost ? ` · ${selectedDay.won}W–${selectedDay.lost}L` : ''}
+                  {selectedDay.pending ? ` · ${selectedDay.pending} åpne` : ''}
+                </span>
+              </p>
             </div>
-          )}
+
+            {selectedDay.bets.length === 0 ? (
+              <p className="text-sm text-text-muted py-10 text-center">Ingen spill denne dagen.</p>
+            ) : (
+              <div className="mt-4 divide-y divide-[#27272A] min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+                {selectedDay.bets.map((bet) => (
+                  <button
+                    key={bet.bet_id}
+                    type="button"
+                    data-testid={`calendar-bet-${bet.bet_id}`}
+                    tabIndex={0}
+                    aria-label={`Vis detaljer for ${bet.game}`}
+                    onClick={() => openBetDetails(bet)}
+                    onKeyDown={(event) => handleRowKeyDown(event, bet)}
+                    className="w-full text-left py-3 flex items-start justify-between gap-3 hover:bg-white/5 rounded-md px-1 -mx-1 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm truncate">{bet.game}</p>
+                      <p className="text-[11px] text-text-muted truncate">
+                        {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
+                      </p>
+                      <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}>
+                        {STATUS_LABELS[bet.status] || bet.status}
+                      </span>
+                    </div>
+                    <span className={`shrink-0 text-sm font-mono font-bold ${signedClass(bet.result)}`}>
+                      {bet.status === 'pending'
+                        ? '—'
+                        : `${bet.result > 0 ? '+' : ''}${formatCurrency(bet.result, currency, 0)}`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
