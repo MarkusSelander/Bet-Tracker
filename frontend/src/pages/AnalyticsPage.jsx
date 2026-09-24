@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import DailyResultChart from '../components/DailyResultChart';
 import DailyTurnoverChart from '../components/DailyTurnoverChart';
 import PageHeader from '../components/PageHeader';
@@ -143,6 +144,7 @@ export default function AnalyticsPage() {
   const { data: summary, isPending, isError } = useAnalyticsSummary(summarySearch);
   const stats = summary?.stats && !Array.isArray(summary.stats) ? summary.stats : null;
   const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
+  const chartExtremes = latestExtremeDates(chartData, 'cumulative_pl');
   const sportStats = Array.isArray(summary?.sports) ? summary.sports : [];
   const leagueStats = Array.isArray(summary?.leagues) ? summary.leagues : [];
   const oddsRangeStats = Array.isArray(summary?.odds_range) ? summary.odds_range : [];
@@ -466,7 +468,18 @@ export default function AnalyticsPage() {
           </div>
           <ResponsiveContainer width="100%" height={280}>
             {chartType === 'line' ? (
-              <AreaChart data={chartData} onClick={goToChartDate} style={{ cursor: 'pointer' }}>
+              <AreaChart
+                data={chartData}
+                margin={{ top: 14, right: 14, left: 0, bottom: 0 }}
+                onClick={goToChartDate}
+                style={{ cursor: 'pointer' }}
+              >
+                <defs>
+                  <linearGradient id="analyticsPlFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
                 <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
                 <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
@@ -474,10 +487,14 @@ export default function AnalyticsPage() {
                 <Area
                   type="monotone"
                   dataKey="cumulative_pl"
-                  stroke="#10B981"
-                  strokeWidth={2}
-                  fill="#10B98122"
+                  stroke="#34D399"
+                  strokeWidth={2.5}
+                  fill="url(#analyticsPlFill)"
                   name="P/L"
+                  dot={(dotProps) => (
+                    <ChartExtremeDot {...dotProps} highDate={chartExtremes.highDate} lowDate={chartExtremes.lowDate} />
+                  )}
+                  activeDot={{ r: 5, fill: '#fff', stroke: '#34D399', strokeWidth: 2 }}
                 />
               </AreaChart>
             ) : (
