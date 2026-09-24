@@ -28,6 +28,7 @@ export const queryKeys = {
   favoritePins: ['favorites', 'pins'],
   favoriteMatches: (date, tab, filter) => ['favorites', 'matches', date, tab, filter],
   bankroll: ['bankroll'],
+  usdRate: ['fx', 'usd'],
 };
 
 export async function fetchJson(path, options = {}, timeoutMs) {

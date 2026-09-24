@@ -5,6 +5,14 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+export function useUsdRate() {
+  return useQuery({
+    queryKey: queryKeys.usdRate,
+    queryFn: () => fetchJson('/api/fx/usd'),
+    staleTime: 6 * 60 * 60 * 1000,
+  });
+}
+
 export function useBankroll() {
   return useQuery({
     queryKey: queryKeys.bankroll,

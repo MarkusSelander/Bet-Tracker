@@ -26,7 +26,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { betsPath, calendarPath, chartQuery, parseFilters, pickInsight, pieStatus, toSearch } from '../lib/filters';
-import { formatCurrency } from '../lib/format';
+import { formatAxisAmount, formatCurrency } from '../lib/format';
 import { useAnalyticsSummary } from '../lib/queries';
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 const PERIODS = [
@@ -485,7 +485,11 @@ export default function AnalyticsPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
                 <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-                <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+                <YAxis
+                  stroke="#71717A"
+                  style={{ fontSize: '11px' }}
+                  tickFormatter={(value) => formatAxisAmount(value, currency)}
+                />
                 <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
                 <Area
                   type="monotone"
@@ -504,7 +508,11 @@ export default function AnalyticsPage() {
               <BarChart data={chartData} onClick={goToChartDate} style={{ cursor: 'pointer' }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
                 <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-                <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+                <YAxis
+                  stroke="#71717A"
+                  style={{ fontSize: '11px' }}
+                  tickFormatter={(value) => formatAxisAmount(value, currency)}
+                />
                 <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
                 <Bar dataKey="cumulative_pl" name="P/L" radius={[2, 2, 0, 0]}>
                   {chartData.map((entry) => (

@@ -22,7 +22,7 @@ import { Button } from '../components/ui/button';
 import { missingComboLegs } from '../lib/betTicket';
 import { getMatchSummary, getSelectionSummary } from '../lib/betsDisplay';
 import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
-import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { STATUS_LABELS, formatAxisAmount, formatCurrency, statusClass } from '../lib/format';
 import { useAnalyticsSummary, useBet, usePendingBets, useRecentBets } from '../lib/queries';
 
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
@@ -230,7 +230,11 @@ export default function Dashboard() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
               <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-              <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
+              <YAxis
+                stroke="#71717A"
+                style={{ fontSize: '11px' }}
+                tickFormatter={(value) => formatAxisAmount(value, currency)}
+              />
               <Tooltip
                 contentStyle={{ backgroundColor: '#18181B', border: '1px solid #27272A', borderRadius: '8px' }}
                 formatter={(value) => formatCurrency(value, currency)}
