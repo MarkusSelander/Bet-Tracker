@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatCurrency } from '../lib/format';
 
 function parseDate(isoDate) {
@@ -59,6 +59,29 @@ function TurnoverTooltip({ active, payload, currency }) {
   );
 }
 
+function TurnoverBar(props) {
+  const { x, y, width, height, payload, peakDate, lowDate } = props;
+  const barH = Math.abs(height || 0);
+  if (!barH) return null;
+  const barY = height < 0 ? y + height : y;
+  const marked =
+    (payload?.date && payload.date === peakDate) || (payload?.date && payload.date === lowDate && peakDate !== lowDate);
+  const cx = x + width / 2;
+  const cy = barY;
+
+  return (
+    <g>
+      <Rectangle x={x} y={barY} width={width} height={barH} radius={[4, 4, 0, 0]} fill="url(#turnoverFill)" />
+      {marked ? (
+        <g>
+          <circle cx={cx} cy={cy} r={8} fill="#38BDF8" fillOpacity={0.28} />
+          <circle cx={cx} cy={cy} r={3.5} fill="#38BDF8" stroke="#09090B" strokeWidth={1.5} />
+        </g>
+      ) : null}
+    </g>
+  );
+}
+
 function withStake(rows) {
   return (rows || []).reduce((acc, row) => {
     const dailyStake = Number(row.daily_stake) || 0;
@@ -77,16 +100,17 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
 
   const summary = useMemo(() => {
     if (!rows.length) {
-      return { total: 0, peak: null, bets: 0 };
+      return { total: 0, peak: null, low: null, bets: 0 };
     }
     return rows.reduce(
       (acc, row) => {
         acc.total += row.daily_stake;
         acc.bets += row.bets || 0;
-        if (!acc.peak || row.daily_stake > acc.peak.daily_stake) acc.peak = row;
+        if (!acc.peak || row.daily_stake >= acc.peak.daily_stake) acc.peak = row;
+        if (row.daily_stake > 0 && (!acc.low || row.daily_stake <= acc.low.daily_stake)) acc.low = row;
         return acc;
       },
-      { total: 0, peak: null, bets: 0 }
+      { total: 0, peak: null, low: null, bets: 0 }
     );
   }, [rows]);
 
@@ -181,9 +205,10 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
                 <Bar
                   dataKey="daily_stake"
                   name="Omsetning"
-                  fill="url(#turnoverFill)"
-                  radius={[4, 4, 0, 0]}
                   maxBarSize={36}
+                  shape={(barProps) => (
+                    <TurnoverBar {...barProps} peakDate={summary.peak?.date} lowDate={summary.low?.date} />
+                  )}
                 />
               </BarChart>
             </ResponsiveContainer>

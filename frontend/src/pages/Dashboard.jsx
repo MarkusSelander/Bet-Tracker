@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import BetTicketDialog from '../components/BetTicketDialog';
+import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { missingComboLegs } from '../lib/betTicket';
@@ -56,6 +57,7 @@ export default function Dashboard() {
   const dialogBet = fullDetailBet || detailBet;
   const stats = summary?.stats || null;
   const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
+  const chartExtremes = latestExtremeDates(chartData, 'cumulative_pl');
 
   useEffect(() => {
     if (summaryError && !summary) toast.error('Kunne ikke laste oversikt');
@@ -216,7 +218,13 @@ export default function Dashboard() {
             </Link>
           </div>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={chartData}>
+            <AreaChart data={chartData} margin={{ top: 14, right: 14, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="dashboardPlFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
               <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
               <YAxis stroke="#71717A" style={{ fontSize: '11px' }} />
@@ -227,10 +235,14 @@ export default function Dashboard() {
               <Area
                 type="monotone"
                 dataKey="cumulative_pl"
-                stroke="#10B981"
-                strokeWidth={2}
-                fill="#10B98122"
+                stroke="#34D399"
+                strokeWidth={2.5}
+                fill="url(#dashboardPlFill)"
                 name="P/L"
+                dot={(props) => (
+                  <ChartExtremeDot {...props} highDate={chartExtremes.highDate} lowDate={chartExtremes.lowDate} />
+                )}
+                activeDot={{ r: 5, fill: '#fff', stroke: '#34D399', strokeWidth: 2 }}
               />
             </AreaChart>
           </ResponsiveContainer>

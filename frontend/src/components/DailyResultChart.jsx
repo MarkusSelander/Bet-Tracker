@@ -56,21 +56,36 @@ function signedMoney(value, currency) {
 }
 
 function DailyBar(props) {
-  const { x, y, width, height, payload } = props;
+  const { x, y, width, height, payload, bestDate, worstDate } = props;
   const positive = (payload?.daily_pl || 0) >= 0;
   const barY = height < 0 ? y + height : y;
   const barH = Math.abs(height);
   if (!barH) return null;
 
+  const isBest = payload?.date && payload.date === bestDate;
+  const isWorst = payload?.date && payload.date === worstDate && bestDate !== worstDate;
+  const marked = isBest || isWorst;
+  const color = positive ? '#34D399' : '#F87171';
+  const cx = x + width / 2;
+  const cy = positive ? barY : barY + barH;
+
   return (
-    <Rectangle
-      x={x}
-      y={barY}
-      width={width}
-      height={barH}
-      radius={positive ? [4, 4, 0, 0] : [0, 0, 4, 4]}
-      fill={positive ? 'url(#dailyGainFill)' : 'url(#dailyLossFill)'}
-    />
+    <g>
+      <Rectangle
+        x={x}
+        y={barY}
+        width={width}
+        height={barH}
+        radius={positive ? [4, 4, 0, 0] : [0, 0, 4, 4]}
+        fill={positive ? 'url(#dailyGainFill)' : 'url(#dailyLossFill)'}
+      />
+      {marked ? (
+        <g>
+          <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.28} />
+          <circle cx={cx} cy={cy} r={3.5} fill={color} stroke="#09090B" strokeWidth={1.5} />
+        </g>
+      ) : null}
+    </g>
   );
 }
 
@@ -233,7 +248,14 @@ export default function DailyResultChart({ data, currency, truncated, onDateSele
                 />
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,0.035)' }} content={<DailyTooltip currency={currency} />} />
                 <ReferenceLine y={0} stroke="#52525B" strokeWidth={1} />
-                <Bar dataKey="daily_pl" name="Resultat" shape={DailyBar} maxBarSize={36} />
+                <Bar
+                  dataKey="daily_pl"
+                  name="Resultat"
+                  maxBarSize={36}
+                  shape={(barProps) => (
+                    <DailyBar {...barProps} bestDate={summary.best?.date} worstDate={summary.worst?.date} />
+                  )}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
