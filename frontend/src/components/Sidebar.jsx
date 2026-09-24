@@ -9,8 +9,15 @@ const navItems = [
   { to: '/calendar', icon: Calendar, label: 'Kalender', testId: 'nav-calendar' },
   { to: '/analytics', icon: BarChart3, label: 'Analyse', testId: 'nav-analytics' },
   { to: '/favorites', icon: Star, label: 'Favoritter', testId: 'nav-favorites' },
-  { to: '/settings', icon: Settings, label: 'Innstillinger', testId: 'nav-settings' },
 ];
+
+function navClassName({ isActive }) {
+  return `sidebar-nav-item flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${
+    isActive
+      ? 'active bg-primary/10 text-primary border border-primary/20'
+      : 'text-text-secondary hover:bg-white/5 hover:text-text-primary'
+  }`;
+}
 
 export default function Sidebar({ user, mobileOpen, onClose }) {
   const navigate = useNavigate();
@@ -48,19 +55,7 @@ export default function Sidebar({ user, mobileOpen, onClose }) {
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              data-testid={item.testId}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `sidebar-nav-item flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-colors ${
-                  isActive
-                    ? 'active bg-primary/10 text-primary border border-primary/20'
-                    : 'text-text-secondary hover:bg-white/5 hover:text-text-primary'
-                }`
-              }
-            >
+            <NavLink key={item.to} to={item.to} data-testid={item.testId} onClick={onClose} className={navClassName}>
               <Icon className="w-5 h-5" strokeWidth={1.5} />
               <span className="font-medium">{item.label}</span>
             </NavLink>
@@ -68,8 +63,12 @@ export default function Sidebar({ user, mobileOpen, onClose }) {
         })}
       </nav>
 
-      <div className="p-4 border-t border-white/10">
-        <div className="flex items-center space-x-3 mb-3">
+      <div className="p-4 border-t border-white/10 space-y-3">
+        <NavLink to="/settings" data-testid="nav-settings" onClick={onClose} className={navClassName}>
+          <Settings className="w-5 h-5" strokeWidth={1.5} />
+          <span className="font-medium">Innstillinger</span>
+        </NavLink>
+        <div className="flex items-center space-x-3">
           <Avatar>
             <AvatarImage src={user?.picture} />
             <AvatarFallback>{user?.name?.charAt(0) || 'U'}</AvatarFallback>
