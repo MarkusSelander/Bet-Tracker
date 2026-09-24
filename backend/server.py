@@ -17,6 +17,7 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
+from fx import nok_per_usd
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
@@ -801,6 +802,34 @@ async def update_bankroll(request: Request):
         {"$set": {"starting_bankroll": starting_bankroll, "unit_size": unit_size}},
     )
     return {"starting_bankroll": starting_bankroll, "unit_size": unit_size}
+
+
+_fx_cache = {"nok_per_usd": None, "as_of": None, "fetched_at": 0.0}
+_FX_TTL_SECONDS = 6 * 60 * 60
+
+
+@api_router.get("/fx/usd")
+async def get_usd_rate(request: Request):
+    await get_current_user(request)
+    now = datetime.now(timezone.utc).timestamp()
+    if _fx_cache["nok_per_usd"] and now - _fx_cache["fetched_at"] < _FX_TTL_SECONDS:
+        return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.get("https://api.frankfurter.app/latest", params={"from": "USD", "to": "NOK"})
+            response.raise_for_status()
+            payload = response.json()
+        rate = nok_per_usd(payload)
+    except (httpx.HTTPError, TypeError, ValueError):
+        if _fx_cache["nok_per_usd"]:
+            return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
+        raise HTTPException(status_code=503, detail="Kunne ikke hente dollarkurs") from None
+
+    _fx_cache["nok_per_usd"] = rate
+    _fx_cache["as_of"] = payload.get("date")
+    _fx_cache["fetched_at"] = now
+    return {"nok_per_usd": rate, "as_of": _fx_cache["as_of"]}
 
 
 @api_router.get("/bankroll")

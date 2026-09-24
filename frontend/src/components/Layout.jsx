@@ -1,11 +1,19 @@
 import { Menu } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import { setMoneyRates } from '../lib/format';
+import { useBankroll, useUsdRate } from '../lib/queries';
 import PageFallback from './PageFallback';
 import Sidebar from './Sidebar';
 
 export default function Layout({ user }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { data: bankroll } = useBankroll();
+  const { data: fx } = useUsdRate();
+  setMoneyRates({
+    unitSize: bankroll?.unit_size ?? null,
+    nokPerUsd: fx?.nok_per_usd ?? null,
+  });
 
   return (
     <div className="min-h-screen relative">

@@ -9,7 +9,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchWithTimeout } from '../lib/fetch';
-import { useBankroll } from '../lib/queries';
+import { useBankroll, useUsdRate } from '../lib/queries';
 import { invalidateTrackerData } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const { user } = useOutletContext();
   const { updateUser } = useAuth();
   const { data: bankroll } = useBankroll();
+  const { data: fx } = useUsdRate();
   const [currency, setCurrency] = useState(user?.currency || 'NOK');
   const [startingBankroll, setStartingBankroll] = useState('');
   const [unitSize, setUnitSize] = useState('');
@@ -254,7 +255,13 @@ export default function SettingsPage() {
               <SelectItem value="UNITS">Units (U)</SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-sm text-text-muted mt-2">Gjelder beløp i hele appen</p>
+          <p className="text-sm text-text-muted mt-2">
+            {currency === 'USD' && fx?.nok_per_usd
+              ? `1 $ = ${Number(fx.nok_per_usd).toLocaleString('nb-NO')} kr. Kursen oppdateres daglig.`
+              : currency === 'UNITS'
+                ? 'Beløp deles på enhetsstørrelsen, som lagres i kroner.'
+                : 'Beløpene vises i kroner, slik de er lagret fra Coolbet.'}
+          </p>
         </div>
       </div>
 

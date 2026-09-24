@@ -1,15 +1,54 @@
-export function formatCurrency(value, currency = 'NOK', digits = 2) {
-  const amount = Number(value) || 0;
+const moneyRates = {
+  unitSize: null,
+  nokPerUsd: null,
+};
+
+export function setMoneyRates({ unitSize, nokPerUsd } = {}) {
+  if (unitSize !== undefined) moneyRates.unitSize = unitSize;
+  if (nokPerUsd !== undefined) moneyRates.nokPerUsd = nokPerUsd;
+}
+
+export function convertFromNok(value, currency = 'NOK') {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return null;
   if (currency === 'UNITS') {
-    return `${amount.toFixed(digits)} U`;
+    const unit = Number(moneyRates.unitSize);
+    if (!(unit > 0)) return null;
+    return amount / unit;
   }
   if (currency === 'USD') {
-    return `$${amount.toFixed(digits)}`;
+    const rate = Number(moneyRates.nokPerUsd);
+    if (!(rate > 0)) return null;
+    return amount / rate;
   }
-  return `${amount.toLocaleString('nb-NO', {
+  return amount;
+}
+
+function formatNumber(amount, digits) {
+  return amount.toLocaleString('nb-NO', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  })} kr`;
+  });
+}
+
+export function formatCurrency(value, currency = 'NOK', digits = 2) {
+  const amount = convertFromNok(value, currency);
+  if (amount == null) return '–';
+  if (currency === 'UNITS') return `${formatNumber(amount, digits)} u`;
+  if (currency === 'USD') return `${formatNumber(amount, digits)} $`;
+  return `${formatNumber(amount, digits)} kr`;
+}
+
+export function formatAxisAmount(value, currency = 'NOK') {
+  const amount = convertFromNok(value, currency);
+  if (amount == null) return '';
+  if (amount === 0) return '0';
+  const sign = amount < 0 ? '−' : '';
+  const abs = Math.abs(amount);
+  const suffix = currency === 'USD' ? ' $' : currency === 'UNITS' ? ' u' : '';
+  if (abs >= 10000) return `${sign}${Math.round(abs / 1000)}k${suffix}`;
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1).replace('.', ',')}${suffix}`;
+  return `${sign}${Math.round(abs)}${suffix}`;
 }
 
 export const TICKET_TYPE_LABELS = {

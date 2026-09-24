@@ -2,14 +2,6 @@ import { Link } from 'react-router-dom';
 import { formatCurrency } from '../lib/format';
 import { useBankroll } from '../lib/queries';
 
-function displayAmount(value, currency, unitSize) {
-  if (value == null) return '—';
-  if (currency === 'UNITS' && unitSize > 0) {
-    return `${(Number(value) / unitSize).toFixed(2)} u`;
-  }
-  return formatCurrency(value, currency);
-}
-
 function Metric({ label, value, hint, tone }) {
   const toneClass = tone === 'down' ? 'text-destructive' : tone === 'up' ? 'text-primary' : '';
   return (
@@ -58,9 +50,9 @@ export default function BankrollCard({ currency = 'NOK' }) {
     );
   }
 
-  const unitSize = data.unit_size;
   const change = data.change_pct || 0;
-  const money = (value) => displayAmount(value, currency, unitSize);
+  const money = (value) => formatCurrency(value, currency);
+  const unitHint = currency === 'UNITS' ? null : `${Number(data.current_units).toFixed(1)} u`;
 
   return (
     <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-4" data-testid="bankroll-card">
@@ -77,7 +69,7 @@ export default function BankrollCard({ currency = 'NOK' }) {
         <Metric
           label="Nå"
           value={money(data.current)}
-          hint={`${change >= 0 ? '+' : ''}${change.toFixed(1)}% fra start · ${Number(data.current_units).toFixed(1)} u`}
+          hint={[`${change >= 0 ? '+' : ''}${change.toFixed(1)}% fra start`, unitHint].filter(Boolean).join(' · ')}
           tone={change >= 0 ? 'up' : 'down'}
         />
         <Metric label="Topp" value={money(data.peak)} hint={`Start ${money(data.starting_bankroll)}`} />
@@ -93,7 +85,7 @@ export default function BankrollCard({ currency = 'NOK' }) {
           hint={
             data.pending_stake > 0
               ? `${money(data.pending_stake)} åpent · nå ${money(data.current_drawdown)} under topp`
-              : `1 u = ${money(unitSize)}`
+              : `1 u = ${money(data.unit_size)}`
           }
           tone={data.available < 0 ? 'down' : undefined}
         />

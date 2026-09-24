@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { formatCurrency } from '../lib/format';
+import { formatAxisAmount, formatCurrency } from '../lib/format';
 
 function parseDate(isoDate) {
   if (!isoDate) return null;
@@ -22,15 +22,6 @@ function formatLongDate(isoDate) {
     day: 'numeric',
     month: 'long',
   });
-}
-
-function formatAxisAmount(value) {
-  const n = Number(value) || 0;
-  if (n === 0) return '0';
-  const abs = Math.abs(n);
-  if (abs >= 10000) return `${Math.round(abs / 1000)}k`;
-  if (abs >= 1000) return `${(abs / 1000).toFixed(1).replace('.', ',')}k`;
-  return `${Math.round(abs)}`;
 }
 
 function TurnoverTooltip({ active, payload, currency }) {
@@ -195,7 +186,7 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
                   axisLine={false}
                   tickLine={false}
                   width={42}
-                  tickFormatter={formatAxisAmount}
+                  tickFormatter={(value) => formatAxisAmount(value, currency)}
                   tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
                 />
                 <Tooltip

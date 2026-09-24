@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatCurrency } from '../lib/format';
+import { formatAxisAmount, formatCurrency } from '../lib/format';
 
 function parseDate(isoDate) {
   if (!isoDate) return null;
@@ -32,16 +32,6 @@ function formatLongDate(isoDate) {
     day: 'numeric',
     month: 'long',
   });
-}
-
-function formatAxisAmount(value) {
-  const n = Number(value) || 0;
-  if (n === 0) return '0';
-  const sign = n < 0 ? '−' : '';
-  const abs = Math.abs(n);
-  if (abs >= 10000) return `${sign}${Math.round(abs / 1000)}k`;
-  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1).replace('.', ',')}k`;
-  return `${sign}${Math.round(abs)}`;
 }
 
 function signedText(value) {
@@ -243,7 +233,7 @@ export default function DailyResultChart({ data, currency, truncated, onDateSele
                   axisLine={false}
                   tickLine={false}
                   width={42}
-                  tickFormatter={formatAxisAmount}
+                  tickFormatter={(value) => formatAxisAmount(value, currency)}
                   tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
                 />
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,0.035)' }} content={<DailyTooltip currency={currency} />} />
