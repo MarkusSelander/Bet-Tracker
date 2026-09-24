@@ -5,6 +5,14 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+export function useBankroll() {
+  return useQuery({
+    queryKey: queryKeys.bankroll,
+    queryFn: () => fetchJson('/api/bankroll'),
+    staleTime: STALE_STATS_MS,
+  });
+}
+
 export function useAnalyticsSummary(search) {
   const qs = search ? `?${search}` : '';
   return useQuery({

@@ -16,6 +16,7 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
+import BankrollCard from '../components/BankrollCard';
 import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import DailyResultChart from '../components/DailyResultChart';
 import DailyTurnoverChart from '../components/DailyTurnoverChart';
@@ -444,6 +445,8 @@ export default function AnalyticsPage() {
           </p>
         </Link>
       </div>
+
+      <BankrollCard currency={currency} />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className={`lg:col-span-8 ${cardClass} p-6`}>

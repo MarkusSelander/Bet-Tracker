@@ -5,6 +5,7 @@ from stats import (
     build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
+    compute_bankroll,
     compute_breakdown,
     compute_odds_range_breakdown,
     compute_stats,
@@ -380,4 +381,33 @@ def test_streak_is_empty_when_no_won_or_lost_bets():
     assert stats["current_streak_type"] is None
     assert stats["best_win_streak"] == 0
     assert stats["worst_loss_streak"] == 0
+
+
+def test_bankroll_tracks_peak_drawdown_and_open_stakes():
+    bets = [
+        _bet(date="2026-03-01", status="won", result=2000, stake=1000),
+        _bet(date="2026-03-02", status="lost", result=-4000, stake=4000),
+        _bet(date="2026-03-03", status="pending", result=0, stake=500),
+        _bet(date="2026-03-04", status="won", result=1000, stake=1000),
+    ]
+
+    bank = compute_bankroll(bets, 10000, 500)
+
+    assert bank["configured"] is True
+    assert bank["current"] == 9000
+    assert bank["peak"] == 12000
+    assert bank["max_drawdown"] == 4000
+    assert bank["max_drawdown_pct"] == 33.33
+    assert bank["current_drawdown"] == 3000
+    assert bank["current_units"] == 18
+    assert bank["pending_stake"] == 500
+    assert bank["available"] == 8500
+    assert bank["change_pct"] == -10
+
+
+def test_bankroll_is_unconfigured_without_positive_unit():
+    bank = compute_bankroll([_bet(result=-100)], 1000, 0)
+    assert bank["configured"] is False
+    assert bank["current"] is None
+    assert bank["profit_loss"] == -100
 
