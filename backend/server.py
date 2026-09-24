@@ -38,9 +38,11 @@ from stats import (
     build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
+    compute_bankroll,
     compute_breakdown,
     compute_odds_range_breakdown,
     compute_stats,
+    parse_bankroll_amount,
     filter_bets,
 )
 from pymongo import InsertOne, ReplaceOne
@@ -782,6 +784,38 @@ async def update_currency(request: Request):
 
     await db.users.update_one({"user_id": user_id}, {"$set": {"currency": currency}})
     return {"currency": currency}
+
+
+@api_router.patch("/auth/bankroll")
+async def update_bankroll(request: Request):
+    user_id = await get_current_user(request)
+    body = await request.json()
+    try:
+        starting_bankroll = parse_bankroll_amount(body.get("starting_bankroll"))
+        unit_size = parse_bankroll_amount(body.get("unit_size"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Startbank og enhet må være større enn 0") from None
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"starting_bankroll": starting_bankroll, "unit_size": unit_size}},
+    )
+    return {"starting_bankroll": starting_bankroll, "unit_size": unit_size}
+
+
+@api_router.get("/bankroll")
+async def get_bankroll(request: Request):
+    user_id = await get_current_user(request)
+    user_doc = await db.users.find_one(
+        {"user_id": user_id},
+        {"_id": 0, "starting_bankroll": 1, "unit_size": 1},
+    )
+    bets = await db.bets.find(
+        {"user_id": user_id},
+        {"_id": 0, "date": 1, "time": 1, "status": 1, "result": 1, "stake": 1},
+    ).to_list(10000)
+    settings = user_doc or {}
+    return compute_bankroll(bets, settings.get("starting_bankroll"), settings.get("unit_size"))
 
 # Bet Routes
 

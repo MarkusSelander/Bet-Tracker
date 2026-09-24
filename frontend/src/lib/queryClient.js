@@ -27,6 +27,7 @@ export const queryKeys = {
   calendarBets: (from, to) => ['bets', 'calendar', from, to],
   favoritePins: ['favorites', 'pins'],
   favoriteMatches: (date, tab, filter) => ['favorites', 'matches', date, tab, filter],
+  bankroll: ['bankroll'],
 };
 
 export async function fetchJson(path, options = {}, timeoutMs) {
@@ -67,6 +68,7 @@ export function invalidateTrackerData(client = queryClient) {
   return Promise.all([
     client.invalidateQueries({ queryKey: ['analytics'] }),
     client.invalidateQueries({ queryKey: ['bets'] }),
+    client.invalidateQueries({ queryKey: ['bankroll'] }),
     client.invalidateQueries({ queryKey: ['favorites'] }),
   ]);
 }

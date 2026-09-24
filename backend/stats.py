@@ -303,3 +303,74 @@ def compute_stats(all_bets: List[Dict[str, Any]]) -> Dict[str, Any]:
         "best_win_streak": best_win_streak,
         "worst_loss_streak": worst_loss_streak,
     }
+
+
+def parse_bankroll_amount(value: Any) -> float:
+    if value is None or value == "":
+        raise ValueError("missing")
+    number = float(value)
+    if number != number or number <= 0:
+        raise ValueError("invalid")
+    return round(number, 2)
+
+
+def compute_bankroll(
+    bets: List[Dict[str, Any]],
+    starting_bankroll: Any = None,
+    unit_size: Any = None,
+) -> Dict[str, Any]:
+    """Equity from a starting bank. Pending stakes are exposure, not a result."""
+    start = None
+    unit = None
+    try:
+        start = parse_bankroll_amount(starting_bankroll)
+        unit = parse_bankroll_amount(unit_size)
+    except (TypeError, ValueError):
+        start = None
+        unit = None
+
+    settled = [bet for bet in bets if bet.get("status") in SETTLED_STATUSES]
+    profit = 0.0
+    equity = start or 0.0
+    peak = equity
+    max_drawdown = 0.0
+    max_drawdown_pct = 0.0
+
+    for bet in sorted(settled, key=_bet_chrono_key):
+        result = float(bet.get("result") or 0)
+        profit += result
+        if start is None:
+            continue
+        equity += result
+        if equity > peak:
+            peak = equity
+        drawdown = peak - equity
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
+            max_drawdown_pct = (drawdown / peak * 100) if peak > 0 else 0.0
+
+    pending_stake = sum(float(bet.get("stake") or 0) for bet in bets if bet.get("status") == "pending")
+    configured = start is not None and unit is not None
+    current = equity if configured else None
+    current_drawdown = (peak - equity) if configured else None
+    current_drawdown_pct = ((current_drawdown / peak) * 100) if configured and peak > 0 else None
+
+    def money(value: Optional[float]) -> Optional[float]:
+        return None if value is None else round(value, 2)
+
+    return {
+        "configured": configured,
+        "starting_bankroll": start,
+        "unit_size": unit,
+        "current": money(current),
+        "peak": money(peak) if configured else None,
+        "profit_loss": round(profit, 2),
+        "change_pct": round(((equity - start) / start) * 100, 2) if configured and start else None,
+        "max_drawdown": money(max_drawdown) if configured else None,
+        "max_drawdown_pct": round(max_drawdown_pct, 2) if configured else None,
+        "current_drawdown": money(current_drawdown),
+        "current_drawdown_pct": round(current_drawdown_pct, 2) if current_drawdown_pct is not None else None,
+        "current_units": round(equity / unit, 2) if configured and unit else None,
+        "pending_stake": round(pending_stake, 2),
+        "available": money(equity - pending_stake) if configured else None,
+    }
