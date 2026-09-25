@@ -33,7 +33,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!bankroll?.configured) return;
-    setStartingBankroll(String(bankroll.current));
+    setStartingBankroll(bankroll.baseline != null ? String(bankroll.baseline) : '');
     setUnitSize(bankroll.unit_size ? String(bankroll.unit_size) : '');
   }, [bankroll]);
 
@@ -232,11 +232,12 @@ export default function SettingsPage() {
       >
         <h2 className="text-xl font-bold mb-1">Bankroll</h2>
         <p className="text-sm text-text-secondary mb-4">
-          Saldo nå er det du har inne. Innskudd og uttak endrer den. 1 enhet lagres i kroner.
+          Utgangspunkt er banken før spillene i appen. Linjen på oversikten er dette pluss resultater, minus åpne
+          innsatser, pluss innskudd og minus uttak.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
           <div>
-            <Label htmlFor="starting-bankroll">Saldo nå</Label>
+            <Label htmlFor="starting-bankroll">Utgangspunkt</Label>
             <Input
               id="starting-bankroll"
               inputMode="decimal"
