@@ -9,6 +9,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchWithTimeout } from '../lib/fetch';
+import { formatCurrency } from '../lib/format';
 import { useBankroll, useUsdRate } from '../lib/queries';
 import { invalidateTrackerData } from '../lib/queryClient';
 
@@ -23,6 +24,8 @@ export default function SettingsPage() {
   const [startingBankroll, setStartingBankroll] = useState('');
   const [unitSize, setUnitSize] = useState('');
   const [savingBankroll, setSavingBankroll] = useState(false);
+  const [moveAmount, setMoveAmount] = useState('');
+  const [savingMove, setSavingMove] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importingCoolbet, setImportingCoolbet] = useState(false);
   const fileInputRef = useRef(null);
@@ -55,6 +58,34 @@ export default function SettingsPage() {
       toast.error('Saldo og enhet må være større enn 0');
     } finally {
       setSavingBankroll(false);
+    }
+  };
+
+  const submitMove = async (type) => {
+    const value = Number(String(moveAmount).replace(',', '.'));
+    if (!(value > 0)) {
+      toast.error('Skriv inn et beløp større enn 0');
+      return;
+    }
+    setSavingMove(true);
+    try {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bankroll/moves`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ type, amount: value }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.detail || 'Kunne ikke lagre');
+      }
+      setMoveAmount('');
+      await invalidateTrackerData();
+      toast.success(type === 'deposit' ? 'Innskudd lagt til' : 'Uttak lagt til');
+    } catch (error) {
+      toast.error(error.message || 'Kunne ikke lagre');
+    } finally {
+      setSavingMove(false);
     }
   };
 
@@ -201,7 +232,7 @@ export default function SettingsPage() {
       >
         <h2 className="text-xl font-bold mb-1">Bankroll</h2>
         <p className="text-sm text-text-secondary mb-4">
-          Saldo nå er det du har inne. Innskudd og uttak registrerer du på bankroll-kortet. 1 enhet lagres i kroner.
+          Saldo nå er det du har inne. Innskudd og uttak endrer den. 1 enhet lagres i kroner.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
           <div>
@@ -237,6 +268,63 @@ export default function SettingsPage() {
         >
           {savingBankroll ? 'Lagrer...' : 'Lagre bankroll'}
         </Button>
+        {bankroll?.configured ? (
+          <div className="mt-6 pt-4 border-t border-[#27272A]">
+            <h3 className="font-medium mb-3">Innskudd og uttak</h3>
+            <div className="flex flex-col sm:flex-row gap-2 max-w-lg">
+              <Input
+                inputMode="decimal"
+                value={moveAmount}
+                onChange={(event) => setMoveAmount(event.target.value)}
+                placeholder="Beløp i kroner"
+                className="bg-black/20 border-white/10 sm:max-w-[180px]"
+                data-testid="bankroll-move-amount"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.preventDefault();
+                }}
+              />
+              <Button
+                type="button"
+                disabled={savingMove}
+                onClick={() => submitMove('deposit')}
+                className="bg-primary hover:bg-primary/90 text-black font-bold"
+                data-testid="bankroll-deposit"
+              >
+                Innskudd
+              </Button>
+              <Button
+                type="button"
+                disabled={savingMove}
+                onClick={() => submitMove('withdrawal')}
+                className="bg-white/5 hover:bg-white/10 border border-white/10"
+                data-testid="bankroll-withdrawal"
+              >
+                Uttak
+              </Button>
+            </div>
+            {bankroll.moves?.some((move) => move.type !== 'set') ? (
+              <ul className="mt-4 max-w-lg space-y-1.5">
+                {bankroll.moves
+                  .filter((move) => move.type !== 'set')
+                  .map((move) => (
+                    <li
+                      key={move.id || `${move.type}-${move.at}`}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-text-secondary">
+                        {move.type === 'deposit' ? 'Innskudd' : 'Uttak'}
+                        {move.at ? ` · ${String(move.at).slice(0, 10)}` : ''}
+                      </span>
+                      <span className={`font-mono ${move.type === 'deposit' ? 'text-primary' : ''}`}>
+                        {move.type === 'withdrawal' ? '−' : '+'}
+                        {formatCurrency(move.amount, currency)}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
       </form>
 
       {/* Currency Settings */}
