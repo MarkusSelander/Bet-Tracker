@@ -30,9 +30,9 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!bankroll?.configured) return;
-    setStartingBankroll(String(bankroll.starting_bankroll));
-    setUnitSize(String(bankroll.unit_size));
-  }, [bankroll?.configured, bankroll?.starting_bankroll, bankroll?.unit_size]);
+    setStartingBankroll(String(bankroll.current));
+    setUnitSize(bankroll.unit_size ? String(bankroll.unit_size) : '');
+  }, [bankroll]);
 
   const handleBankrollSave = async (event) => {
     event.preventDefault();
@@ -43,7 +43,7 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          starting_bankroll: Number(String(startingBankroll).replace(',', '.')),
+          cash_balance: Number(String(startingBankroll).replace(',', '.')),
           unit_size: Number(String(unitSize).replace(',', '.')),
         }),
       });
@@ -52,7 +52,7 @@ export default function SettingsPage() {
       toast.success('Bankroll oppdatert');
     } catch (error) {
       console.error('Error updating bankroll:', error);
-      toast.error('Startbank og enhet må være større enn 0');
+      toast.error('Saldo og enhet må være større enn 0');
     } finally {
       setSavingBankroll(false);
     }
@@ -201,18 +201,17 @@ export default function SettingsPage() {
       >
         <h2 className="text-xl font-bold mb-1">Bankroll</h2>
         <p className="text-sm text-text-secondary mb-4">
-          Startbank er beløpet før første spill. 1 enhet er innsatsen du kaller én unit. Tallene er i samme valuta som
-          innsats og resultat.
+          Saldo nå er det du har inne. Innskudd og uttak registrerer du på bankroll-kortet. 1 enhet lagres i kroner.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
           <div>
-            <Label htmlFor="starting-bankroll">Startbank</Label>
+            <Label htmlFor="starting-bankroll">Saldo nå</Label>
             <Input
               id="starting-bankroll"
               inputMode="decimal"
               value={startingBankroll}
               onChange={(event) => setStartingBankroll(event.target.value)}
-              placeholder="10000"
+              placeholder="15301"
               className="bg-black/20 border-white/10 mt-2"
               data-testid="starting-bankroll-input"
             />
