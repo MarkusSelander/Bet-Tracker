@@ -13,3 +13,11 @@ def nok_per_usd(payload: Any) -> float:
     if rate != rate or rate <= 0:
         raise ValueError("invalid usd rate")
     return round(rate, 4)
+
+
+def nok_per_usd_from_norges_bank(csv_text: str) -> float:
+    rows = [line for line in (csv_text or "").splitlines() if line.strip()]
+    if len(rows) < 2:
+        raise ValueError("invalid usd rate")
+    value = rows[-1].split(";")[-1].strip()
+    return nok_per_usd({"rates": {"NOK": value}})

@@ -17,7 +17,7 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
-from fx import nok_per_usd
+from fx import nok_per_usd, nok_per_usd_from_norges_bank
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
@@ -815,21 +815,43 @@ async def get_usd_rate(request: Request):
     if _fx_cache["nok_per_usd"] and now - _fx_cache["fetched_at"] < _FX_TTL_SECONDS:
         return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
 
+    rate = None
+    as_of = None
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            response = await client.get("https://api.frankfurter.app/latest", params={"from": "USD", "to": "NOK"})
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+            response = await client.get(
+                "https://api.frankfurter.dev/v1/latest",
+                params={"base": "USD", "symbols": "NOK"},
+            )
             response.raise_for_status()
             payload = response.json()
         rate = nok_per_usd(payload)
+        as_of = payload.get("date")
     except (httpx.HTTPError, TypeError, ValueError):
+        rate = None
+
+    if rate is None:
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                response = await client.get(
+                    "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP",
+                    params={"lastNObservations": 1, "format": "csv"},
+                )
+                response.raise_for_status()
+            rate = nok_per_usd_from_norges_bank(response.text)
+            as_of = None
+        except (httpx.HTTPError, TypeError, ValueError):
+            rate = None
+
+    if rate is None:
         if _fx_cache["nok_per_usd"]:
             return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
-        raise HTTPException(status_code=503, detail="Kunne ikke hente dollarkurs") from None
+        raise HTTPException(status_code=503, detail="Kunne ikke hente dollarkurs")
 
     _fx_cache["nok_per_usd"] = rate
-    _fx_cache["as_of"] = payload.get("date")
+    _fx_cache["as_of"] = as_of
     _fx_cache["fetched_at"] = now
-    return {"nok_per_usd": rate, "as_of": _fx_cache["as_of"]}
+    return {"nok_per_usd": rate, "as_of": as_of}
 
 
 @api_router.get("/bankroll")

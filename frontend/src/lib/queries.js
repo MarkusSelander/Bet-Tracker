@@ -10,6 +10,7 @@ export function useUsdRate() {
     queryKey: queryKeys.usdRate,
     queryFn: () => fetchJson('/api/fx/usd'),
     staleTime: 6 * 60 * 60 * 1000,
+    retry: false,
   });
 }
 
