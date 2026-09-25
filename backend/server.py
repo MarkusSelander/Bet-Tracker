@@ -39,8 +39,8 @@ from stats import (
     build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
-    compute_bankroll,
     compute_breakdown,
+    compute_cash_position,
     compute_odds_range_breakdown,
     compute_stats,
     parse_bankroll_amount,
@@ -792,16 +792,49 @@ async def update_bankroll(request: Request):
     user_id = await get_current_user(request)
     body = await request.json()
     try:
-        starting_bankroll = parse_bankroll_amount(body.get("starting_bankroll"))
+        cash_balance = parse_bankroll_amount(body.get("cash_balance", body.get("starting_bankroll")))
         unit_size = parse_bankroll_amount(body.get("unit_size"))
     except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Startbank og enhet må være større enn 0") from None
+        raise HTTPException(status_code=400, detail="Saldo og enhet må være større enn 0") from None
 
+    entry = {
+        "id": f"cash_{uuid.uuid4().hex[:12]}",
+        "type": "set",
+        "amount": cash_balance,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
     await db.users.update_one(
         {"user_id": user_id},
-        {"$set": {"starting_bankroll": starting_bankroll, "unit_size": unit_size}},
+        {"$set": {"unit_size": unit_size, "starting_bankroll": cash_balance}, "$push": {"cash_entries": entry}},
     )
-    return {"starting_bankroll": starting_bankroll, "unit_size": unit_size}
+    return {"cash_balance": cash_balance, "unit_size": unit_size}
+
+
+@api_router.post("/bankroll/moves")
+async def add_bankroll_move(request: Request):
+    user_id = await get_current_user(request)
+    body = await request.json()
+    kind = body.get("type")
+    if kind not in ("deposit", "withdrawal"):
+        raise HTTPException(status_code=400, detail="Velg innskudd eller uttak")
+    try:
+        amount = parse_bankroll_amount(body.get("amount"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Beløpet må være større enn 0") from None
+
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "cash_entries": 1, "starting_bankroll": 1})
+    entries = (user_doc or {}).get("cash_entries") or []
+    if not any(entry.get("type") == "set" for entry in entries) and not (user_doc or {}).get("starting_bankroll"):
+        raise HTTPException(status_code=400, detail="Sett saldoen du har nå først")
+
+    entry = {
+        "id": f"cash_{uuid.uuid4().hex[:12]}",
+        "type": kind,
+        "amount": amount,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.users.update_one({"user_id": user_id}, {"$push": {"cash_entries": entry}})
+    return entry
 
 
 _fx_cache = {"nok_per_usd": None, "as_of": None, "fetched_at": 0.0}
@@ -859,14 +892,13 @@ async def get_bankroll(request: Request):
     user_id = await get_current_user(request)
     user_doc = await db.users.find_one(
         {"user_id": user_id},
-        {"_id": 0, "starting_bankroll": 1, "unit_size": 1},
+        {"_id": 0, "starting_bankroll": 1, "unit_size": 1, "cash_entries": 1},
     )
-    bets = await db.bets.find(
-        {"user_id": user_id},
-        {"_id": 0, "date": 1, "time": 1, "status": 1, "result": 1, "stake": 1},
-    ).to_list(10000)
     settings = user_doc or {}
-    return compute_bankroll(bets, settings.get("starting_bankroll"), settings.get("unit_size"))
+    entries = list(settings.get("cash_entries") or [])
+    if not any(entry.get("type") == "set" for entry in entries) and settings.get("starting_bankroll"):
+        entries.insert(0, {"type": "set", "amount": settings["starting_bankroll"], "at": ""})
+    return compute_cash_position(entries, settings.get("unit_size"))
 
 # Bet Routes
 

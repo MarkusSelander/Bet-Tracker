@@ -314,6 +314,56 @@ def parse_bankroll_amount(value: Any) -> float:
     return round(number, 2)
 
 
+def compute_cash_position(entries: List[Dict[str, Any]], unit_size: Any = None) -> Dict[str, Any]:
+    """Current cash is the last balance you set, plus later deposits and withdrawals."""
+    ordered = sorted(entries or [], key=lambda entry: entry.get("at") or "")
+    balance = None
+    deposited = 0.0
+    withdrawn = 0.0
+    applied: List[Dict[str, Any]] = []
+
+    for entry in ordered:
+        kind = entry.get("type")
+        try:
+            amount = round(float(entry.get("amount")), 2)
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        if kind == "set":
+            balance = amount
+            deposited = 0.0
+            withdrawn = 0.0
+            applied = [entry]
+        elif balance is None:
+            continue
+        elif kind == "deposit":
+            balance = round(balance + amount, 2)
+            deposited = round(deposited + amount, 2)
+            applied.append(entry)
+        elif kind == "withdrawal":
+            balance = round(balance - amount, 2)
+            withdrawn = round(withdrawn + amount, 2)
+            applied.append(entry)
+
+    unit = None
+    try:
+        unit = parse_bankroll_amount(unit_size)
+    except (TypeError, ValueError):
+        unit = None
+
+    configured = balance is not None
+    return {
+        "configured": configured,
+        "current": balance if configured else None,
+        "unit_size": unit,
+        "current_units": round(balance / unit, 2) if configured and unit else None,
+        "deposited": deposited,
+        "withdrawn": withdrawn,
+        "moves": list(reversed(applied[-8:])),
+    }
+
+
 def compute_bankroll(
     bets: List[Dict[str, Any]],
     starting_bankroll: Any = None,
