@@ -314,10 +314,15 @@ def parse_bankroll_amount(value: Any) -> float:
     return round(number, 2)
 
 
-def compute_cash_position(entries: List[Dict[str, Any]], unit_size: Any = None) -> Dict[str, Any]:
-    """Current cash is the last balance you set, plus later deposits and withdrawals."""
+def compute_cash_position(
+    entries: List[Dict[str, Any]],
+    unit_size: Any = None,
+    bets: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Opening balance plus deposits, withdrawals and bet results."""
     ordered = sorted(entries or [], key=lambda entry: entry.get("at") or "")
     balance = None
+    baseline = None
     deposited = 0.0
     withdrawn = 0.0
     applied: List[Dict[str, Any]] = []
@@ -332,6 +337,7 @@ def compute_cash_position(entries: List[Dict[str, Any]], unit_size: Any = None) 
             continue
         if kind == "set":
             balance = amount
+            baseline = amount
             deposited = 0.0
             withdrawn = 0.0
             applied = [entry]
@@ -346,16 +352,30 @@ def compute_cash_position(entries: List[Dict[str, Any]], unit_size: Any = None) 
             withdrawn = round(withdrawn + amount, 2)
             applied.append(entry)
 
+    bet_result = 0.0
+    pending_stake = 0.0
+    if balance is not None:
+        for bet in bets or []:
+            status = bet.get("status")
+            if status in SETTLED_STATUSES:
+                bet_result = round(bet_result + float(bet.get("result") or 0), 2)
+            elif status == "pending":
+                pending_stake = round(pending_stake + float(bet.get("stake") or 0), 2)
+        balance = round(balance + bet_result - pending_stake, 2)
+
     unit = None
     try:
         unit = parse_bankroll_amount(unit_size)
     except (TypeError, ValueError):
         unit = None
 
-    configured = balance is not None
+    configured = baseline is not None
     return {
         "configured": configured,
+        "baseline": baseline if configured else None,
         "current": balance if configured else None,
+        "bet_result": bet_result,
+        "pending_stake": pending_stake,
         "unit_size": unit,
         "current_units": round(balance / unit, 2) if configured and unit else None,
         "deposited": deposited,

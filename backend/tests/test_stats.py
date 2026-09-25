@@ -397,6 +397,7 @@ def test_cash_position_is_the_balance_you_set_plus_later_moves():
 
     assert bank["configured"] is True
     assert bank["current"] == 20200
+    assert bank["baseline"] == 20000
     assert bank["deposited"] == 200
     assert bank["withdrawn"] == 0
     assert bank["current_units"] == 40.4
@@ -407,4 +408,21 @@ def test_cash_position_is_unconfigured_without_a_balance():
     bank = compute_cash_position([{"type": "deposit", "amount": 100, "at": "2026-09-01"}], 500)
     assert bank["configured"] is False
     assert bank["current"] is None
+
+
+def test_cash_position_moves_with_settled_and_open_bets():
+    bank = compute_cash_position(
+        [{"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"}],
+        500,
+        [
+            {"status": "lost", "result": -1000, "stake": 1000},
+            {"status": "won", "result": 400, "stake": 200},
+            {"status": "pending", "result": 0, "stake": 300},
+        ],
+    )
+
+    assert bank["baseline"] == 74337
+    assert bank["current"] == 73437
+    assert bank["bet_result"] == -600
+    assert bank["pending_stake"] == 300
 

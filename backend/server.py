@@ -898,7 +898,11 @@ async def get_bankroll(request: Request):
     entries = list(settings.get("cash_entries") or [])
     if not any(entry.get("type") == "set" for entry in entries) and settings.get("starting_bankroll"):
         entries.insert(0, {"type": "set", "amount": settings["starting_bankroll"], "at": ""})
-    return compute_cash_position(entries, settings.get("unit_size"))
+    bets = await db.bets.find(
+        {"user_id": user_id},
+        {"_id": 0, "status": 1, "result": 1, "stake": 1},
+    ).to_list(10000)
+    return compute_cash_position(entries, settings.get("unit_size"), bets)
 
 # Bet Routes
 
