@@ -33,9 +33,14 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!bankroll?.configured) return;
-    setStartingBankroll(bankroll.baseline != null ? String(bankroll.baseline) : '');
+    setStartingBankroll(bankroll.current != null ? String(bankroll.current) : '');
     setUnitSize(bankroll.unit_size ? String(bankroll.unit_size) : '');
   }, [bankroll]);
+
+  useEffect(() => {
+    if (window.location.hash !== '#bankroll') return;
+    document.getElementById('bankroll')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const handleBankrollSave = async (event) => {
     event.preventDefault();
@@ -226,18 +231,31 @@ export default function SettingsPage() {
       <PageHeader title="Innstillinger" subtitle="Bankroll, valuta og data" testId="settings-title" />
 
       <form
+        id="bankroll"
         onSubmit={handleBankrollSave}
-        className="bg-[#18181B] border border-[#27272A] rounded-lg p-6"
+        className="scroll-mt-16 bg-[#18181B] border border-[#27272A] rounded-lg p-6"
         data-testid="bankroll-settings"
       >
-        <h2 className="text-xl font-bold mb-1">Bankroll</h2>
-        <p className="text-sm text-text-secondary mb-4">
-          Utgangspunkt er banken før spillene i appen. Linjen på oversikten er dette pluss resultater, minus åpne
-          innsatser, pluss innskudd og minus uttak.
-        </p>
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-xl font-bold">Bankroll</h2>
+            <p className="text-sm text-text-secondary mt-1">
+              Saldoen du har på konto. Registrer innskudd og uttak når du flytter penger. Spillene i appen endrer den
+              ikke.
+            </p>
+          </div>
+          {bankroll?.configured ? (
+            <div className="text-right shrink-0">
+              <p className="text-xs text-text-secondary">På konto</p>
+              <p className="text-2xl font-bold font-mono" data-testid="bankroll-balance">
+                {formatCurrency(bankroll.current, currency)}
+              </p>
+            </div>
+          ) : null}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
           <div>
-            <Label htmlFor="starting-bankroll">Utgangspunkt</Label>
+            <Label htmlFor="starting-bankroll">På konto</Label>
             <Input
               id="starting-bankroll"
               inputMode="decimal"
@@ -267,7 +285,7 @@ export default function SettingsPage() {
           className="mt-4 bg-primary hover:bg-primary/90 text-black font-bold"
           data-testid="save-bankroll-btn"
         >
-          {savingBankroll ? 'Lagrer...' : 'Lagre bankroll'}
+          {savingBankroll ? 'Lagrer...' : 'Lagre saldo'}
         </Button>
         {bankroll?.configured ? (
           <div className="mt-6 pt-4 border-t border-[#27272A]">
@@ -303,25 +321,36 @@ export default function SettingsPage() {
                 Uttak
               </Button>
             </div>
-            {bankroll.moves?.some((move) => move.type !== 'set') ? (
+            {bankroll.moves?.length ? (
               <ul className="mt-4 max-w-lg space-y-1.5">
-                {bankroll.moves
-                  .filter((move) => move.type !== 'set')
-                  .map((move) => (
+                {bankroll.moves.map((move) => {
+                  const label =
+                    move.type === 'deposit' ? 'Innskudd' : move.type === 'withdrawal' ? 'Uttak' : 'Saldo satt';
+                  const signed = move.type === 'withdrawal' ? '−' : move.type === 'deposit' ? '+' : '';
+                  return (
                     <li
                       key={move.id || `${move.type}-${move.at}`}
                       className="flex items-center justify-between text-sm"
                     >
                       <span className="text-text-secondary">
-                        {move.type === 'deposit' ? 'Innskudd' : 'Uttak'}
+                        {label}
                         {move.at ? ` · ${String(move.at).slice(0, 10)}` : ''}
                       </span>
-                      <span className={`font-mono ${move.type === 'deposit' ? 'text-primary' : ''}`}>
-                        {move.type === 'withdrawal' ? '−' : '+'}
+                      <span
+                        className={`font-mono ${
+                          move.type === 'deposit'
+                            ? 'text-primary'
+                            : move.type === 'withdrawal'
+                              ? 'text-destructive'
+                              : ''
+                        }`}
+                      >
+                        {signed}
                         {formatCurrency(move.amount, currency)}
                       </span>
                     </li>
-                  ))}
+                  );
+                })}
               </ul>
             ) : null}
           </div>
