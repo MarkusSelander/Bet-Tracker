@@ -119,7 +119,7 @@ export default function CalendarPage() {
   if (isPending && bets.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Kalender" subtitle="Resultat per dag" testId="calendar-title" />
+        <PageHeader title="Kalender" subtitle="Resultat per dag, uke og måned" testId="calendar-title" />
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 h-24 shimmer" />
@@ -135,7 +135,7 @@ export default function CalendarPage() {
     <div className="space-y-6">
       <PageHeader
         title="Kalender"
-        subtitle="Resultat per dag"
+        subtitle="Resultat per dag, uke og måned"
         testId="calendar-title"
         action={
           <Button
@@ -151,7 +151,7 @@ export default function CalendarPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-profit-card">
-          <p className="text-xs text-text-secondary mb-1">Resultat</p>
+          <p className="text-xs text-text-secondary mb-1">Månedlig P/L</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
             {kpis.profit > 0 ? '+' : ''}
             {formatCurrency(kpis.profit, currency)}
@@ -204,9 +204,16 @@ export default function CalendarPage() {
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            <h2 className="text-lg sm:text-xl font-bold capitalize">
-              {MONTHS[monthIndex]} {safeYear}
-            </h2>
+            <div className="text-center min-w-0 px-2">
+              <h2 className="text-lg sm:text-xl font-bold capitalize">
+                {MONTHS[monthIndex]} {safeYear}
+              </h2>
+              <p className={`text-sm font-mono font-bold ${signedClass(kpis.profit)}`} data-testid="calendar-month-pl">
+                {kpis.profit > 0 ? '+' : ''}
+                {formatCurrency(kpis.profit, currency)}
+                <span className="text-text-muted font-sans font-normal"> · {kpis.bets} spill</span>
+              </p>
+            </div>
             <Button
               data-testid="next-month-btn"
               variant="secondary"
@@ -348,8 +355,33 @@ export default function CalendarPage() {
       </div>
 
       <div className={`${cardClass} p-6`}>
-        <h2 className="text-base font-bold mb-4">Ukesoppsummering</h2>
+        <h2 className="text-base font-bold mb-4">Uke og måned</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+          <div
+            className={`border rounded-lg p-3 col-span-2 ${
+              kpis.bets === 0
+                ? 'border-[#27272A] bg-[#121214]'
+                : kpis.profit >= 0
+                  ? 'border-primary/30 bg-primary/5'
+                  : 'border-destructive/30 bg-destructive/5'
+            }`}
+            data-testid="calendar-month-summary"
+          >
+            <div className="text-xs text-text-muted mb-1 capitalize">
+              {MONTHS[monthIndex]} {safeYear}
+            </div>
+            {kpis.bets === 0 ? (
+              <div className="text-sm text-text-muted">—</div>
+            ) : (
+              <>
+                <div className={`text-base font-mono font-bold ${signedClass(kpis.profit)}`}>
+                  {kpis.profit > 0 ? '+' : ''}
+                  {formatCurrency(kpis.profit, currency)}
+                </div>
+                <div className="text-[11px] text-text-muted">{kpis.bets} spill</div>
+              </>
+            )}
+          </div>
           {model.weeks.map((week, index) => (
             <div
               key={`uke-${index + 1}`}
