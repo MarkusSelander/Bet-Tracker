@@ -37,8 +37,8 @@ test('buildCalendarModel groups bets, KPIs and Monday-first blanks', () => {
 
   assert.equal(model.kpis.bets, 4);
   assert.equal(model.kpis.profit, 450);
-  assert.equal(model.kpis.winRate, 2 / 3 * 100);
-  assert.equal(model.kpis.roi, 450 / 200 * 100);
+  assert.equal(model.kpis.winRate, (2 / 3) * 100);
+  assert.equal(model.kpis.roi, (450 / 200) * 100);
   assert.equal(model.kpis.bestDay.date, '2026-09-03');
   assert.equal(model.kpis.bestDay.profit, 400);
   assert.equal(model.kpis.worstDay.date, '2026-09-01');
@@ -46,4 +46,8 @@ test('buildCalendarModel groups bets, KPIs and Monday-first blanks', () => {
 
   assert.equal(model.byDate['2026-09-01'].bets.length, 2);
   assert.ok(model.weeks.length >= 4);
+  assert.equal(
+    model.weeks.reduce((sum, week) => sum + week.profit, 0),
+    model.kpis.profit
+  );
 });
