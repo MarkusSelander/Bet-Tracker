@@ -2,6 +2,7 @@ import asyncio
 import csv
 import io
 import logging
+import math
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,7 @@ from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionT
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
+from bankroll import MOVEMENT_TYPES, compute_bankroll, movement_from_set
 from coolbet import map_coolbet_ticket
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
 from mongo import mongo_client_kwargs
@@ -599,6 +601,13 @@ class FavoriteEventIn(BaseModel):
     sport_key: Optional[str] = None
 
 
+class BankrollMovementIn(BaseModel):
+    type: str
+    amount: float
+    date: Optional[str] = None
+    note: Optional[str] = None
+
+
 # Auth Helper
 
 
@@ -782,6 +791,61 @@ async def update_currency(request: Request):
 
     await db.users.update_one({"user_id": user_id}, {"$set": {"currency": currency}})
     return {"currency": currency}
+
+
+async def _bankroll_docs(user_id: str) -> list:
+    return await db.bankroll_movements.find({"user_id": user_id}, {"_id": 0}).to_list(10000)
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+@api_router.get("/bankroll")
+async def get_bankroll(request: Request):
+    user_id = await get_current_user(request)
+    return compute_bankroll(await _bankroll_docs(user_id))
+
+
+@api_router.post("/bankroll/movements")
+async def create_bankroll_movement(request: Request, body: BankrollMovementIn):
+    user_id = await get_current_user(request)
+    kind = (body.type or "").strip().lower()
+    amount = float(body.amount)
+    if not math.isfinite(amount) or amount <= 0:
+        raise HTTPException(status_code=400, detail="Beløp må være større enn 0")
+
+    movements = await _bankroll_docs(user_id)
+    if kind == "set":
+        resolved = movement_from_set(compute_bankroll(movements)["balance"], amount)
+        if not resolved:
+            return compute_bankroll(movements)
+        kind = resolved["type"]
+        amount = resolved["amount"]
+    elif kind not in MOVEMENT_TYPES:
+        raise HTTPException(status_code=400, detail="Ugyldig type")
+
+    doc = {
+        "movement_id": f"br_{uuid.uuid4().hex[:12]}",
+        "user_id": user_id,
+        "type": kind,
+        "amount": round(amount, 2),
+        "date": (body.date or "").strip() or _today(),
+        "note": (body.note or "").strip() or None,
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.bankroll_movements.insert_one(doc)
+    return compute_bankroll(await _bankroll_docs(user_id))
+
+
+@api_router.delete("/bankroll/movements/{movement_id}")
+async def delete_bankroll_movement(request: Request, movement_id: str):
+    user_id = await get_current_user(request)
+    result = await db.bankroll_movements.delete_one({"movement_id": movement_id, "user_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Bevegelse ikke funnet")
+    return compute_bankroll(await _bankroll_docs(user_id))
+
 
 # Bet Routes
 
@@ -1653,6 +1717,10 @@ async def ensure_indexes():
         )
         await db.user_sessions.create_index("session_token", unique=True, name="sessions_token")
         await db.users.create_index("user_id", name="users_user_id")
+        await db.bankroll_movements.create_index(
+            [("user_id", 1), ("date", -1)],
+            name="bankroll_user_date",
+        )
     except Exception:
         logging.exception("Could not ensure Mongo indexes")
 

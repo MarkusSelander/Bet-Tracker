@@ -101,3 +101,11 @@ export function useFavoriteMatches(date, tab, filter) {
     placeholderData: keepPreviousData,
   });
 }
+
+export function useBankroll() {
+  return useQuery({
+    queryKey: queryKeys.bankroll,
+    queryFn: () => fetchJson('/api/bankroll'),
+    staleTime: STALE_LIST_MS,
+  });
+}

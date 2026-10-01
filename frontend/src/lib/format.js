@@ -33,6 +33,11 @@ export const STATUS_LABELS = {
   cashed: 'Cashout',
 };
 
+export const BANKROLL_TYPE_LABELS = {
+  deposit: 'Innskudd',
+  withdrawal: 'Uttak',
+};
+
 export function statusClass(status) {
   if (status === 'won') return 'bg-primary/10 text-primary';
   if (status === 'lost') return 'bg-destructive/10 text-destructive';

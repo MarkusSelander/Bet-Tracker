@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import BankrollSection from '../components/BankrollSection';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchWithTimeout } from '../lib/fetch';
 import { invalidateTrackerData } from '../lib/queryClient';
@@ -155,7 +156,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Innstillinger" subtitle="Valuta og data" testId="settings-title" />
+      <PageHeader title="Innstillinger" subtitle="Valuta, bankroll og data" testId="settings-title" />
 
       {/* Currency Settings */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
@@ -175,6 +176,8 @@ export default function SettingsPage() {
           <p className="text-sm text-text-muted mt-2">Gjelder beløp i hele appen</p>
         </div>
       </div>
+
+      <BankrollSection currency={currency} />
 
       {/* Import/Export */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">

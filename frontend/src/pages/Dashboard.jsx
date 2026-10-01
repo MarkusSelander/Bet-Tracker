@@ -1,4 +1,4 @@
-import { Clock, FileDown } from 'lucide-react';
+import { Clock, FileDown, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import {
@@ -19,7 +19,7 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
-import { useAnalyticsSummary, usePendingBets, useRecentBets } from '../lib/queries';
+import { useAnalyticsSummary, useBankroll, usePendingBets, useRecentBets } from '../lib/queries';
 
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const { data: summary, isPending: summaryPending, isError: summaryError } = useAnalyticsSummary(dashboardSearch);
   const { data: recentBets = [] } = useRecentBets(8);
   const { data: pendingBets = [] } = usePendingBets();
+  const { data: bankroll } = useBankroll();
   const stats = summary?.stats || null;
   const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
 
@@ -98,6 +99,33 @@ export default function Dashboard() {
           </Button>
         }
       />
+
+      <Link
+        to="/settings#bankroll"
+        className={`${cardClass} flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:border-white/20 transition-colors`}
+        data-testid="dashboard-bankroll-card"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary mb-1">På konto</p>
+            <p className="text-2xl font-bold font-mono">{formatCurrency(bankroll?.balance || 0, currency)}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-6 text-sm">
+          <div>
+            <p className="text-xs text-text-secondary">Innskudd</p>
+            <p className="font-mono text-primary">{formatCurrency(bankroll?.deposited || 0, currency)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-text-secondary">Uttak</p>
+            <p className="font-mono text-destructive">{formatCurrency(bankroll?.withdrawn || 0, currency)}</p>
+          </div>
+          <span className="text-sm text-primary self-end">Registrer →</span>
+        </div>
+      </Link>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="total-bets-card">
