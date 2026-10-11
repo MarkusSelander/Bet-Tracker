@@ -1,10 +1,13 @@
 import { Plus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import FixtureBoard from '../components/FixtureBoard';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
+import fixtures from '../data/arsenalFixtures.json';
 import { fetchWithTimeout } from '../lib/fetch';
+import { focusTeamName } from '../lib/fixtureBoard';
 import { useFavoriteTeams, useFavoriteToday } from '../lib/queries';
 import { queryClient, queryKeys } from '../lib/queryClient';
 
@@ -44,18 +47,15 @@ export default function FavoritesPage() {
     data: matches = EMPTY_LIST,
     error: matchesError,
     isError: matchesIsError,
-    isLoading: matchesLoading,
     isFetching: matchesFetching,
   } = useFavoriteToday();
 
   const groups = useMemo(() => {
-    return SPORT_ORDER
-      .map((sport) => ({
-        sport,
-        label: sportLabel(sport),
-        matches: matches.filter((match) => match.sport === sport),
-      }))
-      .filter((group) => group.matches.length > 0);
+    return SPORT_ORDER.map((sport) => ({
+      sport,
+      label: sportLabel(sport),
+      matches: matches.filter((match) => match.sport === sport),
+    })).filter((group) => group.matches.length > 0);
   }, [matches]);
 
   useEffect(() => {
@@ -166,11 +166,16 @@ export default function FavoritesPage() {
   };
 
   const noTeams = !teamsLoading && teams.length === 0;
-  const noneToday = teams.length > 0 && !matchesLoading && !error && matches.length === 0;
+  const showToday = matches.length > 0 || (teams.length > 0 && matchesFetching);
+  const focus = focusTeamName(fixtures);
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Favoritter" subtitle="Lag som spiller i dag" testId="favorites-title" />
+      <PageHeader
+        title="Favoritter"
+        subtitle={`${focus} · kommende kamper fra den lokale nedlastingen`}
+        testId="favorites-title"
+      />
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -178,96 +183,86 @@ export default function FavoritesPage() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-[#1f2a33] bg-[#0d1419] overflow-hidden">
-        <div className="grid gap-0 lg:grid-cols-[240px_1fr]">
-          <aside className="border-b lg:border-b-0 lg:border-r border-[#1f2a33] p-3 space-y-4">
-            <section>
-              <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Mine lag</h2>
-              {noTeams ? (
-                <p className="text-xs text-text-secondary">Ingen lag favorisert</p>
-              ) : (
-                <ul className="space-y-1">
-                  {teams.map((team) => (
-                    <li
-                      key={`${team.kind}-${team.sofascore_id}`}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate">{team.name}</span>
-                        <span className="block text-[11px] text-text-muted">{sportLabel(team.sport)}</span>
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Fjern ${team.name}`}
-                        onClick={() => removeTeam(team)}
-                        className="text-text-muted hover:text-white"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => setSearchOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Legg til lag
-            </Button>
-          </aside>
-
-          <section className="min-w-0">
-            <div className="border-b border-[#1f2a33] px-3 py-2">
-              <h2 className="text-sm font-medium">I dag</h2>
-            </div>
+      <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+        <aside className="bg-[#18181B] border border-[#27272A] rounded-xl p-4 space-y-4 h-fit">
+          <section>
+            <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Mine lag</h2>
             {noTeams ? (
-              <div className="p-6 space-y-3">
-                <p className="text-sm text-text-secondary">Legg til et fotballag eller en tennisspiller for å se kamper i dag.</p>
-                <Button type="button" size="sm" onClick={() => setSearchOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Legg til lag
-                </Button>
-              </div>
-            ) : matchesFetching && matches.length === 0 ? (
-              <p className="p-6 text-sm text-text-secondary">Henter kamper…</p>
-            ) : noneToday ? (
-              <p className="p-6 text-sm text-text-secondary">Ingen av favorittene spiller i dag.</p>
+              <p className="text-xs text-text-secondary">Ingen lag favorisert</p>
             ) : (
-              <div>
-                {groups.map((group) => (
-                  <div key={group.sport}>
-                    <div className="bg-[#12202b] px-3 py-2">
-                      <h3 className="text-sm font-medium">{group.label}</h3>
-                    </div>
-                    <ul>
-                      {group.matches.map((match) => {
-                        const score = scoreText(match);
-                        return (
-                          <li
-                            key={match.id}
-                            className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/5 px-3 py-2"
-                          >
-                            <span className="text-[11px] text-text-muted tabular-nums">
-                              {isLive(match) ? 'LIVE' : formatKickoff(match.start)}
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-sm truncate">{match.home}</span>
-                              <span className="block text-sm truncate text-text-secondary">{match.away}</span>
-                              {match.tournament ? (
-                                <span className="block text-[11px] text-text-muted truncate">{match.tournament}</span>
-                              ) : null}
-                            </span>
-                            <span className="text-sm tabular-nums text-right">{score}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
+              <ul className="space-y-1">
+                {teams.map((team) => (
+                  <li
+                    key={`${team.kind}-${team.sofascore_id}`}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">{team.name}</span>
+                      <span className="block text-[11px] text-text-muted">{sportLabel(team.sport)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Fjern ${team.name}`}
+                      onClick={() => removeTeam(team)}
+                      className="text-text-muted hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </section>
-        </div>
+
+          <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => setSearchOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Legg til lag
+          </Button>
+        </aside>
+
+        <section className="min-w-0 space-y-4">
+          <FixtureBoard />
+          {showToday ? (
+            <div className="bg-[#18181B] border border-[#27272A] rounded-xl overflow-hidden">
+              <div className="border-b border-[#27272A] px-3 py-2">
+                <h2 className="text-sm font-medium">I dag</h2>
+              </div>
+              {matchesFetching && matches.length === 0 ? (
+                <p className="p-4 text-sm text-text-secondary">Henter kamper…</p>
+              ) : null}
+              {groups.map((group) => (
+                <div key={group.sport}>
+                  <div className="bg-white/5 px-3 py-2">
+                    <h3 className="text-sm font-medium">{group.label}</h3>
+                  </div>
+                  <ul>
+                    {group.matches.map((match) => {
+                      const score = scoreText(match);
+                      return (
+                        <li
+                          key={match.id}
+                          className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/5 px-3 py-2"
+                        >
+                          <span className="text-[11px] text-text-muted tabular-nums">
+                            {isLive(match) ? 'LIVE' : formatKickoff(match.start)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm truncate">{match.home}</span>
+                            <span className="block text-sm truncate text-text-secondary">{match.away}</span>
+                            {match.tournament ? (
+                              <span className="block text-[11px] text-text-muted truncate">{match.tournament}</span>
+                            ) : null}
+                          </span>
+                          <span className="text-sm tabular-nums text-right">{score}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
       </div>
 
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
