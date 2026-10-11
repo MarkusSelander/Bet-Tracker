@@ -1,0 +1,3 @@
+[submodule "backend/vendor/sofascore_scraper"]
+	path = backend/vendor/sofascore_scraper
+	url = https://github.com/tunjayoff/sofascore_scraper.git

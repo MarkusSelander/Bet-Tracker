@@ -36,8 +36,9 @@ Professional betting analytics platform with real-time statistics and performanc
 ```bash
 cd backend
 
-# Install Python dependencies
+# Install Python dependencies (includes the SofaScore scraper submodule)
 pip install -r requirements.txt
+python -m patchright install chromium
 
 # Configure environment
 cp .env.example .env
@@ -46,6 +47,8 @@ cp .env.example .env
 # Run server
 uvicorn server:app --reload --port 8000
 ```
+
+Favoritter bruker SofaScore-scraperen i `backend/vendor/sofascore_scraper` inne i denne prosessen. Nettleserprofil og cache ligger i `backend/sofascore-data` og skal ikke committes.
 
 ### Frontend
 
@@ -83,7 +86,6 @@ DB_NAME=bet_tracker
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 API_SPORTS_KEY=your_api_sports_key_here
 TENNIS_API_KEY=your_rapidapi_key_here
-ODDS_API_KEY=your_odds_api_key_here
 # Chrome-utvidelsen bruker Bearer-token (ikke cookies). Backend tillater også
 # chrome-extension://<32 tegn> via allow_origin_regex — du trenger ikke liste ID-en.
 ```
@@ -92,6 +94,21 @@ ODDS_API_KEY=your_odds_api_key_here
 ```
 REACT_APP_BACKEND_URL=http://localhost:8000
 ```
+
+## Deploy (Vercel + Render)
+
+Vercel er bare nettstedet. Favoritter kaller API-et på Render, så `REACT_APP_BACKEND_URL` skal fortsatt peke dit. Etter at denne branchen er den Vercel bygger, redeployer frontend av seg selv.
+
+Render-tjenesten kan ikke bli stående som vanlig Python. SofaScore krever Chromium, og det image-et finnes ikke der. Bytt backend til Docker med `backend/Dockerfile`:
+
+1. Opprett en ny Web Service fra samme repo. Et Python-service lar seg ikke bygge om til Docker.
+2. Language: **Docker**. Root Directory: `backend`.
+3. Instance med minst **2 GB RAM**. 512 MB blir drept når nettleseren starter.
+4. Kopier miljøvariablene fra den gamle tjenesten: `MONGO_URL`, `DB_NAME` og `CORS_ORIGINS` (Vercel-adressen må ligge i `CORS_ORIGINS`).
+5. Valgfritt: en disk montert på `/app/sofascore-data`, så første søk etter en omstart ikke må løse SofaScore-utfordringen på nytt.
+6. Hvis adressen til API-et endres, oppdater `REACT_APP_BACKEND_URL` på Vercel og redeploy.
+
+Health check: `/api/health`.
 
 ## Development
 

@@ -81,40 +81,18 @@ export function useCalendarBets(dateFrom, dateTo) {
   });
 }
 
-export function useFavoritePins() {
+export function useFavoriteTeams() {
   return useQuery({
-    queryKey: queryKeys.favoritePins,
-    queryFn: async () => {
-      const [leagues, teams, events] = await Promise.all([
-        fetchJson('/api/favorites/leagues'),
-        fetchJson('/api/favorites/teams'),
-        fetchJson('/api/favorites/events'),
-      ]);
-      return {
-        leagues: asArray(leagues),
-        teams: asArray(teams),
-        eventIds: asArray(events)
-          .map((row) => row.event_id)
-          .filter(Boolean),
-      };
-    },
+    queryKey: queryKeys.favoriteTeams,
+    queryFn: async () => asArray(await fetchJson('/api/favorites/teams')),
     staleTime: STALE_REFERENCE_MS,
   });
 }
 
-export function useFavoriteMatches(date, tab, filter) {
+export function useFavoriteToday() {
   return useQuery({
-    queryKey: queryKeys.favoriteMatches(date, tab, filter),
-    queryFn: async () => {
-      const path = `/api/odds/matches?date=${encodeURIComponent(date)}&tab=${encodeURIComponent(tab)}&filter=${encodeURIComponent(filter)}`;
-      try {
-        return asArray(await fetchJson(path));
-      } catch (error) {
-        error.matches = [];
-        throw error;
-      }
-    },
+    queryKey: queryKeys.favoriteToday,
+    queryFn: async () => asArray(await fetchJson('/api/favorites/today')),
     staleTime: 60_000,
-    placeholderData: keepPreviousData,
   });
 }

@@ -1,82 +1,62 @@
-import { ChevronLeft, ChevronRight, Plus, Search, Star, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import MatchMarketsDialog from '../components/MatchMarketsDialog';
+import FixtureBoard from '../components/FixtureBoard';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
-import { localDateKey } from '../lib/calendar';
+import fixtures from '../data/arsenalFixtures.json';
 import { fetchWithTimeout } from '../lib/fetch';
-import { MATCH_FILTERS, formatKickoff, groupByLeague, sportTabs } from '../lib/oddsFavorites';
-import { useFavoriteMatches, useFavoritePins } from '../lib/queries';
+import { focusTeamName } from '../lib/fixtureBoard';
+import { useFavoriteTeams, useFavoriteToday } from '../lib/queries';
 import { queryClient, queryKeys } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const EMPTY_LIST = [];
+const SPORT_LABEL = { football: 'Fotball', tennis: 'Tennis' };
+const SPORT_ORDER = ['football', 'tennis'];
 
-function shiftDate(iso, days) {
-  const date = new Date(`${iso}T12:00:00`);
-  date.setDate(date.getDate() + days);
-  return localDateKey(date);
+function sportLabel(sport) {
+  return SPORT_LABEL[sport] || sport;
 }
 
-function formatDateLabel(iso) {
-  const parsed = new Date(`${iso}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return iso;
-  return parsed.toLocaleDateString('nb-NO', { weekday: 'short', day: 'numeric', month: 'short' });
+function formatKickoff(iso) {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
 }
 
-function oddsValue(odds, key) {
-  const value = odds?.[key];
-  if (value == null) return '';
-  const number = Number(value);
-  return Number.isNaN(number) ? '' : number.toFixed(2);
-}
-
-function apiErrorMessage(status, data, fallback) {
-  const detail = typeof data?.detail === 'string' ? data.detail : '';
-  if (status === 429) {
-    return detail || 'Odds API-kvote brukt opp';
-  }
-  if (status === 502 || status === 503) {
-    return detail || 'Odds API utilgjengelig';
-  }
-  return fallback;
+function scoreText(match) {
+  if (match.home_score == null && match.away_score == null) return '';
+  return `${match.home_score ?? '–'}–${match.away_score ?? '–'}`;
 }
 
 function isLive(match) {
-  return Boolean(match?.scores) && !match?.completed;
+  return match?.status === 'inprogress';
 }
 
 export default function FavoritesPage() {
-  const [tab, setTab] = useState('favorites');
-  const [filter, setFilter] = useState('all');
-  const [date, setDate] = useState(() => localDateKey());
   const [error, setError] = useState(null);
-  const [selectedMatch, setSelectedMatch] = useState(null);
-  const [markets, setMarkets] = useState([]);
-  const [marketsLoading, setMarketsLoading] = useState(false);
-  const [marketsError, setMarketsError] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState({ leagues: [], teams: [] });
+  const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
-  const { data: pins } = useFavoritePins();
+  const { data: teams = EMPTY_LIST, isLoading: teamsLoading } = useFavoriteTeams();
   const {
     data: matches = EMPTY_LIST,
     error: matchesError,
     isError: matchesIsError,
-  } = useFavoriteMatches(date, tab, filter);
-  const leagues = pins?.leagues || EMPTY_LIST;
-  const teams = pins?.teams || EMPTY_LIST;
-  const eventIds = pins?.eventIds || EMPTY_LIST;
+    isFetching: matchesFetching,
+  } = useFavoriteToday();
 
-  const leagueKeys = useMemo(() => new Set(leagues.map((row) => row.key)), [leagues]);
-  const starredIds = useMemo(() => new Set(eventIds), [eventIds]);
-  const groups = useMemo(() => groupByLeague(matches), [matches]);
-  const noPins = leagues.length === 0 && teams.length === 0 && eventIds.length === 0;
-  const emptyFavorites = tab === 'favorites' && matches.length === 0 && !error && noPins;
+  const groups = useMemo(() => {
+    return SPORT_ORDER.map((sport) => ({
+      sport,
+      label: sportLabel(sport),
+      matches: matches.filter((match) => match.sport === sport),
+    })).filter((group) => group.matches.length > 0);
+  }, [matches]);
 
   useEffect(() => {
     if (!matchesIsError) {
@@ -93,7 +73,7 @@ export default function FavoritesPage() {
     if (!query) {
       setSearchError(null);
       setSearchLoading(false);
-      setSearchResults({ leagues: [], teams: [] });
+      setSearchResults([]);
       return undefined;
     }
     setSearchLoading(true);
@@ -107,16 +87,17 @@ export default function FavoritesPage() {
         const data = await response.json().catch(() => ({}));
         if (cancelled) return;
         if (!response.ok) {
-          setSearchError(apiErrorMessage(response.status, data, 'Kunne ikke søke'));
-          setSearchResults({ leagues: [], teams: [] });
+          const detail = typeof data?.detail === 'string' ? data.detail : '';
+          setSearchError(detail || 'Kunne ikke søke');
+          setSearchResults([]);
           return;
         }
         setSearchError(null);
-        setSearchResults({ leagues: data.leagues || [], teams: data.teams || [] });
+        setSearchResults(data.teams || []);
       } catch (err) {
         if (cancelled) return;
         setSearchError(err.message || 'Kunne ikke søke');
-        setSearchResults({ leagues: [], teams: [] });
+        setSearchResults([]);
       } finally {
         if (!cancelled) setSearchLoading(false);
       }
@@ -129,87 +110,72 @@ export default function FavoritesPage() {
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.favoritePins }),
-      queryClient.invalidateQueries({ queryKey: ['favorites', 'matches'] }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.favoriteTeams }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.favoriteToday }),
     ]);
   };
 
-  const toggleLeague = async (league) => {
-    const key = league.key || league.sport_key;
-    const pinned = leagueKeys.has(key);
-    await fetchWithTimeout(
-      pinned
-        ? `${BACKEND_URL}/api/favorites/leagues/${encodeURIComponent(key)}`
-        : `${BACKEND_URL}/api/favorites/leagues`,
-      {
-        method: pinned ? 'DELETE' : 'POST',
-        credentials: 'include',
-        headers: pinned ? undefined : { 'Content-Type': 'application/json' },
-        body: pinned ? undefined : JSON.stringify({ key, title: league.title, group: league.group || '' }),
-      }
-    );
-    await refresh();
-  };
-
   const addTeam = async (team) => {
-    await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: team.name, sport_key: team.sport_key }),
-    });
-    setSearchOpen(false);
-    await refresh();
-  };
-
-  const removeTeam = async (team) => {
-    await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: team.name, sport_key: team.sport_key }),
-    });
-    await refresh();
-  };
-
-  const toggleEvent = async (event, match) => {
-    event.stopPropagation();
-    const starred = starredIds.has(match.id);
-    await fetchWithTimeout(`${BACKEND_URL}/api/favorites/events`, {
-      method: starred ? 'DELETE' : 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event_id: match.id, sport_key: match.sport_key }),
-    });
-    await refresh();
-  };
-
-  const openMatch = async (match) => {
-    setSelectedMatch(match);
-    setMarkets([]);
-    setMarketsError(null);
-    setMarketsLoading(true);
     try {
-      const response = await fetchWithTimeout(
-        `${BACKEND_URL}/api/odds/matches/${encodeURIComponent(match.id)}/markets?sport_key=${encodeURIComponent(match.sport_key)}`,
-        { credentials: 'include' }
-      );
-      const data = await response.json().catch(() => []);
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sofascore_id: team.sofascore_id,
+          kind: team.kind,
+          name: team.name,
+          sport: team.sport,
+          team_id: team.team_id,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setMarketsError(apiErrorMessage(response.status, data, 'Kunne ikke hente markeder'));
+        setSearchError(typeof data?.detail === 'string' ? data.detail : 'Kunne ikke lagre');
         return;
       }
-      setMarkets(Array.isArray(data) ? data : []);
+      setSearchOpen(false);
+      setSearchQuery('');
+      await refresh();
     } catch (err) {
-      setMarketsError(err.message || 'Kunne ikke hente markeder');
-    } finally {
-      setMarketsLoading(false);
+      setSearchError(err.message || 'Kunne ikke lagre');
     }
   };
 
+  const removeTeam = async (team) => {
+    try {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/favorites/teams`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sofascore_id: team.sofascore_id,
+          kind: team.kind,
+          name: team.name,
+          sport: team.sport,
+        }),
+      });
+      if (!response.ok) {
+        setError('Kunne ikke fjerne laget');
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      setError(err.message || 'Kunne ikke fjerne laget');
+    }
+  };
+
+  const noTeams = !teamsLoading && teams.length === 0;
+  const showToday = matches.length > 0 || (teams.length > 0 && matchesFetching);
+  const focus = focusTeamName(fixtures);
+
   return (
     <div className="space-y-4">
-      <PageHeader title="Favoritter" testId="favorites-title" />
+      <PageHeader
+        title="Favoritter"
+        subtitle={`${focus} · kommende kamper fra den lokale nedlastingen`}
+        testId="favorites-title"
+      />
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -217,231 +183,120 @@ export default function FavoritesPage() {
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-[#1f2a33] bg-[#0d1419] overflow-hidden">
-        <div className="flex gap-1 overflow-x-auto border-b border-[#1f2a33] px-2 py-2">
-          {sportTabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setTab(item.id)}
-              className={`shrink-0 rounded-md px-3 py-1.5 text-sm ${
-                tab === item.id ? 'bg-white/10 text-white' : 'text-text-secondary hover:text-white'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-0 lg:grid-cols-[210px_1fr]">
-          <aside className="border-b lg:border-b-0 lg:border-r border-[#1f2a33] p-3 space-y-4">
-            <section>
-              <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Festede ligaer</h2>
-              {leagues.length === 0 ? (
-                <p className="text-xs text-text-secondary">Ingen ligaer festet</p>
-              ) : (
-                <ul className="space-y-1">
-                  {leagues.map((league) => (
-                    <li key={league.key} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="truncate">{league.title}</span>
-                      <button
-                        type="button"
-                        aria-label={`Fjern ${league.title}`}
-                        onClick={() => toggleLeague(league)}
-                        className="text-amber-400 hover:text-amber-300"
-                      >
-                        <Star className="h-3.5 w-3.5 fill-current" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section>
-              <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Mine lag</h2>
-              {teams.length === 0 ? (
-                <p className="text-xs text-text-secondary">Ingen lag fulgt</p>
-              ) : (
-                <ul className="space-y-1">
-                  {teams.map((team) => (
-                    <li
-                      key={`${team.sport_key}-${team.name}`}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span className="truncate">{team.name}</span>
-                      <button
-                        type="button"
-                        aria-label={`Fjern ${team.name}`}
-                        onClick={() => removeTeam(team)}
-                        className="text-text-muted hover:text-white"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => setSearchOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Legg til lag
-            </Button>
-          </aside>
-
-          <section className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 border-b border-[#1f2a33] px-3 py-2">
-              {MATCH_FILTERS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setFilter(item.id)}
-                  className={`rounded-full px-3 py-1 text-xs ${
-                    filter === item.id ? 'bg-white/15 text-white' : 'text-text-secondary hover:text-white'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              <div className="ml-auto flex items-center gap-1">
-                <button type="button" aria-label="Forrige dag" onClick={() => setDate((value) => shiftDate(value, -1))}>
-                  <ChevronLeft className="h-4 w-4 text-text-secondary" />
-                </button>
-                <span className="text-xs text-text-secondary min-w-[7rem] text-center">{formatDateLabel(date)}</span>
-                <button type="button" aria-label="Neste dag" onClick={() => setDate((value) => shiftDate(value, 1))}>
-                  <ChevronRight className="h-4 w-4 text-text-secondary" />
-                </button>
-              </div>
-            </div>
-
-            {emptyFavorites ? (
-              <div className="p-6 space-y-3">
-                <p className="text-sm text-text-secondary">Fest en liga eller legg til et lag for å se kamper.</p>
-                <Button type="button" size="sm" onClick={() => setSearchOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Legg til lag
-                </Button>
-              </div>
-            ) : error ? null : groups.length === 0 ? (
-              <p className="p-6 text-sm text-text-secondary">Ingen kamper for valgt dag.</p>
+      <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+        <aside className="bg-[#18181B] border border-[#27272A] rounded-xl p-4 space-y-4 h-fit">
+          <section>
+            <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Mine lag</h2>
+            {noTeams ? (
+              <p className="text-xs text-text-secondary">Ingen lag favorisert</p>
             ) : (
-              <div>
-                {groups.map((group) => (
-                  <div key={group.sport_key}>
-                    <div className="flex items-center justify-between gap-2 bg-[#12202b] px-3 py-2">
-                      <h3 className="text-sm font-medium truncate">{group.title}</h3>
-                      <button
-                        type="button"
-                        aria-label={leagueKeys.has(group.sport_key) ? 'Fjern liga' : 'Fest liga'}
-                        onClick={() => toggleLeague({ key: group.sport_key, title: group.title, group: '' })}
-                        className={
-                          leagueKeys.has(group.sport_key) ? 'text-amber-400' : 'text-text-muted hover:text-amber-300'
-                        }
-                      >
-                        <Star className={`h-4 w-4 ${leagueKeys.has(group.sport_key) ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
-                    <ul>
-                      {group.matches.map((match) => (
-                        <li
-                          key={match.id}
-                          className="grid grid-cols-[minmax(0,1fr)_1.75rem] items-stretch border-b border-white/5 hover:bg-white/5"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => openMatch(match)}
-                            className="grid grid-cols-[3.5rem_1fr_7.5rem] items-center gap-2 px-3 py-2 text-left"
-                          >
-                            <span className="text-[11px] text-text-muted tabular-nums">
-                              {isLive(match) ? 'LIVE' : formatKickoff(match.commence_time)}
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-sm truncate">{match.home_team}</span>
-                              <span className="block text-sm truncate text-text-secondary">{match.away_team}</span>
-                            </span>
-                            <span className="grid grid-cols-3 gap-1 text-center text-xs tabular-nums">
-                              <span className="rounded bg-white/5 py-1">{oddsValue(match.odds_1x2, 'home')}</span>
-                              <span className="rounded bg-white/5 py-1">{oddsValue(match.odds_1x2, 'draw')}</span>
-                              <span className="rounded bg-white/5 py-1">{oddsValue(match.odds_1x2, 'away')}</span>
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={starredIds.has(match.id) ? 'Fjern kamp' : 'Merk kamp'}
-                            onClick={(event) => toggleEvent(event, match)}
-                            className={starredIds.has(match.id) ? 'text-amber-400' : 'text-text-muted'}
-                          >
-                            <Star className={`h-4 w-4 ${starredIds.has(match.id) ? 'fill-current' : ''}`} />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              <ul className="space-y-1">
+                {teams.map((team) => (
+                  <li
+                    key={`${team.kind}-${team.sofascore_id}`}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">{team.name}</span>
+                      <span className="block text-[11px] text-text-muted">{sportLabel(team.sport)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Fjern ${team.name}`}
+                      onClick={() => removeTeam(team)}
+                      className="text-text-muted hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </section>
-        </div>
-      </div>
 
-      <MatchMarketsDialog
-        match={selectedMatch}
-        markets={markets}
-        open={Boolean(selectedMatch)}
-        onOpenChange={(next) => {
-          if (!next) setSelectedMatch(null);
-        }}
-        loading={marketsLoading}
-        error={marketsError}
-      />
+          <Button type="button" size="sm" variant="secondary" className="w-full" onClick={() => setSearchOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Legg til lag
+          </Button>
+        </aside>
+
+        <section className="min-w-0 space-y-4">
+          <FixtureBoard />
+          {showToday ? (
+            <div className="bg-[#18181B] border border-[#27272A] rounded-xl overflow-hidden">
+              <div className="border-b border-[#27272A] px-3 py-2">
+                <h2 className="text-sm font-medium">I dag</h2>
+              </div>
+              {matchesFetching && matches.length === 0 ? (
+                <p className="p-4 text-sm text-text-secondary">Henter kamper…</p>
+              ) : null}
+              {groups.map((group) => (
+                <div key={group.sport}>
+                  <div className="bg-white/5 px-3 py-2">
+                    <h3 className="text-sm font-medium">{group.label}</h3>
+                  </div>
+                  <ul>
+                    {group.matches.map((match) => {
+                      const score = scoreText(match);
+                      return (
+                        <li
+                          key={match.id}
+                          className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/5 px-3 py-2"
+                        >
+                          <span className="text-[11px] text-text-muted tabular-nums">
+                            {isLive(match) ? 'LIVE' : formatKickoff(match.start)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm truncate">{match.home}</span>
+                            <span className="block text-sm truncate text-text-secondary">{match.away}</span>
+                            {match.tournament ? (
+                              <span className="block text-[11px] text-text-muted truncate">{match.tournament}</span>
+                            ) : null}
+                          </span>
+                          <span className="text-sm tabular-nums text-right">{score}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      </div>
 
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
         <DialogContent className="bg-[#18181B] border-[#27272A] text-white max-w-md">
           <DialogHeader>
             <DialogTitle>Legg til lag</DialogTitle>
-            <DialogDescription>Søk etter liga eller lagnavn.</DialogDescription>
+            <DialogDescription>Søk etter fotballag eller tennisspiller.</DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Søk Eliteserien eller Brann"
+              placeholder="Søk Brann eller Sinner"
               className="bg-transparent"
             />
             <Button type="button" size="icon" variant="secondary" aria-label="Søk">
               <Search className="h-4 w-4" />
             </Button>
           </div>
-          <div className="space-y-3 max-h-72 overflow-y-auto">
+          <div className="space-y-1 max-h-72 overflow-y-auto">
             {searchError ? <p className="text-sm text-destructive">{searchError}</p> : null}
-            {!searchError &&
-            !searchLoading &&
-            searchQuery.trim() &&
-            (searchResults.leagues || []).length === 0 &&
-            (searchResults.teams || []).length === 0 ? (
+            {searchLoading ? <p className="text-sm text-text-secondary">Søker…</p> : null}
+            {!searchError && !searchLoading && searchQuery.trim() && searchResults.length === 0 ? (
               <p className="text-sm text-text-secondary">Ingen treff</p>
             ) : null}
-            {(searchResults.leagues || []).map((league) => (
+            {searchResults.map((team) => (
               <button
-                key={league.key}
-                type="button"
-                onClick={() => toggleLeague(league)}
-                className="w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-white/5"
-              >
-                {league.title}
-                <span className="block text-[11px] text-text-muted">{league.group}</span>
-              </button>
-            ))}
-            {(searchResults.teams || []).map((team) => (
-              <button
-                key={`${team.sport_key}-${team.name}`}
+                key={`${team.kind}-${team.sofascore_id}`}
                 type="button"
                 onClick={() => addTeam(team)}
                 className="w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-white/5"
               >
                 {team.name}
-                <span className="block text-[11px] text-text-muted">{team.sport_key}</span>
+                <span className="block text-[11px] text-text-muted">{sportLabel(team.sport)}</span>
               </button>
             ))}
           </div>
