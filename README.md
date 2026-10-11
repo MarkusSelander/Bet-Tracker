@@ -36,8 +36,9 @@ Professional betting analytics platform with real-time statistics and performanc
 ```bash
 cd backend
 
-# Install Python dependencies
+# Install Python dependencies (includes the SofaScore scraper submodule)
 pip install -r requirements.txt
+python -m patchright install chromium
 
 # Configure environment
 cp .env.example .env
@@ -46,6 +47,8 @@ cp .env.example .env
 # Run server
 uvicorn server:app --reload --port 8000
 ```
+
+Favoritter bruker SofaScore-scraperen i `backend/vendor/sofascore_scraper` inne i denne prosessen. Nettleserprofil og cache ligger i `backend/sofascore-data` og skal ikke committes.
 
 ### Frontend
 
@@ -83,7 +86,6 @@ DB_NAME=bet_tracker
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
 API_SPORTS_KEY=your_api_sports_key_here
 TENNIS_API_KEY=your_rapidapi_key_here
-ODDS_API_KEY=your_odds_api_key_here
 # Chrome-utvidelsen bruker Bearer-token (ikke cookies). Backend tillater også
 # chrome-extension://<32 tegn> via allow_origin_regex — du trenger ikke liste ID-en.
 ```

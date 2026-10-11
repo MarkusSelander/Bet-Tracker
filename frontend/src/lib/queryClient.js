@@ -25,8 +25,8 @@ export const queryKeys = {
   recentBets: (limit) => ['bets', 'recent', limit],
   pendingBets: (limit) => ['bets', 'pending', limit],
   calendarBets: (from, to) => ['bets', 'calendar', from, to],
-  favoritePins: ['favorites', 'pins'],
-  favoriteMatches: (date, tab, filter) => ['favorites', 'matches', date, tab, filter],
+  favoriteTeams: ['favorites', 'teams'],
+  favoriteToday: ['favorites', 'today'],
   bankroll: ['bankroll'],
   usdRate: ['fx', 'usd'],
 };
