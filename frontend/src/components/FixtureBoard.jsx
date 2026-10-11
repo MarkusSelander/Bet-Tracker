@@ -58,18 +58,18 @@ export default function FixtureBoard() {
   const groups = useMemo(() => groupByMonth(visible.filter((match) => match.id !== next?.id)), [visible, next]);
   const counts = useMemo(() => sideCounts(visible, focus), [visible, focus]);
   const nextWhen = next ? formatWhen(next.start) : null;
-  const span = formatWhen(fixtures[0]?.start);
-  const spanEnd = formatWhen(fixtures[fixtures.length - 1]?.start);
+  const period = useMemo(() => {
+    if (visible.length === 0) return '';
+    const first = formatWhen(visible[0].start);
+    const last = formatWhen(visible[visible.length - 1].start);
+    if (!first || !last || first.long === last.long) return first?.long || '';
+    return `${first.long} – ${last.long}`;
+  }, [visible]);
 
   return (
     <div className="space-y-4" data-testid="fixture-board">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat
-          label="Kamper"
-          value={visible.length}
-          hint={span && spanEnd ? `${span.long} – ${spanEnd.long}` : ''}
-          testId="fixture-count"
-        />
+        <Stat label="Kamper" value={visible.length} hint={period} testId="fixture-count" />
         <Stat label="Hjemme" value={counts.home} hint={focus} />
         <Stat label="Borte" value={counts.away} hint={focus} />
         <Stat
