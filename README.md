@@ -95,6 +95,21 @@ TENNIS_API_KEY=your_rapidapi_key_here
 REACT_APP_BACKEND_URL=http://localhost:8000
 ```
 
+## Deploy (Vercel + Render)
+
+Vercel er bare nettstedet. Favoritter kaller API-et på Render, så `REACT_APP_BACKEND_URL` skal fortsatt peke dit. Etter at denne branchen er den Vercel bygger, redeployer frontend av seg selv.
+
+Render-tjenesten kan ikke bli stående som vanlig Python. SofaScore krever Chromium, og det image-et finnes ikke der. Bytt backend til Docker med `backend/Dockerfile`:
+
+1. Opprett en ny Web Service fra samme repo. Et Python-service lar seg ikke bygge om til Docker.
+2. Language: **Docker**. Root Directory: `backend`.
+3. Instance med minst **2 GB RAM**. 512 MB blir drept når nettleseren starter.
+4. Kopier miljøvariablene fra den gamle tjenesten: `MONGO_URL`, `DB_NAME` og `CORS_ORIGINS` (Vercel-adressen må ligge i `CORS_ORIGINS`).
+5. Valgfritt: en disk montert på `/app/sofascore-data`, så første søk etter en omstart ikke må løse SofaScore-utfordringen på nytt.
+6. Hvis adressen til API-et endres, oppdater `REACT_APP_BACKEND_URL` på Vercel og redeploy.
+
+Health check: `/api/health`.
+
 ## Development
 
 - Frontend runs on http://localhost:3000
