@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchWithTimeout, setSessionToken } from '../lib/fetch';
+import { fetchAuth, fetchWithTimeout, setSessionToken } from '../lib/fetch';
 import { queryClient } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -18,9 +18,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const authCheckId = useRef(0);
+  const authCheckAbort = useRef(null);
 
   useEffect(() => {
     const checkId = ++authCheckId.current;
+    const controller = new AbortController();
+    authCheckAbort.current = controller;
 
     const checkAuth = async () => {
       try {
@@ -28,8 +31,9 @@ export const AuthProvider = ({ children }) => {
           throw new Error('REACT_APP_BACKEND_URL is not defined');
         }
 
-        const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/me`, {
+        const response = await fetchAuth(`${BACKEND_URL}/api/auth/me`, {
           credentials: 'include',
+          signal: controller.signal,
         });
 
         if (authCheckId.current !== checkId) return;
@@ -48,7 +52,7 @@ export const AuthProvider = ({ children }) => {
         const userData = await response.json();
         setUser(userData);
       } catch (error) {
-        if (authCheckId.current !== checkId) return;
+        if (authCheckId.current !== checkId || controller.signal.aborted) return;
         console.error('Auth check failed:', error);
         setUser(null);
       } finally {
@@ -59,6 +63,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     checkAuth();
+    return () => controller.abort();
   }, []);
 
   const login = useCallback(async (email, password) => {
@@ -67,9 +72,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     authCheckId.current += 1;
+    authCheckAbort.current?.abort();
     setLoading(false);
 
-    const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
+    const response = await fetchAuth(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -98,6 +104,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(async () => {
     authCheckId.current += 1;
+    authCheckAbort.current?.abort();
     try {
       if (BACKEND_URL) {
         await fetchWithTimeout(`${BACKEND_URL}/api/auth/logout`, {

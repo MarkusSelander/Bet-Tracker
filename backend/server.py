@@ -18,7 +18,7 @@ from starlette.middleware.cors import CORSMiddleware
 from auth_cookies import use_cross_site_cookies
 from fx import nok_per_usd, nok_per_usd_from_norges_bank
 from coolbet import map_coolbet_ticket
-from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
+from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
 from mongo import mongo_client_kwargs
 from sofascore_favorites import (
     SofaScoreError,
@@ -646,27 +646,11 @@ async def filtered_user_bets(user_id: str, include_legs: bool = False, **filters
     return filter_bets(bets, **filters)
 
 
-async def attach_last_coolbet_sync(user_doc: Optional[dict]) -> Optional[dict]:
-    if not user_doc:
-        return user_doc
-    if user_doc.get("last_coolbet_sync_at"):
-        return user_doc
-    latest = await db.bets.find_one(
-        {"user_id": user_doc["user_id"], "bookie": "Coolbet"},
-        {"_id": 0, "created_at": 1},
-        sort=[("created_at", -1)],
-    )
-    last_sync = resolve_last_coolbet_sync_at(user_doc, (latest or {}).get("created_at"))
-    if last_sync:
-        user_doc["last_coolbet_sync_at"] = last_sync
-        await db.users.update_one(
-            {"user_id": user_doc["user_id"]},
-            {"$set": {"last_coolbet_sync_at": last_sync}},
-        )
-    return user_doc
-
-
 # Auth Routes
+# Innlogging og /auth/me leser bare bruker og sesjon. En sortert lesing av
+# bets uten last_coolbet_sync_at rakk ikke å bli ferdig før klienten avbrøt
+# etter 10 sekunder, og feltet ble da aldri lagret — så neste forsøk scannet
+# på nytt. Tidsstempelet skrives når Coolbet-importen faktisk kjører.
 
 
 @api_router.get("/health")
@@ -709,7 +693,6 @@ async def login(request: Request, response: Response):
             "expires_at": expires_at,
             "created_at": datetime.now(timezone.utc)
         })
-        user_doc = await attach_last_coolbet_sync(user_doc)
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
 
@@ -731,9 +714,7 @@ async def login(request: Request, response: Response):
 async def get_me(request: Request):
     try:
         user_id = await get_current_user(request)
-        user_doc = await attach_last_coolbet_sync(
-            await db.users.find_one({"user_id": user_id}, {"_id": 0})
-        )
+        user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
     if not user_doc:
@@ -1552,6 +1533,7 @@ async def ensure_indexes():
         )
         await db.user_sessions.create_index("session_token", unique=True, name="sessions_token")
         await db.users.create_index("user_id", name="users_user_id")
+        await db.users.create_index("email", name="users_email")
         await db.favorite_teams.create_index(
             [("user_id", 1), ("sofascore_id", 1), ("kind", 1)],
             name="favorites_user_team",
