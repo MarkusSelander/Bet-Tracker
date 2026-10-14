@@ -138,8 +138,10 @@ test('fetchAuth does not retry after a fast response', async () => {
   }
 });
 
-test('login password field asks the browser for the current password', () => {
+test('auth page asks the browser for current and new passwords', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../pages/Login.jsx'), 'utf8');
-  assert.match(source, /type="password"/);
+  assert.match(source, /type=\{visible \? 'text' : 'password'\}/);
   assert.match(source, /autoComplete="current-password"/);
+  assert.equal(source.match(/autoComplete="new-password"/g).length, 2);
+  assert.match(source, /autoComplete="email"/);
 });

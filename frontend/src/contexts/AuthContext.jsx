@@ -1,8 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { authErrorMessage, networkErrorMessage } from '../lib/authForm';
 import { fetchAuth, fetchWithTimeout, setSessionToken } from '../lib/fetch';
 import { queryClient } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Render legger API-et i dvale. En ping mens brukeren fyller ut skjemaet
+// gjør at innloggingen ikke selv må vente på at prosessen starter.
+export function warmUpBackend() {
+  if (!BACKEND_URL) return;
+  fetch(`${BACKEND_URL}/api/health`, { credentials: 'omit', cache: 'no-store' }).catch(() => {});
+}
 
 const AuthContext = createContext(null);
 
@@ -66,41 +74,56 @@ export const AuthProvider = ({ children }) => {
     return () => controller.abort();
   }, []);
 
-  const login = useCallback(async (email, password) => {
+  const authenticate = useCallback(async (path, payload) => {
     if (!BACKEND_URL) {
-      throw new Error('REACT_APP_BACKEND_URL is not defined');
+      throw new Error('REACT_APP_BACKEND_URL mangler i bygget');
     }
 
+    let response;
+    try {
+      response = await fetchAuth(`${BACKEND_URL}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      throw new Error(networkErrorMessage(error));
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+
+    if (!response.ok) {
+      throw new Error(authErrorMessage(response.status, data?.detail));
+    }
+    if (!data) {
+      throw new Error(authErrorMessage(response.status));
+    }
+
+    // /auth/me avbrytes først når innloggingen lyktes, så et feilet forsøk ikke
+    // stopper sjekken av en gyldig cookie-sesjon.
     authCheckId.current += 1;
     authCheckAbort.current?.abort();
     setLoading(false);
 
-    const response = await fetchAuth(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 503) {
-        throw new Error('Databasen er utilgjengelig. Prøv igjen om et øyeblikk.');
-      }
-      throw new Error('Login failed');
-    }
-
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Invalid login response');
-    }
-
-    const userData = await response.json();
-    if (userData.session_token) setSessionToken(userData.session_token);
-    delete userData.session_token;
+    const { session_token: sessionToken, ...userData } = data;
+    if (sessionToken) setSessionToken(sessionToken);
     queryClient.clear();
     setUser(userData);
     return userData;
   }, []);
+
+  const login = useCallback(
+    (email, password) => authenticate('/api/auth/login', { email: email.trim(), password }),
+    [authenticate]
+  );
+
+  const register = useCallback(
+    ({ name, email, password }) =>
+      authenticate('/api/auth/register', { name: name.trim(), email: email.trim(), password }),
+    [authenticate]
+  );
 
   const logout = useCallback(async () => {
     authCheckId.current += 1;
@@ -127,8 +150,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, updateUser }),
-    [user, loading, login, logout, updateUser]
+    () => ({ user, loading, login, register, logout, updateUser }),
+    [user, loading, login, register, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
