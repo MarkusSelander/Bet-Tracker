@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import logging
@@ -18,8 +19,16 @@ from starlette.middleware.cors import CORSMiddleware
 from auth_cookies import use_cross_site_cookies
 from fx import nok_per_usd, nok_per_usd_from_norges_bank
 from coolbet import map_coolbet_ticket
-from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload, resolve_last_coolbet_sync_at
+from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
 from mongo import mongo_client_kwargs
+from passwords import (
+    email_error,
+    hash_password,
+    normalize_email,
+    password_error,
+    public_user,
+    verify_password,
+)
 from sofascore_favorites import (
     SofaScoreError,
     SofaScoreGateway,
@@ -646,27 +655,11 @@ async def filtered_user_bets(user_id: str, include_legs: bool = False, **filters
     return filter_bets(bets, **filters)
 
 
-async def attach_last_coolbet_sync(user_doc: Optional[dict]) -> Optional[dict]:
-    if not user_doc:
-        return user_doc
-    if user_doc.get("last_coolbet_sync_at"):
-        return user_doc
-    latest = await db.bets.find_one(
-        {"user_id": user_doc["user_id"], "bookie": "Coolbet"},
-        {"_id": 0, "created_at": 1},
-        sort=[("created_at", -1)],
-    )
-    last_sync = resolve_last_coolbet_sync_at(user_doc, (latest or {}).get("created_at"))
-    if last_sync:
-        user_doc["last_coolbet_sync_at"] = last_sync
-        await db.users.update_one(
-            {"user_id": user_doc["user_id"]},
-            {"$set": {"last_coolbet_sync_at": last_sync}},
-        )
-    return user_doc
-
-
 # Auth Routes
+# Innlogging og /auth/me leser bare bruker og sesjon. En sortert lesing av
+# bets uten last_coolbet_sync_at rakk ikke å bli ferdig før klienten avbrøt
+# etter 10 sekunder, og feltet ble da aldri lagret — så neste forsøk scannet
+# på nytt. Tidsstempelet skrives når Coolbet-importen faktisk kjører.
 
 
 @api_router.get("/health")
@@ -674,45 +667,43 @@ async def health():
     return {"ok": True}
 
 
-@api_router.post("/auth/login")
-async def login(request: Request, response: Response):
-    body = await request.json()
-    email = body.get("email")
-    password = body.get("password")
+INVALID_CREDENTIALS = "Feil e-post eller passord"
+MAX_NAME_LENGTH = 80
 
-    if not email or not password:
-        raise HTTPException(
-            status_code=400, detail="Email and password required")
 
+async def _json_body(request: Request) -> dict:
     try:
-        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+        body = await request.json()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ugyldig forespørsel") from None
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Ugyldig forespørsel")
+    return body
 
-        if existing_user:
-            user_doc = existing_user
-        else:
-            user_doc = {
-                "user_id": f"user_{uuid.uuid4().hex[:12]}",
-                "email": email,
-                "name": email.split("@")[0].title(),
-                "picture": None,
-                "currency": "NOK",
-                "created_at": datetime.now(timezone.utc),
-            }
-            await db.users.insert_one({**user_doc})
 
-        session_token = f"session_{uuid.uuid4().hex}"
-        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+def _email_candidates(raw_email) -> list:
+    # Eldre kontoer kan være lagret med store bokstaver; nye lagres alltid i små.
+    normalized = normalize_email(raw_email)
+    raw = raw_email.strip() if isinstance(raw_email, str) else ""
+    return list(dict.fromkeys(value for value in (normalized, raw) if value))
 
-        await db.user_sessions.insert_one({
-            "user_id": user_doc["user_id"],
-            "session_token": session_token,
-            "expires_at": expires_at,
-            "created_at": datetime.now(timezone.utc)
-        })
-        user_doc = await attach_last_coolbet_sync(user_doc)
-    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
-        raise _unavailable_db() from None
 
+async def _find_user_by_email(raw_email) -> Optional[dict]:
+    candidates = _email_candidates(raw_email)
+    if not candidates:
+        return None
+    return await db.users.find_one({"email": {"$in": candidates}}, {"_id": 0})
+
+
+async def _start_session(response: Response, user_doc: dict) -> dict:
+    session_token = f"session_{uuid.uuid4().hex}"
+    now = datetime.now(timezone.utc)
+    await db.user_sessions.insert_one({
+        "user_id": user_doc["user_id"],
+        "session_token": session_token,
+        "expires_at": now + timedelta(days=7),
+        "created_at": now,
+    })
     response.set_cookie(
         key="session_token",
         value=session_token,
@@ -722,18 +713,96 @@ async def login(request: Request, response: Response):
         max_age=7 * 24 * 60 * 60,
         path="/"
     )
-
     # session_token is for Bearer clients (Chrome extension). Cookie auth is unchanged.
-    return login_payload(user_doc, session_token)
+    return login_payload(public_user(user_doc), session_token)
+
+
+async def _claim_legacy_account(user_doc: dict, password: str) -> bool:
+    """Kontoer fra demo-innloggingen har ikke passord. Første innlogging setter det.
+
+    Filteret på manglende hash gjør at bare ett samtidig forsøk vinner; taperen
+    må matche passordet vinneren satte.
+    """
+    error = password_error(password)
+    if error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Kontoen har ikke passord ennå. Velg et nytt: {error[0].lower()}{error[1:]}",
+        )
+    password_hash = await asyncio.to_thread(hash_password, password)
+    result = await db.users.update_one(
+        {"user_id": user_doc["user_id"], "password_hash": {"$exists": False}},
+        {"$set": {"password_hash": password_hash, "password_set_at": datetime.now(timezone.utc)}},
+    )
+    if result.modified_count:
+        return True
+    fresh = await db.users.find_one({"user_id": user_doc["user_id"]}, {"_id": 0, "password_hash": 1})
+    return await asyncio.to_thread(verify_password, password, (fresh or {}).get("password_hash"))
+
+
+@api_router.post("/auth/register", status_code=201)
+async def register(request: Request, response: Response):
+    body = await _json_body(request)
+    email = normalize_email(body.get("email"))
+    password = body.get("password")
+    name = body.get("name").strip() if isinstance(body.get("name"), str) else ""
+
+    error = email_error(email) or password_error(password)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    if len(name) > MAX_NAME_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Navnet kan være maks {MAX_NAME_LENGTH} tegn")
+
+    try:
+        if await _find_user_by_email(body.get("email")):
+            raise HTTPException(status_code=409, detail="E-postadressen er allerede registrert. Logg inn i stedet.")
+        user_doc = {
+            "user_id": f"user_{uuid.uuid4().hex[:12]}",
+            "email": email,
+            "name": name or email.split("@")[0].title(),
+            "picture": None,
+            "currency": "NOK",
+            "created_at": datetime.now(timezone.utc),
+            "password_hash": await asyncio.to_thread(hash_password, password),
+        }
+        await db.users.insert_one({**user_doc})
+        return await _start_session(response, user_doc)
+    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
+        raise _unavailable_db() from None
+
+
+@api_router.post("/auth/login")
+async def login(request: Request, response: Response):
+    body = await _json_body(request)
+    email = body.get("email")
+    password = body.get("password")
+
+    if not normalize_email(email) or not isinstance(password, str) or not password:
+        raise HTTPException(status_code=400, detail="Skriv inn e-post og passord")
+
+    try:
+        user_doc = await _find_user_by_email(email)
+        if not user_doc:
+            raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
+
+        stored_hash = user_doc.get("password_hash")
+        if stored_hash:
+            valid = await asyncio.to_thread(verify_password, password, stored_hash)
+        else:
+            valid = await _claim_legacy_account(user_doc, password)
+        if not valid:
+            raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
+
+        return await _start_session(response, user_doc)
+    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
+        raise _unavailable_db() from None
 
 
 @api_router.get("/auth/me")
 async def get_me(request: Request):
     try:
         user_id = await get_current_user(request)
-        user_doc = await attach_last_coolbet_sync(
-            await db.users.find_one({"user_id": user_id}, {"_id": 0})
-        )
+        user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
     if not user_doc:
@@ -1534,10 +1603,7 @@ async def get_favorites_today(request: Request):
 app.include_router(api_router)
 
 
-@app.on_event("startup")
 async def ensure_indexes():
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        return
     try:
         await db.bets.create_index([("user_id", 1), ("date", -1)], name="bets_user_date")
         await db.bets.create_index(
@@ -1552,6 +1618,7 @@ async def ensure_indexes():
         )
         await db.user_sessions.create_index("session_token", unique=True, name="sessions_token")
         await db.users.create_index("user_id", name="users_user_id")
+        await db.users.create_index("email", name="users_email")
         await db.favorite_teams.create_index(
             [("user_id", 1), ("sofascore_id", 1), ("kind", 1)],
             name="favorites_user_team",
@@ -1561,8 +1628,21 @@ async def ensure_indexes():
         logging.exception("Could not ensure Mongo indexes")
 
 
+# Uvicorn åpner ikke porten før startup er ferdig. Med en treg eller utilgjengelig
+# Mongo ville hver create_index ventet på serverSelectionTimeout, og Render
+# kan gi opp vekkingen før /api/health rekker å svare.
+@app.on_event("startup")
+async def start_index_build():
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    app.state.index_task = asyncio.create_task(ensure_indexes())
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    index_task = getattr(app.state, "index_task", None)
+    if index_task and not index_task.done():
+        index_task.cancel()
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         await sportsdb_http.aclose()
     client.close()
