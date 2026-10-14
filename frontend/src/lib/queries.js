@@ -70,14 +70,15 @@ export function usePendingBets(limit) {
   });
 }
 
-export function useCalendarBets(dateFrom, dateTo) {
+export function useCalendarBets(dateFrom, dateTo, { includeLegs = true, enabled = true } = {}) {
   const search = `date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
   return useQuery({
-    queryKey: queryKeys.calendarBets(dateFrom, dateTo),
-    queryFn: async () => asArray(await fetchJson(`/api/bets?${search}&include_legs=true`, {}, 15000)),
+    queryKey: [...queryKeys.calendarBets(dateFrom, dateTo), includeLegs ? 'legs' : 'flat'],
+    queryFn: async () =>
+      asArray(await fetchJson(`/api/bets?${search}${includeLegs ? '&include_legs=true' : ''}`, {}, 15000)),
     staleTime: STALE_LIST_MS,
     placeholderData: keepPreviousData,
-    enabled: Boolean(dateFrom && dateTo),
+    enabled: enabled && Boolean(dateFrom && dateTo),
   });
 }
 

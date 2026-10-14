@@ -3,9 +3,18 @@ import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BetTicketDialog from '../components/BetTicketDialog';
+import CalendarYearView from '../components/CalendarYearView';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
-import { buildCalendarModel, localDateKey, monthRange } from '../lib/calendar';
+import {
+  buildCalendarModel,
+  buildYearModel,
+  localDateKey,
+  monthRange,
+  readCalendarView,
+  saveCalendarView,
+  yearRange,
+} from '../lib/calendar';
 import { needsFullTicketBet } from '../lib/betTicket';
 import { betsPath, parseFilters, toSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
@@ -52,6 +61,40 @@ function monthKeyFromParts(year, monthIndex) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
 }
 
+const VIEW_OPTIONS = [
+  { value: 'day', label: 'Dag' },
+  { value: 'month', label: 'Måned' },
+];
+
+function ViewToggle({ view, onChange }) {
+  return (
+    <div
+      role="group"
+      aria-label="Kalendervisning"
+      className="inline-flex rounded-md border border-white/10 bg-white/5 p-0.5"
+      data-testid="calendar-view-toggle"
+    >
+      {VIEW_OPTIONS.map((option) => {
+        const active = view === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            data-testid={`calendar-view-${option.value}`}
+            onClick={() => onChange(option.value)}
+            className={`px-3 py-1.5 text-sm rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              active ? 'bg-primary/15 text-primary font-medium' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const { user } = useOutletContext();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -66,8 +109,16 @@ export default function CalendarPage() {
   const [year, monthPart] = month.split('-').map(Number);
   const monthIndex = Number.isFinite(monthPart) ? monthPart - 1 : new Date().getMonth();
   const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+  const [view, setView] = useState(readCalendarView);
+  const isMonthView = view === 'month';
   const { dateFrom, dateTo } = monthRange(safeYear, monthIndex);
-  const { data, isPending, isError } = useCalendarBets(dateFrom, dateTo);
+  const dayQuery = useCalendarBets(dateFrom, dateTo, { enabled: !isMonthView });
+  const yearBounds = yearRange(safeYear);
+  const yearQuery = useCalendarBets(yearBounds.dateFrom, yearBounds.dateTo, {
+    includeLegs: false,
+    enabled: isMonthView,
+  });
+  const { data, isPending, isError } = isMonthView ? yearQuery : dayQuery;
   const bets = data ?? EMPTY_BETS;
   const selectedDate =
     filters.date && filters.date >= dateFrom && filters.date <= dateTo
@@ -76,7 +127,8 @@ export default function CalendarPage() {
         ? todayKey
         : dateFrom;
 
-  const model = buildCalendarModel(safeYear, monthIndex, bets);
+  const model = buildCalendarModel(safeYear, monthIndex, isMonthView ? EMPTY_BETS : bets);
+  const yearModel = isMonthView ? buildYearModel(safeYear, bets) : null;
   const selectedDay = model.byDate[selectedDate] || { bets: [], profit: 0, won: 0, lost: 0, pending: 0, count: 0 };
 
   const writeCalendar = (next) => {
@@ -89,6 +141,24 @@ export default function CalendarPage() {
 
   const goToToday = () => {
     writeCalendar({ date: todayKey, month: todayKey.slice(0, 7) });
+  };
+
+  const changeView = (nextView) => {
+    setView(nextView);
+    saveCalendarView(nextView);
+  };
+
+  const goYear = (delta) => {
+    const nextYear = safeYear + delta;
+    const range = yearRange(nextYear);
+    const inYear = todayKey >= range.dateFrom && todayKey <= range.dateTo;
+    writeCalendar({ month: inYear ? todayKey.slice(0, 7) : monthKeyFromParts(nextYear, 0) });
+  };
+
+  const openMonth = (cell) => {
+    const nextDate = todayKey >= cell.dateFrom && todayKey <= cell.dateTo ? todayKey : cell.dateFrom;
+    writeCalendar({ month: cell.month, date: nextDate });
+    changeView('day');
   };
 
   const goMonth = (delta) => {
@@ -116,10 +186,32 @@ export default function CalendarPage() {
     }
   };
 
+  const subtitle = isMonthView ? 'Resultat per måned' : 'Resultat per dag';
+  const header = (
+    <PageHeader
+      title="Kalender"
+      subtitle={subtitle}
+      testId="calendar-title"
+      action={
+        <div className="flex items-center gap-2">
+          <ViewToggle view={view} onChange={changeView} />
+          <Button
+            variant="secondary"
+            onClick={goToToday}
+            className="bg-white/5 hover:bg-white/10 border border-white/10"
+            data-testid="calendar-today-btn"
+          >
+            I dag
+          </Button>
+        </div>
+      }
+    />
+  );
+
   if (isPending && bets.length === 0) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Kalender" subtitle="Resultat per dag" testId="calendar-title" />
+        {header}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 h-24 shimmer" />
@@ -129,25 +221,28 @@ export default function CalendarPage() {
     );
   }
 
+  if (isMonthView) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <CalendarYearView
+          year={safeYear}
+          model={yearModel}
+          months={MONTHS}
+          currentMonth={todayKey.slice(0, 7)}
+          currency={currency}
+          onYearChange={goYear}
+          onSelectMonth={openMonth}
+        />
+      </div>
+    );
+  }
+
   const { kpis } = model;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Kalender"
-        subtitle="Resultat per dag"
-        testId="calendar-title"
-        action={
-          <Button
-            variant="secondary"
-            onClick={goToToday}
-            className="bg-white/5 hover:bg-white/10 border border-white/10"
-            data-testid="calendar-today-btn"
-          >
-            I dag
-          </Button>
-        }
-      />
+      {header}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-profit-card">
