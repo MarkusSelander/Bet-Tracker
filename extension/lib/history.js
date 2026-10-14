@@ -58,6 +58,32 @@
     return { ...userDoc, session_token: sessionToken };
   }
 
+  function coolbetSessionKey(headers) {
+    if (!headers || typeof headers !== "object") return "";
+    const sessionId = String(headers.login_session_id || "").trim();
+    if (sessionId) return `session:${sessionId}`;
+    const userId = String(headers.user_id || "").trim();
+    const token = String(headers.cbauth || "").trim();
+    if (userId && token) return `user:${userId}`;
+    return "";
+  }
+
+  function isCoolbetLoginRequest(url, method) {
+    if (String(method || "GET").toUpperCase() !== "POST") return false;
+    let parsed;
+    try {
+      parsed = new URL(String(url), "https://www.coolbet.com");
+    } catch (_err) {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "www.coolbet.com" && host !== "coolbet.com") return false;
+    const path = parsed.pathname.toLowerCase();
+    if (/(^|\/)(logout|sign-?out)(\/|$)/.test(path)) return false;
+    if (/(^|\/)(login|sign-?in|authenticate)(\/|$)/.test(path)) return true;
+    return /\/auth\/sessions?(\/|$)/.test(path);
+  }
+
   function collectTicketIds(tickets) {
     return (tickets || []).map((ticket) => ticket.id).filter(Boolean);
   }
@@ -334,6 +360,8 @@
     historyUrl,
     importUrl,
     latestBetCreatedAt,
+    coolbetSessionKey,
+    isCoolbetLoginRequest,
     loginPayload,
     loginUrl,
     meUrl,

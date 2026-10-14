@@ -13,8 +13,8 @@ Utvidelsen kjører i **din** Chrome-økt. Den kan ikke kjøre på Vercel.
 5. Klikk utvidelsesikonet → **Innstillinger**
 6. Lim inn Bet Tracker **backend-URL** (ikke Vercel-frontenden), f.eks. `https://api.ditt-domene.com` eller `http://localhost:8000`
 7. Logg inn med samme e-post/passord som i appen, eller lim inn et `session_`-token
-8. Vær innlogget på [coolbet.com](https://www.coolbet.com) i Chrome
-9. Trykk **Synk nå**, eller åpne Coolbet bet-history for auto-synk
+8. Vær innlogget på [coolbet.com](https://www.coolbet.com) i Chrome. En ny innlogging starter synk av seg selv
+9. Trykk **Synk nå**, eller åpne Coolbet bet-history, hvis du vil synke uten å logge inn på nytt
 
 ## Hvordan det virker
 
@@ -32,5 +32,6 @@ Lagre aldri Coolbet-passord i utvidelsen. Token er gyldig i 7 dager (samme som w
 
 ## Auto-synk
 
+- Når du logger inn på Coolbet (ny `login_session_id`, eller et vellykket innloggingskall). Standard på. Fanen du står i blir stående. Trenger fortsatt gyldig Bet Tracker-token i utvidelsen.
 - På når du besøker Coolbet bet-history (standard). Maks én gang per 10 minutter.
 - Valgfritt: alarm hver 6. time. Krever gyldig Coolbet-økt i Chrome.

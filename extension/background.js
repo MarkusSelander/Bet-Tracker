@@ -5,28 +5,49 @@ const CoolbetHistory = globalThis.CoolbetHistory;
 const BET_HISTORY_URL = "https://www.coolbet.com/eu/bet-history/sports";
 const ALARM_NAME = "coolbet-auto-sync";
 const AUTO_COOLDOWN_MS = 10 * 60 * 1000;
+const LOGIN_DEBOUNCE_MS = 30 * 1000;
 
 let capturedAuth = null;
 let syncInFlight = null;
 let lastAutoAt = 0;
+let lastLoginSyncAt = 0;
+let lastSeenSessionKey = null;
+let sessionKeyLoad = null;
+
+function headerMap(requestHeaders) {
+  const headers = {};
+  for (const header of requestHeaders || []) {
+    headers[String(header.name).toLowerCase()] = header.value;
+  }
+  return headers;
+}
+
+function rememberCapturedAuth(headers) {
+  if (!headers || !headers.cbauth) return;
+  capturedAuth = {
+    cbauth: headers.cbauth,
+    login_session_id: headers.login_session_id || "",
+    user_id: headers.user_id || "",
+  };
+  noteCoolbetSession(capturedAuth);
+}
 
 chrome.webRequest.onSendHeaders.addListener(
   (details) => {
-    if (!details.url || !details.url.includes("/s/sbgate/bets/history")) return;
-    const headers = {};
-    for (const header of details.requestHeaders || []) {
-      headers[String(header.name).toLowerCase()] = header.value;
-    }
-    if (headers.cbauth) {
-      capturedAuth = {
-        cbauth: headers.cbauth,
-        login_session_id: headers.login_session_id || "",
-        user_id: headers.user_id || "",
-      };
-    }
+    if (!details.url) return;
+    rememberCapturedAuth(headerMap(details.requestHeaders));
   },
-  { urls: ["https://www.coolbet.com/s/sbgate/bets/history*"] },
+  { urls: ["https://www.coolbet.com/*"] },
   ["requestHeaders", "extraHeaders"]
+);
+
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    if (!details.url || details.statusCode < 200 || details.statusCode >= 300) return;
+    if (!CoolbetHistory.isCoolbetLoginRequest(details.url, details.method)) return;
+    maybeAutoSync("coolbet-login");
+  },
+  { urls: ["https://www.coolbet.com/*"] }
 );
 
 function sleep(ms) {
@@ -83,6 +104,21 @@ async function ensureCoolbetTab() {
   return tab.id;
 }
 
+async function openHistoryTabForLogin() {
+  const tabs = await chrome.tabs.query({ url: "https://www.coolbet.com/*" });
+  const historyTab = tabs.find((item) => item.url && item.url.includes("bet-history"));
+  if (historyTab) return { tabId: historyTab.id, created: false };
+
+  if (capturedAuth && capturedAuth.cbauth) {
+    const current = tabs.find((item) => item.active) || tabs[0];
+    if (current) return { tabId: current.id, created: false };
+  }
+
+  const created = await chrome.tabs.create({ url: BET_HISTORY_URL, active: false });
+  await waitForTabComplete(created.id);
+  return { tabId: created.id, created: true };
+}
+
 async function waitForAuth(timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -109,6 +145,7 @@ async function runSync(reason) {
   if (syncInFlight) return syncInFlight;
 
   syncInFlight = (async () => {
+    let closeTabId = null;
     await setState({ lastStatus: "syncing", lastError: "", syncProgress: CoolbetHistory.computeSyncProgress({ phase: "auth" }) });
 
     try {
@@ -158,7 +195,14 @@ async function runSync(reason) {
       }
 
       await setProgress({ phase: "coolbet" });
-      const tabId = await ensureCoolbetTab();
+      let tabId;
+      if (reason === "coolbet-login") {
+        const opened = await openHistoryTabForLogin();
+        tabId = opened.tabId;
+        if (opened.created) closeTabId = opened.tabId;
+      } else {
+        tabId = await ensureCoolbetTab();
+      }
       const auth = await waitForAuth(10000);
       const result = await sendToTab(tabId, {
         type: "FETCH_TICKETS",
@@ -243,6 +287,13 @@ async function runSync(reason) {
       });
       return { ok: false, status: "error", error: String(err.message || err) };
     } finally {
+      if (closeTabId != null) {
+        try {
+          await chrome.tabs.remove(closeTabId);
+        } catch (_err) {
+          /* fanen kan allerede være lukket */
+        }
+      }
       syncInFlight = null;
     }
   })();
@@ -250,12 +301,46 @@ async function runSync(reason) {
   return syncInFlight;
 }
 
-async function maybeAutoSync(reason) {
-  const config = await chrome.storage.local.get(["autoOnHistory", "autoAlarm"]);
+function noteCoolbetSession(auth) {
+  const key = CoolbetHistory.coolbetSessionKey(auth);
+  if (!key || key === lastSeenSessionKey || sessionKeyLoad) return;
+  sessionKeyLoad = (async () => {
+    try {
+      const stored = await chrome.storage.local.get(["lastCoolbetSessionKey", "autoOnLogin"]);
+      if (stored.lastCoolbetSessionKey === key) {
+        lastSeenSessionKey = key;
+        return;
+      }
+      lastSeenSessionKey = key;
+      await chrome.storage.local.set({ lastCoolbetSessionKey: key });
+      if (stored.autoOnLogin === false) return;
+      if (syncInFlight || Date.now() - lastLoginSyncAt < LOGIN_DEBOUNCE_MS) return;
+      await maybeAutoSync("coolbet-login", { ignoreCooldown: true });
+    } finally {
+      sessionKeyLoad = null;
+    }
+  })();
+}
+
+async function maybeAutoSync(reason, options = {}) {
+  const config = await chrome.storage.local.get(["autoOnHistory", "autoAlarm", "autoOnLogin"]);
   if (reason === "history-page" && config.autoOnHistory === false) return;
   if (reason === "alarm" && !config.autoAlarm) return;
-  if (Date.now() - lastAutoAt < AUTO_COOLDOWN_MS) return;
-  lastAutoAt = Date.now();
+  if (reason === "coolbet-login" && config.autoOnLogin === false) return;
+
+  const now = Date.now();
+  if (reason === "coolbet-login") {
+    if (options.ignoreCooldown) {
+      lastLoginSyncAt = now;
+    } else if (now - lastAutoAt < AUTO_COOLDOWN_MS) {
+      return;
+    } else {
+      lastLoginSyncAt = now;
+    }
+  } else if (now - lastAutoAt < AUTO_COOLDOWN_MS) {
+    return;
+  }
+  lastAutoAt = now;
   return runSync(reason);
 }
 
@@ -263,7 +348,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || !message.type) return undefined;
 
   if (message.type === "AUTH_FROM_PAGE" && message.headers && message.headers.cbauth) {
-    capturedAuth = message.headers;
+    rememberCapturedAuth(message.headers);
     return undefined;
   }
 
@@ -321,10 +406,11 @@ async function recoverInterruptedSync() {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const current = await chrome.storage.local.get(["autoOnHistory", "autoAlarm"]);
-  if (current.autoOnHistory === undefined) {
-    await chrome.storage.local.set({ autoOnHistory: true });
-  }
+  const current = await chrome.storage.local.get(["autoOnHistory", "autoOnLogin", "autoAlarm"]);
+  const defaults = {};
+  if (current.autoOnHistory === undefined) defaults.autoOnHistory = true;
+  if (current.autoOnLogin === undefined) defaults.autoOnLogin = true;
+  if (Object.keys(defaults).length) await chrome.storage.local.set(defaults);
   if (current.autoAlarm) {
     chrome.alarms.create(ALARM_NAME, { periodInMinutes: 360 });
   }
@@ -334,7 +420,17 @@ chrome.runtime.onInstalled.addListener(async () => {
 recoverInterruptedSync();
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes.autoAlarm) return;
+  if (area !== "local") return;
+  if (
+    changes.sessionToken &&
+    changes.sessionToken.newValue &&
+    changes.sessionToken.newValue !== changes.sessionToken.oldValue
+  ) {
+    lastSeenSessionKey = null;
+    lastLoginSyncAt = 0;
+    chrome.storage.local.remove("lastCoolbetSessionKey");
+  }
+  if (!changes.autoAlarm) return;
   if (changes.autoAlarm.newValue) {
     chrome.alarms.create(ALARM_NAME, { periodInMinutes: 360 });
   } else {
