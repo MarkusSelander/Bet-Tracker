@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import logging
@@ -1515,10 +1516,7 @@ async def get_favorites_today(request: Request):
 app.include_router(api_router)
 
 
-@app.on_event("startup")
 async def ensure_indexes():
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        return
     try:
         await db.bets.create_index([("user_id", 1), ("date", -1)], name="bets_user_date")
         await db.bets.create_index(
@@ -1543,8 +1541,21 @@ async def ensure_indexes():
         logging.exception("Could not ensure Mongo indexes")
 
 
+# Uvicorn åpner ikke porten før startup er ferdig. Med en treg eller utilgjengelig
+# Mongo ville hver create_index ventet på serverSelectionTimeout, og Render
+# kan gi opp vekkingen før /api/health rekker å svare.
+@app.on_event("startup")
+async def start_index_build():
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    app.state.index_task = asyncio.create_task(ensure_indexes())
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    index_task = getattr(app.state, "index_task", None)
+    if index_task and not index_task.done():
+        index_task.cancel()
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         await sportsdb_http.aclose()
     client.close()
