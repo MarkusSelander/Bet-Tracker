@@ -114,11 +114,7 @@ export default function SettingsPage() {
     if (exporting) return;
     setExporting(true);
     try {
-      const response = await fetchWithTimeout(
-        `${BACKEND_URL}/api/bets/export`,
-        { credentials: 'include' },
-        60000
-      );
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/export`, { credentials: 'include' }, 60000);
 
       if (!response.ok) throw new Error('Failed to export bets');
 
