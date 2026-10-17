@@ -18,12 +18,14 @@ async function load() {
     "sessionToken",
     "email",
     "autoOnHistory",
+    "autoOnLogin",
     "autoAlarm",
   ]);
   apiUrlEl.value = state.apiUrl || "";
   emailEl.value = state.email || "";
   tokenEl.value = state.sessionToken || "";
   autoHistoryEl.checked = state.autoOnHistory !== false;
+  document.getElementById("auto-login").checked = state.autoOnLogin !== false;
   autoAlarmEl.checked = Boolean(state.autoAlarm);
 }
 
@@ -32,6 +34,7 @@ async function saveExtras() {
     apiUrl: apiUrlEl.value.trim().replace(/\/$/, ""),
     email: emailEl.value.trim(),
     autoOnHistory: autoHistoryEl.checked,
+    autoOnLogin: document.getElementById("auto-login").checked,
     autoAlarm: autoAlarmEl.checked,
   });
 }

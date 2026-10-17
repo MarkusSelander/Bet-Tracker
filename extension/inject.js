@@ -39,18 +39,17 @@
     );
   }
 
-  const origFetch = window.fetch;
-  window.fetch = function (input, init) {
+  function captureAuth(headers) {
     try {
-      const url = typeof input === "string" ? input : input && input.url;
-      if (url && String(url).includes("bets/history")) {
-        const fromInit = init && init.headers;
-        const fromInput = input && input.headers;
-        publish(headersToObject(fromInit || fromInput));
-      }
+      publish(headersToObject(headers));
     } catch (_err) {
       /* ignore */
     }
+  }
+
+  const origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    captureAuth((init && init.headers) || (input && input.headers));
     return origFetch.apply(this, arguments);
   };
 
@@ -70,13 +69,7 @@
   };
 
   XMLHttpRequest.prototype.send = function () {
-    try {
-      if (this.__coolbetUrl && String(this.__coolbetUrl).includes("bets/history")) {
-        publish(this.__coolbetHeaders);
-      }
-    } catch (_err) {
-      /* ignore */
-    }
+    captureAuth(this.__coolbetHeaders);
     return origSend.apply(this, arguments);
   };
 })();

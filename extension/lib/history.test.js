@@ -16,6 +16,8 @@ const {
   historyQuery,
   importUrl,
   latestBetCreatedAt,
+  coolbetSessionKey,
+  isCoolbetLoginRequest,
   loginPayload,
   mergeTicketDetails,
   needsTicketDetails,
@@ -141,6 +143,45 @@ test("login payload keeps user fields and session token", () => {
   const payload = loginPayload({ email: "a@b.c" }, "session_xyz");
   assert.equal(payload.session_token, "session_xyz");
   assert.equal(payload.email, "a@b.c");
+});
+
+test("coolbet session key follows login session, then user id", () => {
+  assert.equal(
+    coolbetSessionKey({ login_session_id: "abc", user_id: "7", cbauth: "token" }),
+    "session:abc"
+  );
+  assert.equal(coolbetSessionKey({ user_id: "7", cbauth: "token" }), "user:7");
+  assert.equal(coolbetSessionKey({ cbauth: "token" }), "");
+  assert.equal(coolbetSessionKey({ user_id: "7" }), "");
+  assert.equal(coolbetSessionKey(null), "");
+});
+
+test("coolbet login request matches password login, not history or logout", () => {
+  assert.equal(
+    isCoolbetLoginRequest("https://www.coolbet.com/s/sbgate/user/login", "POST"),
+    true
+  );
+  assert.equal(
+    isCoolbetLoginRequest("https://www.coolbet.com/s/auth/sessions", "post"),
+    true
+  );
+  assert.equal(
+    isCoolbetLoginRequest("/eu/sign-in", "POST"),
+    true
+  );
+  assert.equal(
+    isCoolbetLoginRequest("https://www.coolbet.com/s/sbgate/user/login", "GET"),
+    false
+  );
+  assert.equal(
+    isCoolbetLoginRequest("https://www.coolbet.com/s/sbgate/bets/history", "POST"),
+    false
+  );
+  assert.equal(
+    isCoolbetLoginRequest("https://www.coolbet.com/s/auth/logout", "POST"),
+    false
+  );
+  assert.equal(isCoolbetLoginRequest("https://evil.example/login", "POST"), false);
 });
 
 test("stops when page is all known settled tickets", () => {
