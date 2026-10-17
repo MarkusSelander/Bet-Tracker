@@ -1478,35 +1478,49 @@ async def import_coolbet_bets(request: Request):
     return {"imported": imported, "updated": updated, "skipped": skipped}
 
 
+EXPORT_PAGE_SIZE = 2000
+EXPORT_FIELDS = ["DATE", "TIME", "GAME", "BET", "ODDS", "STAKE", "STATUS", "RESULT", "TIPSTER", "SPORT", "BOOKIE"]
+
+
+def csv_cell(value):
+    if value is None:
+        return ""
+    return value
+
+
 @api_router.get("/bets/export")
 async def export_bets(request: Request):
     user_id = await get_current_user(request)
 
-    bets = await db.bets.find({"user_id": user_id}, {"_id": 0}).sort("date", 1).to_list(10000)
-
     output = io.StringIO()
-    fieldnames = ["DATE", "TIME", "GAME", "BET", "ODDS", "STAKE",
-                  "STATUS", "RESULT", "TIPSTER", "SPORT", "BOOKIE"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
+    writer = csv.DictWriter(output, fieldnames=EXPORT_FIELDS, delimiter=';')
     writer.writeheader()
 
-    for bet in bets:
-        writer.writerow({
-            "DATE": bet.get("date", ""),
-            "TIME": bet.get("time", ""),
-            "GAME": bet.get("game", ""),
-            "BET": bet.get("bet", ""),
-            "ODDS": bet.get("odds", 0),
-            "STAKE": bet.get("stake", 0),
-            "STATUS": bet.get("status", ""),
-            "RESULT": bet.get("result", 0),
-            "TIPSTER": bet.get("tipster", ""),
-            "SPORT": bet.get("sport", ""),
-            "BOOKIE": bet.get("bookie", "")
-        })
+    cursor = db.bets.find({"user_id": user_id}, {"_id": 0}).sort([("date", 1), ("time", 1)])
+    while True:
+        batch = await cursor.to_list(EXPORT_PAGE_SIZE)
+        if not batch:
+            break
+        for bet in batch:
+            writer.writerow({
+                "DATE": csv_cell(bet.get("date")),
+                "TIME": csv_cell(bet.get("time")),
+                "GAME": csv_cell(bet.get("game")),
+                "BET": csv_cell(bet.get("bet")),
+                "ODDS": csv_cell(bet.get("odds")),
+                "STAKE": csv_cell(bet.get("stake")),
+                "STATUS": csv_cell(bet.get("status")),
+                "RESULT": csv_cell(bet.get("result")),
+                "TIPSTER": csv_cell(bet.get("tipster")),
+                "SPORT": csv_cell(bet.get("sport")),
+                "BOOKIE": csv_cell(bet.get("bookie")),
+            })
+        if len(batch) < EXPORT_PAGE_SIZE:
+            break
 
-    csv_content = output.getvalue()
-    return Response(content=csv_content, media_type="text/csv", headers={
+    # BOM so Excel reads Norwegian names as UTF-8.
+    csv_content = "\ufeff" + output.getvalue()
+    return Response(content=csv_content, media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": "attachment; filename=bets_export.csv"
     })
 
