@@ -27,6 +27,7 @@ export default function SettingsPage() {
   const [moveAmount, setMoveAmount] = useState('');
   const [savingMove, setSavingMove] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [importingCoolbet, setImportingCoolbet] = useState(false);
   const fileInputRef = useRef(null);
   const coolbetInputRef = useRef(null);
@@ -110,15 +111,19 @@ export default function SettingsPage() {
   };
 
   const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
     try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bets/export`, {
-        credentials: 'include',
-      });
+      const response = await fetchWithTimeout(
+        `${BACKEND_URL}/api/bets/export`,
+        { credentials: 'include' },
+        60000
+      );
 
       if (!response.ok) throw new Error('Failed to export bets');
 
-      const data = await response.json();
-      const blob = new Blob([data.csv_data], { type: 'text/csv' });
+      const csv = await response.text();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -132,6 +137,8 @@ export default function SettingsPage() {
     } catch (error) {
       console.error('Error exporting bets:', error);
       toast.error('Kunne ikke eksportere spill');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -363,10 +370,11 @@ export default function SettingsPage() {
             <Button
               data-testid="export-btn"
               onClick={handleExport}
+              disabled={exporting}
               className="bg-white/5 hover:bg-white/10 border border-white/10"
             >
               <Download className="w-4 h-4 mr-2" />
-              Eksporter CSV
+              {exporting ? 'Eksporterer...' : 'Eksporter CSV'}
             </Button>
           </div>
 

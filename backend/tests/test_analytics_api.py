@@ -101,7 +101,13 @@ class _FakeCursor:
         return data
 
     async def to_list(self, n):
-        return [self._project(doc) for doc in self.docs]
+        if n is None:
+            take = self.docs
+            self.docs = []
+        else:
+            take = self.docs[:n]
+            self.docs = self.docs[n:]
+        return [self._project(doc) for doc in take]
 
 
 def _auth_and_bets(bets):
@@ -411,6 +417,63 @@ def test_source_ids_returns_compact_rows():
             "legs_count": 0,
         },
     ]
+
+
+def test_export_bets_returns_every_bet_as_csv(monkeypatch):
+    import csv
+    import io
+
+    monkeypatch.setattr("server.EXPORT_PAGE_SIZE", 2)
+    bets = [
+        {
+            "date": "2026-01-01",
+            "time": "12:00",
+            "game": "A - B",
+            "bet": "1",
+            "odds": 1.5,
+            "stake": 100,
+            "status": "won",
+            "result": 50,
+            "tipster": None,
+            "sport": "Football",
+            "bookie": "Coolbet",
+        },
+        {
+            "date": "2026-01-02",
+            "game": "C - D",
+            "bet": "2",
+            "odds": 2,
+            "stake": 20,
+            "status": "lost",
+            "result": -20,
+            "sport": "Tennis",
+        },
+        {
+            "date": "2026-01-03",
+            "time": "18:30",
+            "game": "E - F",
+            "bet": "Over",
+            "odds": 1.9,
+            "stake": 10,
+            "status": "pending",
+            "result": 0,
+            "tipster": "Anna",
+            "sport": "Football",
+            "bookie": "Coolbet",
+        },
+    ]
+    auth, db_find = _auth_and_bets(bets)
+    client = TestClient(app)
+    with auth, db_find:
+        response = client.get("/api/bets/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    rows = list(csv.DictReader(io.StringIO(response.content.decode("utf-8-sig")), delimiter=";"))
+    assert [row["GAME"] for row in rows] == ["A - B", "C - D", "E - F"]
+    assert rows[0]["TIPSTER"] == ""
+    assert rows[2]["TIPSTER"] == "Anna"
+    assert rows[1]["BOOKIE"] == ""
 
 
 def test_coolbet_import_uses_bulk_write():
