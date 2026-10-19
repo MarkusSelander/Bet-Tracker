@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authErrorMessage, networkErrorMessage } from '../lib/authForm';
-import { fetchAuth, fetchWithTimeout, setSessionToken } from '../lib/fetch';
+import { fetchAuth, fetchWithTimeout, getSessionToken, isAuthTimeoutError, setSessionToken } from '../lib/fetch';
 import { queryClient } from '../lib/queryClient';
+import { sessionCheckPlan } from '../lib/sessionCheck';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -24,14 +25,25 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => sessionCheckPlan(getSessionToken()).block);
   const authCheckId = useRef(0);
   const authCheckAbort = useRef(null);
 
   useEffect(() => {
+    warmUpBackend();
+
+    const plan = sessionCheckPlan(getSessionToken());
+    if (!plan.restore) {
+      setLoading(false);
+      return undefined;
+    }
+
     const checkId = ++authCheckId.current;
     const controller = new AbortController();
     authCheckAbort.current = controller;
+    const graceTimer = setTimeout(() => {
+      if (authCheckId.current === checkId) setLoading(false);
+    }, plan.graceMs);
 
     const checkAuth = async () => {
       try {
@@ -39,10 +51,11 @@ export const AuthProvider = ({ children }) => {
           throw new Error('REACT_APP_BACKEND_URL is not defined');
         }
 
-        const response = await fetchAuth(`${BACKEND_URL}/api/auth/me`, {
-          credentials: 'include',
-          signal: controller.signal,
-        });
+        const response = await fetchWithTimeout(
+          `${BACKEND_URL}/api/auth/me`,
+          { credentials: 'include', signal: controller.signal },
+          plan.timeoutMs
+        );
 
         if (authCheckId.current !== checkId) return;
 
@@ -58,20 +71,22 @@ export const AuthProvider = ({ children }) => {
         }
 
         const userData = await response.json();
+        if (authCheckId.current !== checkId) return;
         setUser(userData);
       } catch (error) {
         if (authCheckId.current !== checkId || controller.signal.aborted) return;
-        console.error('Auth check failed:', error);
+        if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
         setUser(null);
       } finally {
-        if (authCheckId.current === checkId) {
-          setLoading(false);
-        }
+        if (authCheckId.current === checkId) setLoading(false);
       }
     };
 
     checkAuth();
-    return () => controller.abort();
+    return () => {
+      clearTimeout(graceTimer);
+      controller.abort();
+    };
   }, []);
 
   const authenticate = useCallback(async (path, payload) => {
