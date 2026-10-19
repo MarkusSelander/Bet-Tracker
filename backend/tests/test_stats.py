@@ -410,19 +410,20 @@ def test_cash_position_is_unconfigured_without_a_balance():
     assert bank["current"] is None
 
 
-def test_cash_position_moves_with_settled_and_open_bets():
+def test_cash_position_ignores_bets():
     bank = compute_cash_position(
-        [{"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"}],
-        500,
         [
-            {"status": "lost", "result": -1000, "stake": 1000},
-            {"status": "won", "result": 400, "stake": 200},
-            {"status": "pending", "result": 0, "stake": 300},
+            {"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"},
+            {"type": "deposit", "amount": 1000, "at": "2026-01-02T00:00:00"},
+            {"type": "withdrawal", "amount": 250, "at": "2026-01-03T00:00:00"},
         ],
+        500,
     )
 
     assert bank["baseline"] == 74337
-    assert bank["current"] == 73437
-    assert bank["bet_result"] == -600
-    assert bank["pending_stake"] == 300
+    assert bank["current"] == 75087
+    assert bank["deposited"] == 1000
+    assert bank["withdrawn"] == 250
+    assert bank["bet_result"] == 0
+    assert bank["pending_stake"] == 0
 
