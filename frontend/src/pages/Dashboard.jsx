@@ -95,7 +95,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <PageHeader
         title="Oversikt"
         subtitle="Siste 30 dager og åpne spill"
@@ -126,30 +126,46 @@ export default function Dashboard() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="total-bets-card">
+        <Link
+          to={analyticsPath({ period: '30' })}
+          className={`${cardClass} hover-lift animate-fade-in-up`}
+          data-testid="total-bets-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Spill totalt</p>
           <p className="text-2xl font-bold font-mono">{stats?.total_bets || 0}</p>
         </Link>
-        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="roi-card">
+        <Link
+          to={analyticsPath({ period: '30' })}
+          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-1`}
+          data-testid="roi-card"
+        >
           <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${(stats?.roi || 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {(stats?.roi || 0).toFixed(1)}%
           </p>
         </Link>
-        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="profit-loss-card">
+        <Link
+          to={analyticsPath({ period: '30' })}
+          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-2`}
+          data-testid="profit-loss-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${pl >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {pl >= 0 ? '+' : ''}
             {formatCurrency(pl, currency)}
           </p>
         </Link>
-        <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="win-rate-card">
+        <Link
+          to={analyticsPath({ period: '30' })}
+          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-3`}
+          data-testid="win-rate-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Treffprosent</p>
           <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
         </Link>
         <Link
           to={analyticsPath({ period: '30' })}
-          className={`${cardClass} col-span-2 lg:col-span-1`}
+          className={`${cardClass} col-span-2 lg:col-span-1 hover-lift animate-fade-in-up animate-stagger-4`}
           data-testid="streak-card"
         >
           <p className="text-sm text-text-secondary mb-1">Streak</p>
@@ -171,7 +187,7 @@ export default function Dashboard() {
       <BankrollCard currency={currency} />
 
       {pendingBets.length > 0 ? (
-        <div className={cardClass}>
+        <div className={`${cardClass} animate-fade-in-up`}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-bold flex items-center gap-2">
               <Clock className="w-4 h-4 text-accent" />
@@ -209,7 +225,7 @@ export default function Dashboard() {
       ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className={`lg:col-span-8 ${cardClass} p-6`}>
+        <div className={`lg:col-span-8 ${cardClass} p-6 animate-fade-in-up`}>
           <div className="flex items-center justify-between gap-3 mb-4">
             <h2 className="text-base font-bold">Utvikling siste 30 dager</h2>
             <Link
@@ -255,7 +271,7 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        <div className={`lg:col-span-4 ${cardClass} p-6`}>
+        <div className={`lg:col-span-4 ${cardClass} p-6 animate-fade-in-up animate-stagger-1`}>
           <h2 className="text-base font-bold mb-4">Fordeling</h2>
           <ResponsiveContainer width="100%" height={160}>
             <PieChart>
@@ -280,7 +296,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className={`${cardClass} p-6`}>
+      <div className={`${cardClass} p-6 animate-fade-in-up`}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-bold">Siste spill</h2>
           <Link to={betsPath({ period: '30' })} className="text-sm text-primary hover:underline">

@@ -203,7 +203,7 @@ export default function AnalyticsPage() {
   const bestBookie = pickInsight(bookieStats, 'best');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <PageHeader
         title="Analyse"
         subtitle="Resultat fordelt på tid, sport og odds"
@@ -387,7 +387,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link
           to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-colors`}
+          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up`}
           data-testid="analytics-kpi-result"
         >
           <p className="text-sm text-text-secondary mb-1">Resultat</p>
@@ -398,7 +398,7 @@ export default function AnalyticsPage() {
         </Link>
         <Link
           to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-colors`}
+          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-1`}
           data-testid="analytics-kpi-roi"
         >
           <p className="text-sm text-text-secondary mb-1">ROI</p>
@@ -408,7 +408,7 @@ export default function AnalyticsPage() {
         </Link>
         <Link
           to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-colors`}
+          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-2`}
           data-testid="analytics-kpi-winrate"
         >
           <p className="text-sm text-text-secondary mb-1">Treffprosent</p>
@@ -416,7 +416,7 @@ export default function AnalyticsPage() {
         </Link>
         <Link
           to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-colors`}
+          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-3`}
           data-testid="analytics-kpi-avg-stake"
         >
           <p className="text-sm text-text-secondary mb-1">Snittinnsats</p>
@@ -424,7 +424,7 @@ export default function AnalyticsPage() {
         </Link>
         <Link
           to={streakPath}
-          className={`${cardClass} col-span-2 lg:col-span-1 hover:border-white/20 transition-colors`}
+          className={`${cardClass} col-span-2 lg:col-span-1 hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-4`}
           data-testid="analytics-kpi-streak"
         >
           <p className="text-sm text-text-secondary mb-1">Streak</p>
