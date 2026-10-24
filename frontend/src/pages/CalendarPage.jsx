@@ -6,6 +6,7 @@ import BetTicketDialog from '../components/BetTicketDialog';
 import CalendarYearView from '../components/CalendarYearView';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
+import { needsFullTicketBet } from '../lib/betTicket';
 import {
   buildCalendarModel,
   buildYearModel,
@@ -15,7 +16,6 @@ import {
   saveCalendarView,
   yearRange,
 } from '../lib/calendar';
-import { needsFullTicketBet } from '../lib/betTicket';
 import { betsPath, parseFilters, toSearch } from '../lib/filters';
 import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
 import { useBet, useCalendarBets } from '../lib/queries';
@@ -246,26 +246,26 @@ export default function CalendarPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-profit-card">
-          <p className="text-xs text-text-secondary mb-1">Resultat</p>
+          <p className="text-sm text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
             {kpis.profit > 0 ? '+' : ''}
             {formatCurrency(kpis.profit, currency)}
           </p>
         </Link>
         <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-bets-card">
-          <p className="text-xs text-text-secondary mb-1">Spill</p>
+          <p className="text-sm text-text-secondary mb-1">Spill</p>
           <p className="text-2xl font-bold font-mono">{kpis.bets}</p>
         </Link>
         <div className={cardClass} data-testid="calendar-winrate-card">
-          <p className="text-xs text-text-secondary mb-1">Treff</p>
+          <p className="text-sm text-text-secondary mb-1">Treff</p>
           <p className="text-2xl font-bold font-mono">{kpis.winRate.toFixed(1)}%</p>
         </div>
         <div className={cardClass} data-testid="calendar-roi-card">
-          <p className="text-xs text-text-secondary mb-1">ROI</p>
+          <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.roi)}`}>{kpis.roi.toFixed(1)}%</p>
         </div>
         <div className={`${cardClass} col-span-2 lg:col-span-1`} data-testid="calendar-highlights-card">
-          <p className="text-xs text-text-secondary mb-1">Beste / verste dag</p>
+          <p className="text-sm text-text-secondary mb-1">Beste / verste dag</p>
           <p className="text-sm font-mono font-bold text-primary truncate">
             {kpis.bestDay
               ? `${formatKpiDate(kpis.bestDay.date)} +${formatCurrency(kpis.bestDay.profit, currency, 0)}`
@@ -332,9 +332,9 @@ export default function CalendarPage() {
               const hasData = cell.bets > 0;
               let tone = 'border-[#27272A] bg-[#121214]';
               if (hasData && cell.hasSettled && cell.profit > 0) {
-                tone = 'border-primary/30 bg-primary/5';
+                tone = 'border-primary/40 bg-primary/10';
               } else if (hasData && cell.hasSettled && cell.profit < 0) {
-                tone = 'border-destructive/30 bg-destructive/5';
+                tone = 'border-destructive/40 bg-destructive/10';
               } else if (hasData && cell.pending > 0) {
                 tone = 'border-accent/40 bg-accent/5';
               }
@@ -356,12 +356,12 @@ export default function CalendarPage() {
                   </div>
                   {hasData ? (
                     <>
-                      <div className={`text-xs sm:text-sm font-mono font-bold mt-1 ${signedClass(cell.profit)}`}>
+                      <div className={`text-sm sm:text-base font-mono font-bold mt-1 ${signedClass(cell.profit)}`}>
                         {cell.hasSettled
                           ? `${cell.profit > 0 ? '+' : ''}${formatCurrency(cell.profit, currency, 0)}`
                           : 'Åpen'}
                       </div>
-                      <div className="text-[10px] text-text-muted">
+                      <div className="text-[11px] text-text-muted">
                         {cell.bets} spill{cell.pending > 0 ? ` · ${cell.pending} åpne` : ''}
                       </div>
                     </>
@@ -424,7 +424,7 @@ export default function CalendarPage() {
                         {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
                       </p>
                       <span
-                        className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}
+                        className={`inline-block mt-1 px-2 py-1 rounded text-xs font-medium ${statusClass(bet.status)}`}
                       >
                         {STATUS_LABELS[bet.status] || bet.status}
                       </span>
@@ -452,8 +452,8 @@ export default function CalendarPage() {
                 week.bets === 0
                   ? 'border-[#27272A] bg-[#121214]'
                   : week.profit >= 0
-                    ? 'border-primary/30 bg-primary/5'
-                    : 'border-destructive/30 bg-destructive/5'
+                    ? 'border-primary/40 bg-primary/10'
+                    : 'border-destructive/40 bg-destructive/10'
               }`}
             >
               <div className="text-xs text-text-muted mb-1">Uke {index + 1}</div>

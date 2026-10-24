@@ -18,8 +18,8 @@ function signedAmount(value, currency, digits) {
 
 function monthTone(cell) {
   if (cell.count === 0) return 'border-[#27272A] bg-[#121214]';
-  if (cell.hasSettled && cell.profit > 0) return 'border-primary/30 bg-primary/5';
-  if (cell.hasSettled && cell.profit < 0) return 'border-destructive/30 bg-destructive/5';
+  if (cell.hasSettled && cell.profit > 0) return 'border-primary/40 bg-primary/10';
+  if (cell.hasSettled && cell.profit < 0) return 'border-destructive/40 bg-destructive/10';
   if (cell.pending > 0) return 'border-accent/40 bg-accent/5';
   return 'border-[#27272A] bg-[#121214]';
 }
@@ -39,7 +39,7 @@ export default function CalendarYearView({ year, model, months, currentMonth, cu
           className={cardClass}
           data-testid="calendar-year-profit-card"
         >
-          <p className="text-xs text-text-secondary mb-1">Resultat {year}</p>
+          <p className="text-sm text-text-secondary mb-1">Resultat {year}</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
             {signedAmount(kpis.profit, currency)}
           </p>
@@ -49,20 +49,20 @@ export default function CalendarYearView({ year, model, months, currentMonth, cu
           className={cardClass}
           data-testid="calendar-year-bets-card"
         >
-          <p className="text-xs text-text-secondary mb-1">Spill</p>
+          <p className="text-sm text-text-secondary mb-1">Spill</p>
           <p className="text-2xl font-bold font-mono">{kpis.bets}</p>
-          <p className="text-[11px] text-text-muted truncate">Innsats {formatCurrency(kpis.stake, currency, 0)}</p>
+          <p className="text-xs text-text-muted truncate">Innsats {formatCurrency(kpis.stake, currency, 0)}</p>
         </Link>
         <div className={cardClass} data-testid="calendar-year-winrate-card">
-          <p className="text-xs text-text-secondary mb-1">Treff</p>
+          <p className="text-sm text-text-secondary mb-1">Treff</p>
           <p className="text-2xl font-bold font-mono">{kpis.winRate.toFixed(1)}%</p>
         </div>
         <div className={cardClass} data-testid="calendar-year-roi-card">
-          <p className="text-xs text-text-secondary mb-1">ROI</p>
+          <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.roi)}`}>{kpis.roi.toFixed(1)}%</p>
         </div>
         <div className={`${cardClass} col-span-2 lg:col-span-1`} data-testid="calendar-year-highlights-card">
-          <p className="text-xs text-text-secondary mb-1">Beste / verste måned</p>
+          <p className="text-sm text-text-secondary mb-1">Beste / verste måned</p>
           <p className="text-sm font-mono font-bold text-primary truncate">
             {kpis.bestMonth ? `${monthLabel(kpis.bestMonth)} ${signedAmount(kpis.bestMonth.profit, currency, 0)}` : '—'}
           </p>

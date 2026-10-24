@@ -114,7 +114,7 @@ function SportCell({ bet }) {
     <div className="flex items-center gap-1.5 min-w-0">
       <span className="text-[13px] text-white/90 truncate">{sports[0] || '—'}</span>
       {extra > 0 ? (
-        <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+        <span className="shrink-0 rounded-full bg-white/10 text-white/80 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
           +{extra}
         </span>
       ) : null}
@@ -128,7 +128,7 @@ function MatchCell({ bet }) {
     <div className="min-w-0 max-w-[240px]" title={summary.primary}>
       {summary.prefix ? <div className="text-[12px] text-white/90">{summary.prefix}:</div> : null}
       <div className="text-[13px] text-white truncate">{summary.primary || '—'}</div>
-      {summary.extraCount > 0 ? <div className="text-[12px] text-accent">og {summary.extraCount} mer</div> : null}
+      {summary.extraCount > 0 ? <div className="text-[12px] text-white/60">og {summary.extraCount} mer</div> : null}
     </div>
   );
 }
@@ -166,14 +166,14 @@ function BetCard({ bet, currency, onOpen, onKeyDown }) {
       className="rounded-2xl border border-white/8 bg-[#12151c] p-4 text-left cursor-pointer hover:bg-white/[0.04] hover:border-white/15 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
-        <span className="text-[13px] font-medium text-primary">{formatBetDate(bet.date, bet.time)}</span>
+        <span className="text-[13px] font-medium text-white/90">{formatBetDate(bet.date, bet.time)}</span>
         <StatusCell bet={bet} currency={currency} />
       </div>
       <SportCell bet={bet} />
       <div className="mt-2">
         {summary.prefix ? <p className="text-[12px] text-white/80">{summary.prefix}:</p> : null}
         <p className="text-sm text-white truncate">{summary.primary || '—'}</p>
-        {summary.extraCount > 0 ? <p className="text-[12px] text-accent">og {summary.extraCount} mer</p> : null}
+        {summary.extraCount > 0 ? <p className="text-[12px] text-white/60">og {summary.extraCount} mer</p> : null}
       </div>
       <p className="mt-1 text-[13px] text-white/70 truncate">
         {selection.primary || '—'}
@@ -200,6 +200,7 @@ export default function BetsPage() {
   const [view, setView] = useState('list');
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const currency = user?.currency || 'NOK';
   const period = filters.period || 'all';
   const apiSearch = toBetsApiSearch(filters);
@@ -377,7 +378,7 @@ export default function BetsPage() {
           </div>
           <div>
             <p className="text-[22px] leading-none font-semibold tracking-tight">{kpis.count}</p>
-            <p className="text-xs text-text-secondary mt-1.5">Aktive spill</p>
+            <p className="text-sm text-text-secondary mt-1.5">Aktive spill</p>
           </div>
         </button>
         <button
@@ -393,7 +394,7 @@ export default function BetsPage() {
             <p className="text-[22px] leading-none font-semibold tracking-tight">
               {formatCurrency(kpis.stake, currency)}
             </p>
-            <p className="text-xs text-text-secondary mt-1.5">Total aktiv innsats</p>
+            <p className="text-sm text-text-secondary mt-1.5">Total aktiv innsats</p>
           </div>
         </button>
         <button
@@ -409,7 +410,7 @@ export default function BetsPage() {
             <p className="text-[22px] leading-none font-semibold tracking-tight">
               {formatCurrency(kpis.potential, currency)}
             </p>
-            <p className="text-xs text-text-secondary mt-1.5">Potensiell gevinst</p>
+            <p className="text-sm text-text-secondary mt-1.5">Potensiell gevinst</p>
           </div>
         </button>
       </div>
@@ -486,22 +487,13 @@ export default function BetsPage() {
             </SelectContent>
           </Select>
 
-          <Select
-            value={filters.tipster || 'all'}
-            onValueChange={(value) => patchFilters({ tipster: value === 'all' ? '' : value })}
+          <button
+            type="button"
+            onClick={() => setShowMoreFilters(!showMoreFilters)}
+            className="h-10 px-3 rounded-xl border border-white/10 bg-[#12151c] text-sm text-text-secondary hover:bg-white/5 hover:text-white transition-colors"
           >
-            <SelectTrigger className={`${filterTriggerClass} min-w-[168px]`} data-testid="filter-tipster">
-              <SelectValue>{filters.tipster || 'Tags og tipstere'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle tipstere</SelectItem>
-              {availableTipsters.map((tipster) => (
-                <SelectItem key={tipster} value={tipster}>
-                  {tipster}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {showMoreFilters ? 'Færre filtre' : 'Flere filtre'}
+          </button>
 
           <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center rounded-lg border border-white/10 p-0.5 bg-[#12151c]">
@@ -539,6 +531,86 @@ export default function BetsPage() {
           </div>
         </div>
 
+        {showMoreFilters && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[220px] w-full sm:w-auto sm:flex-1 sm:max-w-md">
+              <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Søk kamp, marked, sport..."
+                className="pl-9 h-10 bg-[#12151c] border-white/10 rounded-xl"
+              />
+            </div>
+            <Select
+              value={filters.tipster || 'all'}
+              onValueChange={(value) => patchFilters({ tipster: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className={`${filterTriggerClass} min-w-[168px]`} data-testid="filter-tipster">
+                <SelectValue>{filters.tipster || 'Tags og tipstere'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle tipstere</SelectItem>
+                {availableTipsters.map((tipster) => (
+                  <SelectItem key={tipster} value={tipster}>
+                    {tipster}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={filters.league || 'all'}
+              onValueChange={(value) => patchFilters({ league: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue>{filters.league || 'Liga'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle ligaer</SelectItem>
+                {availableLeagues.map((league) => (
+                  <SelectItem key={league} value={league}>
+                    {league}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={filters.ticketType || 'all'}
+              onValueChange={(value) => patchFilters({ ticketType: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue>
+                  {filters.ticketType ? TICKET_TYPE_LABELS[filters.ticketType] || filters.ticketType : 'Type'}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle typer</SelectItem>
+                {availableTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {TICKET_TYPE_LABELS[type] || type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={filters.oddsRange || 'all'}
+              onValueChange={(value) => patchFilters({ oddsRange: value === 'all' ? '' : value })}
+            >
+              <SelectTrigger className={filterTriggerClass}>
+                <SelectValue>{filters.oddsRange || 'Odds'}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle odds</SelectItem>
+                {ODDS_RANGES.map((range) => (
+                  <SelectItem key={range} value={range}>
+                    {range}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {period === 'custom' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
@@ -567,68 +639,6 @@ export default function BetsPage() {
             </div>
           </div>
         ) : null}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] w-full sm:w-auto sm:flex-1 sm:max-w-md">
-            <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-            <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Søk kamp, marked, sport..."
-              className="pl-9 h-10 bg-[#12151c] border-white/10 rounded-xl"
-            />
-          </div>
-          <Select
-            value={filters.league || 'all'}
-            onValueChange={(value) => patchFilters({ league: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue>{filters.league || 'Liga'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle ligaer</SelectItem>
-              {availableLeagues.map((league) => (
-                <SelectItem key={league} value={league}>
-                  {league}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.ticketType || 'all'}
-            onValueChange={(value) => patchFilters({ ticketType: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue>
-                {filters.ticketType ? TICKET_TYPE_LABELS[filters.ticketType] || filters.ticketType : 'Type'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle typer</SelectItem>
-              {availableTypes.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {TICKET_TYPE_LABELS[type] || type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.oddsRange || 'all'}
-            onValueChange={(value) => patchFilters({ oddsRange: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass}>
-              <SelectValue>{filters.oddsRange || 'Odds'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle odds</SelectItem>
-              {ODDS_RANGES.map((range) => (
-                <SelectItem key={range} value={range}>
-                  {range}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {view === 'grid' ? (
@@ -687,7 +697,7 @@ export default function BetsPage() {
                         onKeyDown={(event) => handleRowKeyDown(event, bet)}
                         className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-white/5"
                       >
-                        <td className="py-3.5 px-3 text-[13px] font-medium text-primary whitespace-nowrap">
+                        <td className="py-3.5 px-3 text-[13px] font-medium whitespace-nowrap text-white/90">
                           {formatBetDate(bet.date, bet.time)}
                         </td>
                         <td className="py-3.5 px-3 whitespace-nowrap">

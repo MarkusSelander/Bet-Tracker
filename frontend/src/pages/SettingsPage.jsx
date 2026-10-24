@@ -238,7 +238,7 @@ export default function SettingsPage() {
           Utgangspunkt er banken før spillene i appen. Linjen på oversikten er dette pluss resultater, minus åpne
           innsatser, pluss innskudd og minus uttak.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="starting-bankroll">Utgangspunkt</Label>
             <Input
@@ -247,7 +247,7 @@ export default function SettingsPage() {
               value={startingBankroll}
               onChange={(event) => setStartingBankroll(event.target.value)}
               placeholder="15301"
-              className="bg-black/20 border-white/10 mt-2"
+              className="bg-black/20 border-white/20 mt-2"
               data-testid="starting-bankroll-input"
             />
           </div>
@@ -259,7 +259,7 @@ export default function SettingsPage() {
               value={unitSize}
               onChange={(event) => setUnitSize(event.target.value)}
               placeholder="500"
-              className="bg-black/20 border-white/10 mt-2"
+              className="bg-black/20 border-white/20 mt-2"
               data-testid="unit-size-input"
             />
           </div>
@@ -275,13 +275,13 @@ export default function SettingsPage() {
         {bankroll?.configured ? (
           <div className="mt-6 pt-4 border-t border-[#27272A]">
             <h3 className="font-medium mb-3">Innskudd og uttak</h3>
-            <div className="flex flex-col sm:flex-row gap-2 max-w-lg">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Input
                 inputMode="decimal"
                 value={moveAmount}
                 onChange={(event) => setMoveAmount(event.target.value)}
                 placeholder="Beløp i kroner"
-                className="bg-black/20 border-white/10 sm:max-w-[180px]"
+                className="bg-black/20 border-white/20 sm:max-w-[180px]"
                 data-testid="bankroll-move-amount"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') event.preventDefault();
@@ -334,10 +334,10 @@ export default function SettingsPage() {
       {/* Currency Settings */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
         <h2 className="text-xl font-bold mb-4">Valuta</h2>
-        <div className="max-w-xs">
+        <div className="max-w-md">
           <Label htmlFor="currency">Visningsvaluta</Label>
           <Select value={currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger id="currency" className="bg-black/20 border-white/10 mt-2">
+            <SelectTrigger id="currency" className="bg-black/20 border-white/20 mt-2">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -359,7 +359,7 @@ export default function SettingsPage() {
       {/* Import/Export */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
         <h2 className="text-xl font-bold mb-4">Data</h2>
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <h3 className="font-medium mb-2">Eksporter spill</h3>
             <p className="text-sm text-text-secondary mb-3">Last ned alle spill som CSV</p>
@@ -374,7 +374,7 @@ export default function SettingsPage() {
             </Button>
           </div>
 
-          <div className="pt-4 border-t border-[#27272A]">
+          <div>
             <h3 className="font-medium mb-2">Importer spill</h3>
             <p className="text-sm text-text-secondary mb-3">
               CSV med semikolon. Kolonner: DATE, TIME, GAME, BET, ODDS, STAKE, STATUS, RESULT, TIPSTER, SPORT, BOOKIE
@@ -391,7 +391,7 @@ export default function SettingsPage() {
             </Button>
           </div>
 
-          <div className="pt-4 border-t border-[#27272A]">
+          <div className="md:col-span-2">
             <h3 className="font-medium mb-2">Importer Coolbet</h3>
             <p className="text-sm text-text-secondary mb-3">
               Last opp <span className="font-mono text-text-primary">coolbet_bets.json</span> fra{' '}
