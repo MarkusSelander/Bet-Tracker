@@ -225,12 +225,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <PageHeader title="Innstillinger" subtitle="Bankroll, valuta og data" testId="settings-title" />
 
       <form
         onSubmit={handleBankrollSave}
-        className="bg-[#18181B] border border-[#27272A] rounded-lg p-6"
+        className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up"
         data-testid="bankroll-settings"
       >
         <h2 className="text-xl font-bold mb-1">Bankroll</h2>
@@ -332,7 +332,7 @@ export default function SettingsPage() {
       </form>
 
       {/* Currency Settings */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-1">
         <h2 className="text-xl font-bold mb-4">Valuta</h2>
         <div className="max-w-md">
           <Label htmlFor="currency">Visningsvaluta</Label>
@@ -357,7 +357,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Import/Export */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-2">
         <h2 className="text-xl font-bold mb-4">Data</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -421,7 +421,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Account Info */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-3">
         <h2 className="text-xl font-bold mb-4">Konto</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">

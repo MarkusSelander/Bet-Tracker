@@ -167,7 +167,7 @@ export default function FavoritesPage() {
   const showToday = matches.length > 0 || (teams.length > 0 && matchesFetching);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       <PageHeader title="Favoritter" subtitle="Følg dine favorittlag og kommende kamper" testId="favorites-title" />
 
       {error ? (

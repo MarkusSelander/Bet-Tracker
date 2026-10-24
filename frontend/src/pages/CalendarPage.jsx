@@ -241,30 +241,44 @@ export default function CalendarPage() {
   const { kpis } = model;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {header}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-profit-card">
+        <Link
+          to={betsPath({ from: dateFrom, to: dateTo })}
+          className={`${cardClass} hover-lift animate-fade-in-up`}
+          data-testid="calendar-profit-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
             {kpis.profit > 0 ? '+' : ''}
             {formatCurrency(kpis.profit, currency)}
           </p>
         </Link>
-        <Link to={betsPath({ from: dateFrom, to: dateTo })} className={cardClass} data-testid="calendar-bets-card">
+        <Link
+          to={betsPath({ from: dateFrom, to: dateTo })}
+          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-1`}
+          data-testid="calendar-bets-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Spill</p>
           <p className="text-2xl font-bold font-mono">{kpis.bets}</p>
         </Link>
-        <div className={cardClass} data-testid="calendar-winrate-card">
+        <div
+          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-2`}
+          data-testid="calendar-winrate-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Treff</p>
           <p className="text-2xl font-bold font-mono">{kpis.winRate.toFixed(1)}%</p>
         </div>
-        <div className={cardClass} data-testid="calendar-roi-card">
+        <div className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-3`} data-testid="calendar-roi-card">
           <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(kpis.roi)}`}>{kpis.roi.toFixed(1)}%</p>
         </div>
-        <div className={`${cardClass} col-span-2 lg:col-span-1`} data-testid="calendar-highlights-card">
+        <div
+          className={`${cardClass} col-span-2 lg:col-span-1 hover-lift animate-fade-in-up animate-stagger-4`}
+          data-testid="calendar-highlights-card"
+        >
           <p className="text-sm text-text-secondary mb-1">Beste / verste dag</p>
           <p className="text-sm font-mono font-bold text-primary truncate">
             {kpis.bestDay
