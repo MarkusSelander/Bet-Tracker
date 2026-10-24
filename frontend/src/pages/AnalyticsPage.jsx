@@ -105,7 +105,7 @@ function BreakdownTable({ title, nameHeader, rows, empty, currency, rowTo }) {
                 <tr key={row.name} className="border-b border-[#27272A]/50">
                   <td className="py-2.5 pr-3 text-sm font-medium">
                     {rowTo ? (
-                      <Link to={rowTo(row)} className="text-primary hover:underline">
+                      <Link to={rowTo(row)} className="text-white hover:text-primary">
                         {row.name}
                       </Link>
                     ) : (
@@ -390,7 +390,7 @@ export default function AnalyticsPage() {
           className={`${cardClass} hover:border-white/20 transition-colors`}
           data-testid="analytics-kpi-result"
         >
-          <p className="text-xs text-text-secondary mb-1">Resultat</p>
+          <p className="text-sm text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(pl)}`}>
             {pl >= 0 ? '+' : ''}
             {formatCurrency(pl, currency)}
@@ -401,7 +401,7 @@ export default function AnalyticsPage() {
           className={`${cardClass} hover:border-white/20 transition-colors`}
           data-testid="analytics-kpi-roi"
         >
-          <p className="text-xs text-text-secondary mb-1">ROI</p>
+          <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${signedClass(stats?.roi || 0)}`}>
             {(stats?.roi || 0).toFixed(1)}%
           </p>
@@ -411,7 +411,7 @@ export default function AnalyticsPage() {
           className={`${cardClass} hover:border-white/20 transition-colors`}
           data-testid="analytics-kpi-winrate"
         >
-          <p className="text-xs text-text-secondary mb-1">Treffprosent</p>
+          <p className="text-sm text-text-secondary mb-1">Treffprosent</p>
           <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
         </Link>
         <Link
@@ -419,7 +419,7 @@ export default function AnalyticsPage() {
           className={`${cardClass} hover:border-white/20 transition-colors`}
           data-testid="analytics-kpi-avg-stake"
         >
-          <p className="text-xs text-text-secondary mb-1">Snittinnsats</p>
+          <p className="text-sm text-text-secondary mb-1">Snittinnsats</p>
           <p className="text-2xl font-bold font-mono">{formatCurrency(avgStake, currency)}</p>
         </Link>
         <Link
@@ -427,7 +427,7 @@ export default function AnalyticsPage() {
           className={`${cardClass} col-span-2 lg:col-span-1 hover:border-white/20 transition-colors`}
           data-testid="analytics-kpi-streak"
         >
-          <p className="text-xs text-text-secondary mb-1">Streak</p>
+          <p className="text-sm text-text-secondary mb-1">Streak</p>
           <p
             className={`text-2xl font-bold font-mono ${
               stats?.current_streak_type === 'won'
@@ -440,7 +440,7 @@ export default function AnalyticsPage() {
             {stats?.current_streak || 0}
             {stats?.current_streak_type === 'won' ? ' V' : stats?.current_streak_type === 'lost' ? ' T' : ''}
           </p>
-          <p className="text-[11px] text-text-muted mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Beste {stats?.best_win_streak || 0}V · Verst {stats?.worst_loss_streak || 0}T
           </p>
         </Link>
@@ -530,14 +530,14 @@ export default function AnalyticsPage() {
             <p className="text-sm text-text-muted py-12 text-center">Ingen oppgjorte spill i utvalget</p>
           ) : (
             <>
-              <ResponsiveContainer width="100%" height={180}>
+              <ResponsiveContainer width="100%" height={160}>
                 <PieChart>
                   <Pie
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
+                    innerRadius={45}
+                    outerRadius={60}
                     paddingAngle={4}
                     dataKey="value"
                     style={{ cursor: 'pointer' }}

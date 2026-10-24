@@ -75,7 +75,7 @@ export default function Sidebar({ user, mobileOpen, onClose }) {
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.name || 'Bruker'}</p>
-            <p className="text-xs text-text-muted truncate">{user?.email}</p>
+            <p className="text-xs text-text-secondary truncate">{user?.email}</p>
           </div>
         </div>
         <button

@@ -5,9 +5,7 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
-import fixtures from '../data/arsenalFixtures.json';
 import { fetchWithTimeout } from '../lib/fetch';
-import { focusTeamName } from '../lib/fixtureBoard';
 import { useFavoriteTeams, useFavoriteToday } from '../lib/queries';
 import { queryClient, queryKeys } from '../lib/queryClient';
 
@@ -167,15 +165,10 @@ export default function FavoritesPage() {
 
   const noTeams = !teamsLoading && teams.length === 0;
   const showToday = matches.length > 0 || (teams.length > 0 && matchesFetching);
-  const focus = focusTeamName(fixtures);
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Favoritter"
-        subtitle={`${focus} · kommende kamper fra den lokale nedlastingen`}
-        testId="favorites-title"
-      />
+      <PageHeader title="Favoritter" subtitle="Følg dine favorittlag og kommende kamper" testId="favorites-title" />
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -19,8 +19,8 @@ import BetTicketDialog from '../components/BetTicketDialog';
 import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
-import { missingComboLegs } from '../lib/betTicket';
 import { getMatchSummary, getSelectionSummary } from '../lib/betsDisplay';
+import { missingComboLegs } from '../lib/betTicket';
 import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
 import { STATUS_LABELS, formatAxisAmount, formatCurrency, statusClass } from '../lib/format';
 import { useAnalyticsSummary, useBet, usePendingBets, useRecentBets } from '../lib/queries';
@@ -127,24 +127,24 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="total-bets-card">
-          <p className="text-xs text-text-secondary mb-1">Spill totalt</p>
+          <p className="text-sm text-text-secondary mb-1">Spill totalt</p>
           <p className="text-2xl font-bold font-mono">{stats?.total_bets || 0}</p>
         </Link>
         <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="roi-card">
-          <p className="text-xs text-text-secondary mb-1">ROI</p>
+          <p className="text-sm text-text-secondary mb-1">ROI</p>
           <p className={`text-2xl font-bold font-mono ${(stats?.roi || 0) >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {(stats?.roi || 0).toFixed(1)}%
           </p>
         </Link>
         <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="profit-loss-card">
-          <p className="text-xs text-text-secondary mb-1">Resultat</p>
+          <p className="text-sm text-text-secondary mb-1">Resultat</p>
           <p className={`text-2xl font-bold font-mono ${pl >= 0 ? 'text-primary' : 'text-destructive'}`}>
             {pl >= 0 ? '+' : ''}
             {formatCurrency(pl, currency)}
           </p>
         </Link>
         <Link to={analyticsPath({ period: '30' })} className={cardClass} data-testid="win-rate-card">
-          <p className="text-xs text-text-secondary mb-1">Treffprosent</p>
+          <p className="text-sm text-text-secondary mb-1">Treffprosent</p>
           <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
         </Link>
         <Link
@@ -152,7 +152,7 @@ export default function Dashboard() {
           className={`${cardClass} col-span-2 lg:col-span-1`}
           data-testid="streak-card"
         >
-          <p className="text-xs text-text-secondary mb-1">Streak</p>
+          <p className="text-sm text-text-secondary mb-1">Streak</p>
           <p
             className={`text-2xl font-bold font-mono ${
               stats?.current_streak_type === 'won'
@@ -200,7 +200,7 @@ export default function Dashboard() {
                 <DashboardMatchPreview bet={bet} />
                 <div className="text-right shrink-0">
                   <p className="text-sm font-mono">{formatCurrency(bet.stake, currency)}</p>
-                  <p className="text-xs text-text-muted">{bet.odds?.toFixed(2)}</p>
+                  <p className="text-xs text-text-secondary">{bet.odds?.toFixed(2)}</p>
                 </div>
               </div>
             ))}
@@ -257,9 +257,9 @@ export default function Dashboard() {
 
         <div className={`lg:col-span-4 ${cardClass} p-6`}>
           <h2 className="text-base font-bold mb-4">Fordeling</h2>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={160}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value">
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={60} paddingAngle={4} dataKey="value">
                 {pieData.map((entry) => (
                   <Cell key={entry.name} fill={entry.color} />
                 ))}
@@ -315,14 +315,14 @@ export default function Dashboard() {
                     onKeyDown={(event) => handleRowKeyDown(event, bet)}
                     className="border-b border-[#27272A]/50 cursor-pointer hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
                   >
-                    <td className="py-2 pr-3 text-sm font-mono whitespace-nowrap">{bet.date}</td>
+                    <td className="py-2 pr-3 text-sm font-mono whitespace-nowrap text-white/90">{bet.date}</td>
                     <td className="py-2 pr-3 text-sm max-w-[220px]">
                       <DashboardMatchPreview bet={bet} showSelection={false} />
                     </td>
                     <td className="py-2 pr-3 text-sm font-mono text-right">{bet.odds.toFixed(2)}</td>
                     <td className="py-2 pr-3 text-sm font-mono text-right">{formatCurrency(bet.stake, currency)}</td>
                     <td className="py-2 pr-3 text-center">
-                      <span className={`px-1.5 py-0.5 rounded text-[11px] ${statusClass(bet.status)}`}>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${statusClass(bet.status)}`}>
                         {STATUS_LABELS[bet.status] || bet.status}
                       </span>
                     </td>
