@@ -13,7 +13,7 @@ function loadFetchModule() {
   m.paths = Module._nodeModulePaths(path.dirname(filename));
   const footer = [
     'module.exports = {',
-    '  AUTH_TIMEOUT_MS, AUTH_ATTEMPTS, TIMEOUT_MESSAGE, SESSION_TOKEN_KEY,',
+    '  AUTH_TIMEOUT_MS, AUTH_SUBMIT_TIMEOUT_MS, AUTH_ATTEMPTS, TIMEOUT_MESSAGE, SESSION_TOKEN_KEY,',
     '  getSessionToken, setSessionToken, authHeaders,',
     '  fetchWithTimeout, fetchAuth, isAuthTimeoutError,',
     '};',
@@ -68,19 +68,22 @@ test('fetchWithTimeout maps its own abort to the timeout error', async () => {
   }
 });
 
-test('fetchAuth retries a timed-out auth call once', async () => {
+test('fetchAuth does not retry a timed-out auth call', async () => {
   const original = global.fetch;
   let calls = 0;
   global.fetch = (_url, options) => {
     calls += 1;
-    if (calls === 1) return abortableHang(options.signal);
-    return Promise.resolve({ ok: true, status: 200 });
+    return abortableHang(options.signal);
   };
   try {
-    const response = await fetchApi.fetchAuth('https://example.test/api/auth/login', { method: 'POST' }, 30);
-    assert.equal(response.status, 200);
-    assert.equal(calls, 2);
-    assert.equal(fetchApi.AUTH_ATTEMPTS, 2);
+    await assert.rejects(
+      () => fetchApi.fetchAuth('https://example.test/api/auth/login', { method: 'POST' }, 30),
+      (error) => error.message === 'Forespørselen tok for lang tid'
+    );
+    assert.equal(calls, 1);
+    assert.equal(fetchApi.AUTH_ATTEMPTS, 1);
+    assert.equal(fetchApi.AUTH_SUBMIT_TIMEOUT_MS, 60000);
+    assert.equal(fetchApi.AUTH_TIMEOUT_MS, 10000);
   } finally {
     global.fetch = original;
   }
@@ -144,4 +147,7 @@ test('auth page asks the browser for current and new passwords', () => {
   assert.match(source, /autoComplete="current-password"/);
   assert.equal(source.match(/autoComplete="new-password"/g).length, 2);
   assert.match(source, /autoComplete="email"/);
+  assert.match(source, /Vekker serveren, første innlogging kan ta litt tid…/);
+  assert.match(source, /setTimeout\(\(\) => setWarming\(true\), 3000\)/);
+  assert.match(source, /preloadDashboard\(\)/);
 });

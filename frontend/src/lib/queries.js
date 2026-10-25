@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { fetchJson, queryKeys, STALE_LIST_MS, STALE_REFERENCE_MS, STALE_STATS_MS } from './queryClient';
+import { toAnalyticsApiSearch } from './filters';
+import { fetchJson, queryClient, queryKeys, STALE_LIST_MS, STALE_REFERENCE_MS, STALE_STATS_MS } from './queryClient';
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
@@ -11,6 +12,12 @@ export function useUsdRate() {
     queryFn: () => fetchJson('/api/fx/usd'),
     staleTime: 6 * 60 * 60 * 1000,
     retry: false,
+    // Tom kurs er et svar mens bakgrunnsjobben henter. Ikke la den ligge i 6 timer.
+    refetchInterval: (query) => {
+      if (!query.state.data || query.state.data.nok_per_usd) return false;
+      if ((query.state.dataUpdateCount || 0) >= 8) return false;
+      return 2500;
+    },
   });
 }
 
@@ -20,6 +27,35 @@ export function useBankroll() {
     queryFn: () => fetchJson('/api/bankroll'),
     staleTime: STALE_STATS_MS,
   });
+}
+
+export function dashboardSearch(now = new Date()) {
+  return toAnalyticsApiSearch({ period: '30' }, now);
+}
+
+export function dashboardQueryOptions(now = new Date()) {
+  const search = dashboardSearch(now);
+  const qs = search ? `?${search}` : '';
+  return {
+    queryKey: queryKeys.dashboard(search),
+    queryFn: async () => {
+      const payload = await fetchJson(`/api/dashboard${qs}`);
+      return {
+        summary: payload?.summary ?? null,
+        recent: asArray(payload?.recent),
+        pending: asArray(payload?.pending),
+      };
+    },
+    staleTime: STALE_STATS_MS,
+  };
+}
+
+export function useDashboard() {
+  return useQuery(dashboardQueryOptions());
+}
+
+export function prefetchDashboard(client = queryClient) {
+  return client.prefetchQuery(dashboardQueryOptions());
 }
 
 export function useAnalyticsSummary(search) {

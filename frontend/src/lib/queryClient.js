@@ -19,6 +19,7 @@ export const queryClient = new QueryClient({
 });
 
 export const queryKeys = {
+  dashboard: (search) => ['dashboard', search || ''],
   analyticsSummary: (search) => ['analytics', 'summary', search || ''],
   bets: (search) => ['bets', 'list', search || ''],
   bet: (betId) => ['bets', 'detail', betId],
@@ -67,6 +68,7 @@ export async function fetchJson(path, options = {}, timeoutMs) {
 
 export function invalidateTrackerData(client = queryClient) {
   return Promise.all([
+    client.invalidateQueries({ queryKey: ['dashboard'] }),
     client.invalidateQueries({ queryKey: ['analytics'] }),
     client.invalidateQueries({ queryKey: ['bets'] }),
     client.invalidateQueries({ queryKey: ['bankroll'] }),

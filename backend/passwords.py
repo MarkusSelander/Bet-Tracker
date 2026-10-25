@@ -34,8 +34,15 @@ def password_error(password) -> Optional[str]:
     return None
 
 
+# Kostnad 12 er bcrypt sin standard. Eksplisitt så innlogging ikke blir tregere
+# hvis biblioteket endrer default. checkpw leser kostnaden i eksisterende hasher.
+BCRYPT_ROUNDS = 12
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return bcrypt.hashpw(
+        password.encode("utf-8"), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
+    ).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: Optional[str]) -> bool:

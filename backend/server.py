@@ -4,6 +4,7 @@ import io
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -38,6 +39,7 @@ from sofascore_favorites import (
     search_favorites as search_sofascore,
 )
 from stats import (
+    bet_cash_pipeline,
     bets_mongo_query,
     build_analytics_summary,
     build_chart_data,
@@ -65,7 +67,21 @@ session_cache = SessionCache(ttl_seconds=15)
 sportsdb_cache = TtlLruCache(maxsize=512, ttl_seconds=86_400)
 sportsdb_http = httpx.AsyncClient(timeout=3.0)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def app_lifespan(_app: FastAPI):
+    # Indekser og dollarkurs starter i bakgrunnen. Porten skal åpne uten å
+    # vente på Mongo eller Frankfurter, ellers rekker ikke /api/health å svare
+    # når Render vekker prosessen.
+    await start_index_build()
+    await start_fx_refresh()
+    try:
+        yield
+    finally:
+        await shutdown_db_client()
+
+
+app = FastAPI(lifespan=app_lifespan)
 api_router = APIRouter(prefix="/api")
 
 # TheSportsDB API configuration
@@ -892,54 +908,119 @@ async def add_bankroll_move(request: Request):
     return entry
 
 
-_fx_cache = {"nok_per_usd": None, "as_of": None, "fetched_at": 0.0}
-_FX_TTL_SECONDS = 6 * 60 * 60
+_FX_REFRESH_SECONDS = 6 * 60 * 60
+_FX_DOC_ID = "usd_nok"
+_fx_memory = {"nok_per_usd": None, "as_of": None}
+_fx_lock = asyncio.Lock()
 
 
-@api_router.get("/fx/usd")
-async def get_usd_rate(request: Request):
-    await get_current_user(request)
-    now = datetime.now(timezone.utc).timestamp()
-    if _fx_cache["nok_per_usd"] and now - _fx_cache["fetched_at"] < _FX_TTL_SECONDS:
-        return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
+def _fx_payload(rate, as_of) -> dict:
+    return {"nok_per_usd": rate, "as_of": as_of}
 
-    rate = None
-    as_of = None
+
+async def fetch_usd_nok():
+    """Frankfurter, deretter Norges Bank. Feil blir (None, None), aldri et unntak ut."""
     try:
-        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-            response = await client.get(
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as fx_client:
+            response = await fx_client.get(
                 "https://api.frankfurter.dev/v1/latest",
                 params={"base": "USD", "symbols": "NOK"},
             )
             response.raise_for_status()
             payload = response.json()
-        rate = nok_per_usd(payload)
-        as_of = payload.get("date")
+        return nok_per_usd(payload), payload.get("date")
     except (httpx.HTTPError, TypeError, ValueError):
-        rate = None
+        pass
 
-    if rate is None:
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=True) as fx_client:
+            response = await fx_client.get(
+                "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP",
+                params={"lastNObservations": 1, "format": "csv"},
+            )
+            response.raise_for_status()
+        return nok_per_usd_from_norges_bank(response.text), None
+    except (httpx.HTTPError, TypeError, ValueError):
+        return None, None
+
+
+async def refresh_usd_rate() -> None:
+    async with _fx_lock:
         try:
-            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
-                response = await client.get(
-                    "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP",
-                    params={"lastNObservations": 1, "format": "csv"},
-                )
-                response.raise_for_status()
-            rate = nok_per_usd_from_norges_bank(response.text)
-            as_of = None
-        except (httpx.HTTPError, TypeError, ValueError):
-            rate = None
+            rate, as_of = await fetch_usd_nok()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception("Kunne ikke hente dollarkurs")
+            return
+        if rate is None:
+            return
+        try:
+            await db.fx_rates.update_one(
+                {"_id": _FX_DOC_ID},
+                {
+                    "$set": {
+                        "nok_per_usd": rate,
+                        "as_of": as_of,
+                        "fetched_at": datetime.now(timezone.utc),
+                    }
+                },
+                upsert=True,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception("Kunne ikke lagre dollarkurs")
+            return
+        _fx_memory["nok_per_usd"] = rate
+        _fx_memory["as_of"] = as_of
 
-    if rate is None:
-        if _fx_cache["nok_per_usd"]:
-            return {"nok_per_usd": _fx_cache["nok_per_usd"], "as_of": _fx_cache["as_of"]}
-        raise HTTPException(status_code=503, detail="Kunne ikke hente dollarkurs")
 
-    _fx_cache["nok_per_usd"] = rate
-    _fx_cache["as_of"] = as_of
-    _fx_cache["fetched_at"] = now
-    return {"nok_per_usd": rate, "as_of": as_of}
+async def fx_refresh_loop() -> None:
+    while True:
+        try:
+            await refresh_usd_rate()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception("Kunne ikke oppdatere dollarkurs")
+        await asyncio.sleep(_FX_REFRESH_SECONDS)
+
+
+def schedule_fx_refresh() -> None:
+    task = getattr(app.state, "fx_kick_task", None)
+    if task and not task.done():
+        return
+    app.state.fx_kick_task = asyncio.create_task(refresh_usd_rate())
+
+
+async def load_known_fx() -> Optional[dict]:
+    rate = _fx_memory.get("nok_per_usd")
+    if rate:
+        return _fx_payload(rate, _fx_memory.get("as_of"))
+    doc = await db.fx_rates.find_one(
+        {"_id": _FX_DOC_ID},
+        {"_id": 0, "nok_per_usd": 1, "as_of": 1},
+    )
+    if not doc or not doc.get("nok_per_usd"):
+        return None
+    _fx_memory["nok_per_usd"] = doc["nok_per_usd"]
+    _fx_memory["as_of"] = doc.get("as_of")
+    return _fx_payload(doc["nok_per_usd"], doc.get("as_of"))
+
+
+@api_router.get("/fx/usd")
+async def get_usd_rate(request: Request):
+    await get_current_user(request)
+    try:
+        known = await load_known_fx()
+    except Exception:
+        logging.exception("Kunne ikke lese lagret dollarkurs")
+        known = None
+    if known:
+        return known
+    schedule_fx_refresh()
+    return {"nok_per_usd": None, "as_of": None}
 
 
 @api_router.get("/bankroll")
@@ -953,18 +1034,25 @@ async def get_bankroll(request: Request):
     entries = list(settings.get("cash_entries") or [])
     if not any(entry.get("type") == "set" for entry in entries) and settings.get("starting_bankroll"):
         entries.insert(0, {"type": "set", "amount": settings["starting_bankroll"], "at": ""})
-    bets = await db.bets.find(
-        {"user_id": user_id},
-        {"_id": 0, "status": 1, "result": 1, "stake": 1},
-    ).to_list(10000)
-    return compute_cash_position(entries, settings.get("unit_size"), bets)
+    rows = await db.bets.aggregate(bet_cash_pipeline(user_id)).to_list(1)
+    row = rows[0] if rows else {}
+    return compute_cash_position(
+        entries,
+        settings.get("unit_size"),
+        bet_totals={
+            "bet_result": row.get("bet_result") or 0,
+            "pending_stake": row.get("pending_stake") or 0,
+        },
+    )
 
 # Bet Routes
 
 
-@api_router.get("/bets", response_model=List[Bet])
-async def get_bets(
-    request: Request,
+async def list_bets(
+    user_id: str,
+    *,
+    include_legs: bool = False,
+    limit: Optional[int] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     bookie: Optional[str] = None,
@@ -975,10 +1063,7 @@ async def get_bets(
     ticket_type: Optional[str] = None,
     odds_min: Optional[float] = None,
     odds_max: Optional[float] = None,
-    limit: Optional[int] = None,
-    include_legs: bool = False,
-):
-    user_id = await get_current_user(request)
+) -> list:
     filters = dict(
         date_from=date_from,
         date_to=date_to,
@@ -998,6 +1083,78 @@ async def get_bets(
         cursor = cursor.limit(limit)
     bets = await cursor.to_list(fetch_limit)
     return filter_bets(bets, **filters)
+
+
+async def list_recent_bets(user_id: str, limit: int = 10, include_legs: bool = False) -> list:
+    return await db.bets.find(
+        {"user_id": user_id},
+        bet_projection(include_legs),
+    ).sort([("date", -1), ("time", -1)]).limit(limit).to_list(limit)
+
+
+async def analytics_summary_for(user_id: str, days: Optional[str], filters: dict) -> dict:
+    option_filters = {
+        "date_from": filters.get("date_from"),
+        "date_to": filters.get("date_to"),
+    }
+    option_bets = await filtered_user_bets(user_id, **option_filters)
+    data_bets = filter_bets(
+        option_bets,
+        sport=filters.get("sport"),
+        bookie=filters.get("bookie"),
+        tipster=filters.get("tipster"),
+    )
+    try:
+        start_date, end_date = chart_date_bounds(
+            days=days,
+            date_from=filters.get("date_from"),
+            date_to=filters.get("date_to"),
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid days") from None
+    chart_bets = filter_bets(
+        option_bets,
+        date_from=start_date,
+        date_to=end_date,
+        sport=filters.get("sport"),
+        bookie=filters.get("bookie"),
+        tipster=filters.get("tipster"),
+    )
+    return build_analytics_summary(data_bets, option_bets, chart_bets)
+
+
+@api_router.get("/bets", response_model=List[Bet])
+async def get_bets(
+    request: Request,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    bookie: Optional[str] = None,
+    tipster: Optional[str] = None,
+    status: Optional[str] = None,
+    sport: Optional[str] = None,
+    league: Optional[str] = None,
+    ticket_type: Optional[str] = None,
+    odds_min: Optional[float] = None,
+    odds_max: Optional[float] = None,
+    limit: Optional[int] = None,
+    include_legs: bool = False,
+):
+    user_id = await get_current_user(request)
+    return await list_bets(
+        user_id,
+        include_legs=include_legs,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+        bookie=bookie,
+        tipster=tipster,
+        status=status,
+        sport=sport,
+        league=league,
+        ticket_type=ticket_type,
+        odds_min=odds_min,
+        odds_max=odds_max,
+    )
 
 
 @api_router.post("/bets", response_model=Bet)
@@ -1190,46 +1347,29 @@ async def get_analytics_summary(
     filters: dict = Depends(analytics_filters),
 ):
     user_id = await get_current_user(request)
-    option_filters = {
-        "date_from": filters.get("date_from"),
-        "date_to": filters.get("date_to"),
-    }
-    option_bets = await filtered_user_bets(user_id, **option_filters)
-    data_bets = filter_bets(
-        option_bets,
-        sport=filters.get("sport"),
-        bookie=filters.get("bookie"),
-        tipster=filters.get("tipster"),
+    return await analytics_summary_for(user_id, days, filters)
+
+
+@api_router.get("/dashboard")
+async def get_dashboard(
+    request: Request,
+    days: Optional[str] = None,
+    filters: dict = Depends(analytics_filters),
+):
+    """Samme vindu som oversikten: date_from/date_to (siste 30 dager fra klienten)."""
+    user_id = await get_current_user(request)
+    summary, recent, pending = await asyncio.gather(
+        analytics_summary_for(user_id, days, filters),
+        list_recent_bets(user_id, limit=8, include_legs=True),
+        list_bets(user_id, include_legs=True, status="pending"),
     )
-    try:
-        start_date, end_date = chart_date_bounds(
-            days=days,
-            date_from=filters.get("date_from"),
-            date_to=filters.get("date_to"),
-        )
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail="Invalid days") from None
-    chart_bets = filter_bets(
-        option_bets,
-        date_from=start_date,
-        date_to=end_date,
-        sport=filters.get("sport"),
-        bookie=filters.get("bookie"),
-        tipster=filters.get("tipster"),
-    )
-    return build_analytics_summary(data_bets, option_bets, chart_bets)
+    return {"summary": summary, "recent": recent, "pending": pending}
 
 
 @api_router.get("/bets/recent")
 async def get_recent_bets(request: Request, limit: int = 10, include_legs: bool = False):
     user_id = await get_current_user(request)
-
-    bets = await db.bets.find(
-        {"user_id": user_id},
-        bet_projection(include_legs),
-    ).sort([("date", -1), ("time", -1)]).limit(limit).to_list(limit)
-
-    return bets
+    return await list_recent_bets(user_id, limit=limit, include_legs=include_legs)
 
 
 @api_router.get("/bets/source-ids")
@@ -1621,6 +1761,10 @@ async def ensure_indexes():
     try:
         await db.bets.create_index([("user_id", 1), ("date", -1)], name="bets_user_date")
         await db.bets.create_index(
+            [("user_id", 1), ("date", -1), ("time", -1)],
+            name="bets_user_date_time",
+        )
+        await db.bets.create_index(
             [("user_id", 1), ("status", 1), ("date", -1)],
             name="bets_user_status_date",
         )
@@ -1642,21 +1786,23 @@ async def ensure_indexes():
         logging.exception("Could not ensure Mongo indexes")
 
 
-# Uvicorn åpner ikke porten før startup er ferdig. Med en treg eller utilgjengelig
-# Mongo ville hver create_index ventet på serverSelectionTimeout, og Render
-# kan gi opp vekkingen før /api/health rekker å svare.
-@app.on_event("startup")
 async def start_index_build():
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return
     app.state.index_task = asyncio.create_task(ensure_indexes())
 
 
-@app.on_event("shutdown")
+async def start_fx_refresh():
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    app.state.fx_task = asyncio.create_task(fx_refresh_loop())
+
+
 async def shutdown_db_client():
-    index_task = getattr(app.state, "index_task", None)
-    if index_task and not index_task.done():
-        index_task.cancel()
+    for name in ("index_task", "fx_task", "fx_kick_task"):
+        task = getattr(app.state, name, None)
+        if task and not task.done():
+            task.cancel()
     if not os.environ.get("PYTEST_CURRENT_TEST"):
         await sportsdb_http.aclose()
     client.close()

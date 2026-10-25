@@ -8,6 +8,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth, warmUpBackend } from '../contexts/AuthContext';
 import { MIN_PASSWORD_LENGTH, validateLogin, validateRegister } from '../lib/authForm';
+import { preloadDashboard } from '../lib/dashboardLoader';
 
 const LOGIN = 'login';
 const REGISTER = 'register';
@@ -52,18 +53,25 @@ function FormError({ message }) {
   );
 }
 
-function SubmitButton({ submitting, idle, busy, testId }) {
+function SubmitButton({ submitting, warming, idle, busy, testId }) {
   return (
-    <Button
-      data-testid={testId}
-      type="submit"
-      disabled={submitting}
-      aria-busy={submitting}
-      className="w-full h-11 bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all"
-    >
-      {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      {submitting ? busy : idle}
-    </Button>
+    <div className="space-y-3">
+      <Button
+        data-testid={testId}
+        type="submit"
+        disabled={submitting}
+        aria-busy={submitting}
+        className="w-full h-11 bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all"
+      >
+        {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {submitting ? busy : idle}
+      </Button>
+      {warming ? (
+        <p role="status" className="text-center text-sm text-text-secondary" data-testid="auth-warming">
+          Vekker serveren, første innlogging kan ta litt tid…
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -79,10 +87,21 @@ export default function Login() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [warming, setWarming] = useState(false);
 
   useEffect(() => {
     warmUpBackend();
+    preloadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (!submitting) {
+      setWarming(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setWarming(true), 3000);
+    return () => clearTimeout(timer);
+  }, [submitting]);
 
   if (user) {
     return <Navigate to={location.state?.from?.pathname || '/dashboard'} replace />;
@@ -186,7 +205,13 @@ export default function Login() {
                     />
                   </div>
                   <FormError message={mode === LOGIN ? error : ''} />
-                  <SubmitButton submitting={submitting} idle="Logg inn" busy="Logger inn..." testId="login-btn" />
+                  <SubmitButton
+                    submitting={submitting}
+                    warming={submitting && warming}
+                    idle="Logg inn"
+                    busy="Logger inn..."
+                    testId="login-btn"
+                  />
                 </form>
               </TabsContent>
 
@@ -241,6 +266,7 @@ export default function Login() {
                   <FormError message={mode === REGISTER ? error : ''} />
                   <SubmitButton
                     submitting={submitting}
+                    warming={submitting && warming}
                     idle="Opprett bruker"
                     busy="Oppretter bruker..."
                     testId="register-btn"

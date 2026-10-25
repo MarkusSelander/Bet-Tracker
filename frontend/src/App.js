@@ -6,13 +6,14 @@ import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider } from './contexts/AuthContext';
+import { loadDashboard } from './lib/dashboardLoader';
 import { queryClient } from './lib/queryClient';
 import Login from './pages/Login';
 
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const BetsPage = lazy(() => import('./pages/BetsPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Dashboard = lazy(loadDashboard);
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 

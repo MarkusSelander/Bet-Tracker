@@ -1,6 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authErrorMessage, networkErrorMessage } from '../lib/authForm';
-import { fetchAuth, fetchWithTimeout, getSessionToken, isAuthTimeoutError, setSessionToken } from '../lib/fetch';
+import {
+  AUTH_SUBMIT_TIMEOUT_MS,
+  fetchAuth,
+  fetchWithTimeout,
+  getSessionToken,
+  isAuthTimeoutError,
+  setSessionToken,
+} from '../lib/fetch';
+import { prefetchDashboard } from '../lib/queries';
 import { queryClient } from '../lib/queryClient';
 import { sessionCheckPlan } from '../lib/sessionCheck';
 
@@ -96,12 +104,16 @@ export const AuthProvider = ({ children }) => {
 
     let response;
     try {
-      response = await fetchAuth(`${BACKEND_URL}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+      response = await fetchAuth(
+        `${BACKEND_URL}${path}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        },
+        AUTH_SUBMIT_TIMEOUT_MS
+      );
     } catch (error) {
       throw new Error(networkErrorMessage(error));
     }
@@ -126,6 +138,7 @@ export const AuthProvider = ({ children }) => {
     if (sessionToken) setSessionToken(sessionToken);
     queryClient.clear();
     setUser(userData);
+    prefetchDashboard().catch(() => {});
     return userData;
   }, []);
 
