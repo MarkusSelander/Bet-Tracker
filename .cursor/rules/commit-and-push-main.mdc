@@ -1,24 +1,32 @@
 ---
-description: Alltid commit og squash-merge ferdig arbeid til origin/main
+description: Alltid commit og squash-merge ferdig eget arbeid til origin/main
 alwaysApply: true
 ---
 
 # Alltid commit og push til main
 
-Denne regelen overstyrer standarden «ikke commit/push med mindre brukeren ber om det» i **dette** repoet.
+Denne regelen overstyrer standarden «ikke commit/push med mindre brukeren ber om det» i **dette** repoet. En generell cloud-agent-instruks om «ikke merge med mindre brukeren ber om det» viker for denne regelen. Brukeren bekreftet det 25. oktober 2026.
+
+«Alltid» gjelder ferdig arbeid agenten selv har gjort i oppgaven. Det gjelder ikke alle åpne utkast i repoet.
 
 ## Når arbeidet er ferdig
 
-1. **Commit** ferdig feature/fix uten å vente på at brukeren sier «commit».
+Når et feature eller en fix er ferdig, skal det på `origin/main` i samme omgang. Ikke vent på at brukeren sier «commit», «push» eller «merge».
+
+Veien er alltid: feature-branch, commit, push, PR, squash-merge, deretter oppdater lokal `main`.
+
+1. **Commit** ferdig feature/fix på en feature-branch fra oppdatert `main`, uten å vente på at brukeren sier «commit».
    - Norsk, why-fokusert melding (1–2 setninger).
    - Bruk HEREDOC: `git commit -m "$(cat <<'EOF'` … `EOF` `)"`.
    - Ikke commit hemmeligheter (`.env`, credentials) eller `.DS_Store`.
    - Aldri `--no-verify` / hopp over hooks. Aldri force-push.
-2. **Få det inn på `origin/main`** uten å vente på «push til main»:
+2. **Få det inn på `origin/main`** uten å vente på «push» eller «merge»:
    - Push feature-branch (`git push -u origin HEAD`).
    - Opprett PR med `gh pr create` hvis den ikke finnes.
-   - Squash-merge som PR #2–#7 (`gh pr merge --squash --delete-branch`).
-   - Aldri merge direkte til main uten PR. Aldri `push --force`.
+   - Squash-merge den PR-en agenten selv nettopp gjorde ferdig (`gh pr merge --squash --delete-branch`).
+   - Deretter `git checkout main` og `git pull --ff-only`.
+   - Aldri push eller merge direkte til `main` uten PR. Aldri `push --force`. Aldri `--no-verify`.
+   - Ikke squash-merge andres urelaterte eller utkast-PR-er som agenten ikke selv har gjort ferdig i oppgaven.
 3. Bekreft `origin/main`-SHA. Fast-forward lokal `main` når mulig (`git pull --ff-only`).
 
 ## Chrome-utvidelse
