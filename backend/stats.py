@@ -314,10 +314,61 @@ def parse_bankroll_amount(value: Any) -> float:
     return round(number, 2)
 
 
+def _cash_number(value: Any) -> float:
+    """$convert to double with onError/onNull 0. NaN teller som 0."""
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if number != number:
+        return 0.0
+    return number
+
+
+def sum_bet_cash(bets: Optional[List[Dict[str, Any]]] = None) -> Dict[str, float]:
+    """Summer som bet_cash_pipeline: oppgjort result, åpen stake.
+
+    Ugyldige tall blir 0. Summen avrundes én gang senere, ikke etter hvert spill.
+    Beløp som allerede er i øre gir samme kontantposisjon som den gamle løkken.
+    """
+    bet_result = 0.0
+    pending_stake = 0.0
+    for bet in bets or []:
+        status = bet.get("status")
+        if status in SETTLED_STATUSES:
+            bet_result += _cash_number(bet.get("result"))
+        elif status == "pending":
+            pending_stake += _cash_number(bet.get("stake"))
+    return {"bet_result": bet_result, "pending_stake": pending_stake}
+
+
+def _mongo_double(field: str) -> Dict[str, Any]:
+    return {"$convert": {"input": f"${field}", "to": "double", "onError": 0, "onNull": 0}}
+
+
+def bet_cash_pipeline(user_id: str) -> List[Dict[str, Any]]:
+    settled = sorted(SETTLED_STATUSES)
+    return [
+        {"$match": {"user_id": user_id}},
+        {
+            "$group": {
+                "_id": None,
+                "bet_result": {
+                    "$sum": {"$cond": [{"$in": ["$status", settled]}, _mongo_double("result"), 0]}
+                },
+                "pending_stake": {
+                    "$sum": {"$cond": [{"$eq": ["$status", "pending"]}, _mongo_double("stake"), 0]}
+                },
+            }
+        },
+    ]
+
+
 def compute_cash_position(
     entries: List[Dict[str, Any]],
     unit_size: Any = None,
     bets: Optional[List[Dict[str, Any]]] = None,
+    bet_totals: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Opening balance plus deposits, withdrawals and bet results."""
     ordered = sorted(entries or [], key=lambda entry: entry.get("at") or "")
@@ -355,12 +406,19 @@ def compute_cash_position(
     bet_result = 0.0
     pending_stake = 0.0
     if balance is not None:
-        for bet in bets or []:
-            status = bet.get("status")
-            if status in SETTLED_STATUSES:
-                bet_result = round(bet_result + float(bet.get("result") or 0), 2)
-            elif status == "pending":
-                pending_stake = round(pending_stake + float(bet.get("stake") or 0), 2)
+        if bet_totals is not None:
+            # Én avrunding av aggregatet. Løkken under avrunder etter hvert spill;
+            # for beløp i øre blir tallet det samme. Mer enn to desimaler kan
+            # avvike med ett øre, og den kanten beholdes i aggregatet.
+            bet_result = round(_cash_number(bet_totals.get("bet_result")), 2)
+            pending_stake = round(_cash_number(bet_totals.get("pending_stake")), 2)
+        else:
+            for bet in bets or []:
+                status = bet.get("status")
+                if status in SETTLED_STATUSES:
+                    bet_result = round(bet_result + float(bet.get("result") or 0), 2)
+                elif status == "pending":
+                    pending_stake = round(pending_stake + float(bet.get("stake") or 0), 2)
         balance = round(balance + bet_result - pending_stake, 2)
 
     unit = None

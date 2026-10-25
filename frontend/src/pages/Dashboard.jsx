@@ -21,9 +21,9 @@ import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { getMatchSummary, getSelectionSummary } from '../lib/betsDisplay';
 import { missingComboLegs } from '../lib/betTicket';
-import { analyticsPath, betsPath, toAnalyticsApiSearch } from '../lib/filters';
+import { analyticsPath, betsPath } from '../lib/filters';
 import { STATUS_LABELS, formatAxisAmount, formatCurrency, statusClass } from '../lib/format';
-import { useAnalyticsSummary, useBet, usePendingBets, useRecentBets } from '../lib/queries';
+import { useBet, useDashboard } from '../lib/queries';
 
 const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 
@@ -49,10 +49,10 @@ export default function Dashboard() {
   const { user } = useOutletContext();
   const [detailBet, setDetailBet] = useState(null);
   const currency = user?.currency || 'NOK';
-  const dashboardSearch = toAnalyticsApiSearch({ period: '30' });
-  const { data: summary, isPending: summaryPending, isError: summaryError } = useAnalyticsSummary(dashboardSearch);
-  const { data: recentBets = [] } = useRecentBets(8);
-  const { data: pendingBets = [] } = usePendingBets();
+  const { data: dashboard, isPending: dashboardPending, isError: dashboardError } = useDashboard();
+  const summary = dashboard?.summary;
+  const recentBets = dashboard?.recent ?? [];
+  const pendingBets = dashboard?.pending ?? [];
   const needsFullBet = Boolean(detailBet) && missingComboLegs(detailBet);
   const { data: fullDetailBet } = useBet(detailBet?.bet_id, { enabled: needsFullBet });
   const dialogBet = fullDetailBet || detailBet;
@@ -61,10 +61,10 @@ export default function Dashboard() {
   const chartExtremes = latestExtremeDates(chartData, 'cumulative_pl');
 
   useEffect(() => {
-    if (summaryError && !summary) toast.error('Kunne ikke laste oversikt');
-  }, [summaryError, summary]);
+    if (dashboardError && !summary) toast.error('Kunne ikke laste oversikt');
+  }, [dashboardError, summary]);
 
-  if (summaryPending && !summary) {
+  if (dashboardPending && !dashboard) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (

@@ -1,5 +1,8 @@
 const AUTH_TIMEOUT_MS = 10000;
-const AUTH_ATTEMPTS = 2;
+// Innlogging og registrering venter på at API-et skal våkne. Ett langt forsøk,
+// ikke flere korte som avbryter et kall som holder på å starte serveren.
+const AUTH_SUBMIT_TIMEOUT_MS = 60000;
+const AUTH_ATTEMPTS = 1;
 const TIMEOUT_MESSAGE = 'Forespørselen tok for lang tid';
 const SESSION_TOKEN_KEY = 'bet_tracker_session_token';
 
@@ -62,22 +65,23 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = AUTH_TIMEOUT_MS) 
   }
 }
 
-// Ett ekstra forsøk når API-prosessen fortsatt våkner. Vanlige kall beholder
-// samme tidsfrist, så en hengende spørring ikke får et lengre vindu.
-async function fetchAuth(url, options = {}, timeoutMs = AUTH_TIMEOUT_MS) {
+async function fetchAuth(url, options = {}, timeoutMs = AUTH_SUBMIT_TIMEOUT_MS) {
+  let lastError;
   for (let attempt = 1; attempt <= AUTH_ATTEMPTS; attempt += 1) {
     try {
       return await fetchWithTimeout(url, options, timeoutMs);
     } catch (error) {
+      lastError = error;
       const canRetry = isAuthTimeoutError(error) && !options.signal?.aborted && attempt < AUTH_ATTEMPTS;
       if (!canRetry) throw error;
     }
   }
-  throw new Error(TIMEOUT_MESSAGE);
+  throw lastError || new Error(TIMEOUT_MESSAGE);
 }
 
 export {
   AUTH_ATTEMPTS,
+  AUTH_SUBMIT_TIMEOUT_MS,
   AUTH_TIMEOUT_MS,
   SESSION_TOKEN_KEY,
   TIMEOUT_MESSAGE,

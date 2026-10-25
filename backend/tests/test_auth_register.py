@@ -41,6 +41,7 @@ def test_register_creates_hashed_user_and_session():
     stored = users.insert_one.await_args.args[0]
     assert stored["email"] == "ola@example.com"
     assert stored["password_hash"] != "sterkt-passord"
+    assert stored["password_hash"].startswith("$2b$12$")
     assert verify_password("sterkt-passord", stored["password_hash"])
     assert sessions.insert_one.await_args.args[0]["user_id"] == stored["user_id"]
 
