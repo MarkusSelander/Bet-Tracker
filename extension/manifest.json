@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Bet Tracker Coolbet Sync",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Synkroniserer Coolbet-spillhistorikk til Bet Tracker.",
-  "permissions": ["storage", "alarms", "scripting", "tabs", "webRequest"],
+  "permissions": ["storage", "alarms", "identity", "scripting", "tabs", "webRequest"],
   "host_permissions": [
     "https://www.coolbet.com/*",
     "http://localhost/*",

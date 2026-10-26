@@ -21,6 +21,7 @@ const {
   coolbetSessionKey,
   isCoolbetLoginRequest,
   loginPayload,
+  loginUrl,
   mergeTicketDetails,
   needsTicketDetails,
   resolveLastSyncAt,
@@ -141,6 +142,10 @@ test("import url strips trailing slash", () => {
 
 test("auth headers use bearer token", () => {
   assert.equal(authHeaders("session_abc").Authorization, "Bearer session_abc");
+});
+
+test("login url posts the Firebase token to Google auth", () => {
+  assert.equal(loginUrl("https://api.example.com/"), "https://api.example.com/api/auth/google");
 });
 
 test("login payload keeps user fields and session token", () => {

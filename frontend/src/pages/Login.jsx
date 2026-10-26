@@ -1,42 +1,34 @@
-import { AlertCircle, Eye, EyeOff, Loader2, TrendingUp } from 'lucide-react';
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { AlertCircle, Loader2, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useAuth, warmUpBackend } from '../contexts/AuthContext';
-import { MIN_PASSWORD_LENGTH, validateLogin, validateRegister } from '../lib/authForm';
+import { googleAuthError } from '../lib/authForm';
 import { preloadDashboard } from '../lib/dashboardLoader';
+import { getFirebaseAuth, isFirebaseReady } from '../lib/firebase';
 
-const LOGIN = 'login';
-const REGISTER = 'register';
-const FIELD_CLASS = 'h-11 bg-black/20 border-white/10';
-
-function PasswordInput({ id, value, onChange, autoComplete, placeholder }) {
-  const [visible, setVisible] = useState(false);
+function GoogleMark() {
   return (
-    <div className="relative">
-      <Input
-        id={id}
-        type={visible ? 'text' : 'password'}
-        autoComplete={autoComplete}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        className={`${FIELD_CLASS} pr-11`}
+    <svg viewBox="0 0 18 18" aria-hidden="true" className="h-4 w-4">
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
       />
-      <button
-        type="button"
-        onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? 'Skjul passord' : 'Vis passord'}
-        aria-pressed={visible}
-        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-text-muted hover:text-text-primary focus-visible:outline-none focus-visible:text-text-primary"
-      >
-        {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-      </button>
-    </div>
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z"
+      />
+    </svg>
   );
 }
 
@@ -53,39 +45,12 @@ function FormError({ message }) {
   );
 }
 
-function SubmitButton({ submitting, warming, idle, busy, testId }) {
-  return (
-    <div className="space-y-3">
-      <Button
-        data-testid={testId}
-        type="submit"
-        disabled={submitting}
-        aria-busy={submitting}
-        className="w-full h-11 bg-primary hover:bg-primary/90 text-black font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] transition-all"
-      >
-        {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        {submitting ? busy : idle}
-      </Button>
-      {warming ? (
-        <p role="status" className="text-center text-sm text-text-secondary" data-testid="auth-warming">
-          Vekker serveren, første innlogging kan ta litt tid…
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, login, register } = useAuth();
-  const mode = location.pathname === '/register' ? REGISTER : LOGIN;
-
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [error, setError] = useState('');
+  const { user, loginWithGoogle } = useAuth();
+  const configured = isFirebaseReady();
+  const [error, setError] = useState(configured ? '' : 'Firebase er ikke satt opp i dette bygget.');
   const [submitting, setSubmitting] = useState(false);
   const [warming, setWarming] = useState(false);
 
@@ -94,57 +59,42 @@ export default function Login() {
     preloadDashboard();
   }, []);
 
-  useEffect(() => {
-    if (!submitting) {
-      setWarming(false);
-      return undefined;
-    }
-    const timer = setTimeout(() => setWarming(true), 3000);
-    return () => clearTimeout(timer);
-  }, [submitting]);
-
   if (user) {
     return <Navigate to={location.state?.from?.pathname || '/dashboard'} replace />;
   }
 
-  const edit = (setter) => (e) => {
-    setter(e.target.value);
-    if (error) setError('');
-  };
-
-  const switchMode = (next) => {
-    if (next === mode) return;
-    setError('');
-    setPassword('');
-    setConfirm('');
-    navigate(next === REGISTER ? '/register' : '/login', { replace: true, state: location.state });
-  };
-
-  const submit = async (e) => {
-    e.preventDefault();
+  const signIn = async () => {
     if (submitting) return;
-
-    const validationError =
-      mode === REGISTER ? validateRegister({ name, email, password, confirm }) : validateLogin({ email, password });
-    if (validationError) {
-      setError(validationError);
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      setError('Firebase er ikke satt opp i dette bygget.');
       return;
     }
 
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
     setError('');
     setSubmitting(true);
+    const warmingTimer = setTimeout(() => setWarming(true), 3000);
     try {
-      if (mode === REGISTER) {
-        await register({ name, email, password });
-        toast.success('Bruker opprettet');
-      } else {
-        await login(email, password);
-        toast.success('Innlogget');
-      }
+      const result = await signInWithPopup(auth, provider);
+      clearTimeout(warmingTimer);
+      await loginWithGoogle(result.user, { force: true });
+      toast.success('Innlogget');
       navigate(location.state?.from?.pathname || '/dashboard', { replace: true });
     } catch (err) {
-      setError(err.message || 'Noe gikk galt. Prøv igjen.');
-    } finally {
+      if (err?.code === 'auth/popup-blocked') {
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectError) {
+          setError(googleAuthError(redirectError));
+        }
+      } else {
+        setError(err?.code ? googleAuthError(err) : err.message || 'Noe gikk galt. Prøv igjen.');
+      }
+      clearTimeout(warmingTimer);
+      setWarming(false);
       setSubmitting(false);
     }
   };
@@ -165,126 +115,27 @@ export default function Login() {
             </div>
 
             <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
-            <p className="text-text-secondary text-center mb-6">
-              {mode === REGISTER ? 'Opprett en konto for å komme i gang' : 'Hold oversikt over spill og resultat'}
-            </p>
+            <p className="text-text-secondary text-center mb-6">Hold oversikt over spill og resultat</p>
 
-            <Tabs value={mode} onValueChange={switchMode}>
-              <TabsList className="grid w-full grid-cols-2 h-11 bg-white/5 mb-6">
-                <TabsTrigger value={LOGIN} className="h-9 data-[state=active]:bg-white/10">
-                  Logg inn
-                </TabsTrigger>
-                <TabsTrigger value={REGISTER} className="h-9 data-[state=active]:bg-white/10">
-                  Registrer bruker
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value={LOGIN} className="mt-0">
-                <form onSubmit={submit} noValidate className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">E-post</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      placeholder="din@epost.no"
-                      value={email}
-                      onChange={edit(setEmail)}
-                      className={FIELD_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Passord</Label>
-                    <PasswordInput
-                      id="login-password"
-                      autoComplete="current-password"
-                      placeholder="Passord"
-                      value={password}
-                      onChange={edit(setPassword)}
-                    />
-                  </div>
-                  <FormError message={mode === LOGIN ? error : ''} />
-                  <SubmitButton
-                    submitting={submitting}
-                    warming={submitting && warming}
-                    idle="Logg inn"
-                    busy="Logger inn..."
-                    testId="login-btn"
-                  />
-                </form>
-              </TabsContent>
-
-              <TabsContent value={REGISTER} className="mt-0">
-                <form onSubmit={submit} noValidate className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="register-name">
-                      Navn <span className="text-text-muted font-normal">(valgfritt)</span>
-                    </Label>
-                    <Input
-                      id="register-name"
-                      autoComplete="name"
-                      placeholder="Ola Nordmann"
-                      value={name}
-                      onChange={edit(setName)}
-                      className={FIELD_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-email">E-post</Label>
-                    <Input
-                      id="register-email"
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      placeholder="din@epost.no"
-                      value={email}
-                      onChange={edit(setEmail)}
-                      className={FIELD_CLASS}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password">Passord</Label>
-                    <PasswordInput
-                      id="register-password"
-                      autoComplete="new-password"
-                      placeholder={`Minst ${MIN_PASSWORD_LENGTH} tegn`}
-                      value={password}
-                      onChange={edit(setPassword)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="register-confirm">Bekreft passord</Label>
-                    <PasswordInput
-                      id="register-confirm"
-                      autoComplete="new-password"
-                      placeholder="Skriv passordet på nytt"
-                      value={confirm}
-                      onChange={edit(setConfirm)}
-                    />
-                  </div>
-                  <FormError message={mode === REGISTER ? error : ''} />
-                  <SubmitButton
-                    submitting={submitting}
-                    warming={submitting && warming}
-                    idle="Opprett bruker"
-                    busy="Oppretter bruker..."
-                    testId="register-btn"
-                  />
-                </form>
-              </TabsContent>
-            </Tabs>
-
-            <p className="text-sm text-text-muted text-center mt-6">
-              {mode === REGISTER ? 'Har du allerede en konto? ' : 'Ny her? '}
-              <button
+            <div className="space-y-4">
+              <Button
+                data-testid="google-login-btn"
                 type="button"
-                onClick={() => switchMode(mode === REGISTER ? LOGIN : REGISTER)}
-                className="text-primary hover:underline font-medium"
+                onClick={signIn}
+                disabled={submitting || !configured}
+                aria-busy={submitting}
+                className="h-11 w-full bg-white font-semibold text-black hover:bg-white/90"
               >
-                {mode === REGISTER ? 'Logg inn' : 'Registrer bruker'}
-              </button>
-            </p>
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleMark />}
+                {submitting ? 'Logger inn...' : 'Fortsett med Google'}
+              </Button>
+              <FormError message={error} />
+              {warming ? (
+                <p role="status" className="text-center text-sm text-text-secondary" data-testid="auth-warming">
+                  Vekker serveren, første innlogging kan ta litt tid…
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       </main>

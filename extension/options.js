@@ -1,10 +1,12 @@
 const apiUrlEl = document.getElementById("api-url");
-const emailEl = document.getElementById("email");
-const passwordEl = document.getElementById("password");
+const clientIdEl = document.getElementById("google-client-id");
+const firebaseKeyEl = document.getElementById("firebase-api-key");
+const authDomainEl = document.getElementById("firebase-auth-domain");
 const tokenEl = document.getElementById("token");
 const autoHistoryEl = document.getElementById("auto-history");
 const autoAlarmEl = document.getElementById("auto-alarm");
 const messageEl = document.getElementById("message");
+const defaults = globalThis.BET_TRACKER_AUTH || {};
 
 function showMessage(text, ok) {
   messageEl.hidden = false;
@@ -12,17 +14,25 @@ function showMessage(text, ok) {
   messageEl.className = `message ${ok ? "ok" : "error"}`;
 }
 
+function configuredValue(stored, key) {
+  return stored[key] || defaults[key] || "";
+}
+
 async function load() {
   const state = await chrome.storage.local.get([
     "apiUrl",
     "sessionToken",
-    "email",
+    "googleClientId",
+    "firebaseApiKey",
+    "firebaseAuthDomain",
     "autoOnHistory",
     "autoOnLogin",
     "autoAlarm",
   ]);
   apiUrlEl.value = state.apiUrl || "";
-  emailEl.value = state.email || "";
+  clientIdEl.value = configuredValue(state, "googleClientId");
+  firebaseKeyEl.value = configuredValue(state, "firebaseApiKey");
+  authDomainEl.value = configuredValue(state, "firebaseAuthDomain");
   tokenEl.value = state.sessionToken || "";
   autoHistoryEl.checked = state.autoOnHistory !== false;
   document.getElementById("auto-login").checked = state.autoOnLogin !== false;
@@ -32,7 +42,9 @@ async function load() {
 async function saveExtras() {
   await chrome.storage.local.set({
     apiUrl: apiUrlEl.value.trim().replace(/\/$/, ""),
-    email: emailEl.value.trim(),
+    googleClientId: clientIdEl.value.trim(),
+    firebaseApiKey: firebaseKeyEl.value.trim(),
+    firebaseAuthDomain: authDomainEl.value.trim(),
     autoOnHistory: autoHistoryEl.checked,
     autoOnLogin: document.getElementById("auto-login").checked,
     autoAlarm: autoAlarmEl.checked,
@@ -53,20 +65,50 @@ document.getElementById("save").addEventListener("click", async () => {
 
 document.getElementById("login").addEventListener("click", async () => {
   const apiUrl = apiUrlEl.value.trim().replace(/\/$/, "");
-  const email = emailEl.value.trim();
-  const password = passwordEl.value;
-  if (!apiUrl || !email || !password) {
-    showMessage("Fyll inn backend-URL, e-post og passord.", false);
+  const clientId = clientIdEl.value.trim();
+  const firebaseApiKey = firebaseKeyEl.value.trim();
+  const authDomain = authDomainEl.value.trim();
+  if (!apiUrl || !clientId || !firebaseApiKey) {
+    showMessage("Fyll inn backend-URL, Google-klient-ID og Firebase API-nøkkel.", false);
+    return;
+  }
+  if (!chrome.identity?.launchWebAuthFlow || !chrome.identity.getRedirectURL) {
+    showMessage("Denne Chrome-versjonen kan ikke åpne Google-innlogging.", false);
     return;
   }
 
   try {
     await saveExtras();
+    const redirectUri = chrome.identity.getRedirectURL();
+    const verifier = GoogleAuth.randomVerifier();
+    const challenge = await GoogleAuth.codeChallenge(verifier);
+    const nonce = GoogleAuth.randomVerifier();
+    const url = GoogleAuth.googleAuthorizeUrl({ clientId, redirectUri, challenge, nonce });
+    const redirected = await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow({ url, interactive: true }, (responseUrl) => {
+        const err = chrome.runtime.lastError;
+        if (err) reject(new Error(err.message));
+        else resolve(responseUrl);
+      });
+    });
+    if (!redirected) throw new Error("Innloggingen ble avbrutt.");
+    const code = GoogleAuth.authorizationCodeFromRedirect(redirected);
+    const firebaseData = await GoogleAuth.exchangeGoogleCode({
+      clientId,
+      firebaseApiKey,
+      authDomain,
+      redirectUri,
+      code,
+      verifier,
+    });
     const response = await fetch(CoolbetHistory.loginUrl(apiUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "omit",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({
+        id_token: firebaseData.idToken,
+        name: firebaseData.displayName || "",
+      }),
     });
     if (!response.ok) {
       throw new Error(`Innlogging feilet (${response.status})`);
@@ -76,16 +118,17 @@ document.getElementById("login").addEventListener("click", async () => {
       throw new Error("Svaret manglet session_token. Oppdater backend og prøv igjen.");
     }
     tokenEl.value = data.session_token;
-    passwordEl.value = "";
     const lastSyncAt = CoolbetHistory.resolveLastSyncAt(data);
     await chrome.storage.local.set({
       apiUrl,
-      email,
+      googleClientId: clientId,
+      firebaseApiKey,
+      firebaseAuthDomain: authDomain,
       sessionToken: data.session_token,
       lastError: "",
       ...(lastSyncAt ? { lastSyncAt, lastStatus: "ok" } : {}),
     });
-    showMessage("Innlogget. Token er lagret lokalt i utvidelsen.", true);
+    showMessage("Innlogget med Google. Token er lagret lokalt i utvidelsen.", true);
   } catch (err) {
     showMessage(String(err.message || err), false);
   }
