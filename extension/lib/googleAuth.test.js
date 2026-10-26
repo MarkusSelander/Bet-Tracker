@@ -59,6 +59,17 @@ test("token and firebase bodies keep the Google credential", () => {
   );
   assert.equal(body.get("grant_type"), "authorization_code");
   assert.equal(body.get("code_verifier"), "verifier");
+  assert.equal(body.get("client_secret"), null);
+  const withSecret = new URLSearchParams(
+    tokenRequestBody({
+      clientId: "client",
+      clientSecret: "secret",
+      code: "code",
+      redirectUri: "https://abc.chromiumapp.org/",
+      verifier: "verifier",
+    })
+  );
+  assert.equal(withSecret.get("client_secret"), "secret");
   assert.equal(
     firebaseSignInBody({ idToken: "a b", requestUri: "https://app.firebaseapp.com" }).postBody,
     "id_token=a%20b&providerId=google.com"

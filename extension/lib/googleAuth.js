@@ -48,14 +48,16 @@
     throw new Error("Google returnerte ingen innloggingskode.");
   }
 
-  function tokenRequestBody({ clientId, code, redirectUri, verifier }) {
-    return new URLSearchParams({
+  function tokenRequestBody({ clientId, clientSecret, code, redirectUri, verifier }) {
+    const params = new URLSearchParams({
       client_id: clientId,
       code,
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
       code_verifier: verifier,
-    }).toString();
+    });
+    if (clientSecret) params.set("client_secret", clientSecret);
+    return params.toString();
   }
 
   function firebaseSignInBody({ idToken, accessToken, requestUri }) {
@@ -107,6 +109,7 @@
 
   async function exchangeGoogleCode({
     clientId,
+    clientSecret,
     firebaseApiKey,
     authDomain,
     redirectUri,
@@ -118,7 +121,7 @@
     const tokenResponse = await fetchFn("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: tokenRequestBody({ clientId, code, redirectUri, verifier }),
+      body: tokenRequestBody({ clientId, clientSecret, code, redirectUri, verifier }),
     });
     const tokenData = await tokenResponse.json().catch(() => ({}));
     if (!tokenResponse.ok || (!tokenData.id_token && !tokenData.access_token)) {

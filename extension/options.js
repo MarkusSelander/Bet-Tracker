@@ -1,5 +1,7 @@
 const apiUrlEl = document.getElementById("api-url");
 const clientIdEl = document.getElementById("google-client-id");
+const clientSecretEl = document.getElementById("google-client-secret");
+const RETIRED_CLIENT_ID = "680779615178-1hjlo3l0cfc7b83rg1h65t1ir58123p3.apps.googleusercontent.com";
 const firebaseKeyEl = document.getElementById("firebase-api-key");
 const authDomainEl = document.getElementById("firebase-auth-domain");
 const tokenEl = document.getElementById("token");
@@ -23,6 +25,7 @@ async function load() {
     "apiUrl",
     "sessionToken",
     "googleClientId",
+    "googleClientSecret",
     "firebaseApiKey",
     "firebaseAuthDomain",
     "autoOnHistory",
@@ -30,7 +33,10 @@ async function load() {
     "autoAlarm",
   ]);
   apiUrlEl.value = state.apiUrl || "";
-  clientIdEl.value = configuredValue(state, "googleClientId");
+  const savedClientId = state.googleClientId || "";
+  clientIdEl.value =
+    savedClientId && savedClientId !== RETIRED_CLIENT_ID ? savedClientId : configuredValue({}, "googleClientId");
+  clientSecretEl.value = state.googleClientSecret || "";
   firebaseKeyEl.value = configuredValue(state, "firebaseApiKey");
   authDomainEl.value = configuredValue(state, "firebaseAuthDomain");
   tokenEl.value = state.sessionToken || "";
@@ -89,6 +95,7 @@ async function saveExtras() {
   await chrome.storage.local.set({
     apiUrl: apiUrlEl.value.trim().replace(/\/$/, ""),
     googleClientId: clientIdEl.value.trim(),
+    googleClientSecret: clientSecretEl.value.trim(),
     firebaseApiKey: firebaseKeyEl.value.trim(),
     firebaseAuthDomain: authDomainEl.value.trim(),
     autoOnHistory: autoHistoryEl.checked,
@@ -112,10 +119,11 @@ document.getElementById("save").addEventListener("click", async () => {
 document.getElementById("login").addEventListener("click", () => {
   const apiUrl = apiUrlEl.value.trim().replace(/\/$/, "");
   const clientId = clientIdEl.value.trim();
+  const clientSecret = clientSecretEl.value.trim();
   const firebaseApiKey = firebaseKeyEl.value.trim();
   const authDomain = authDomainEl.value.trim();
-  if (!apiUrl || !clientId || !firebaseApiKey) {
-    showMessage("Fyll inn backend-URL, Google-klient-ID og Firebase API-nøkkel.", false);
+  if (!apiUrl || !clientId || !clientSecret || !firebaseApiKey) {
+    showMessage("Fyll inn backend-URL, Google-klient-ID, klient-hemmelighet og Firebase API-nøkkel.", false);
     return;
   }
   if (!chrome.identity?.launchWebAuthFlow || !chrome.identity.getRedirectURL) {
@@ -134,19 +142,20 @@ document.getElementById("login").addEventListener("click", () => {
   // Chrome viser bare vinduet når kallet skjer i selve klikket, før noe await.
   const authPromise = launchGooglePopup(clientId);
 
-  finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, authPromise })
+  finishGoogleLogin({ apiUrl, clientId, clientSecret, firebaseApiKey, authDomain, authPromise })
     .catch((err) => showMessage(String(err.message || err), false))
     .finally(() => {
       loginButton.disabled = false;
     });
 });
 
-async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, authPromise }) {
+async function finishGoogleLogin({ apiUrl, clientId, clientSecret, firebaseApiKey, authDomain, authPromise }) {
   try {
     await saveExtras();
     const { redirectUri, code, verifier } = await authPromise;
     const firebaseData = await GoogleAuth.exchangeGoogleCode({
       clientId,
+      clientSecret,
       firebaseApiKey,
       authDomain,
       redirectUri,
@@ -174,6 +183,7 @@ async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain,
     await chrome.storage.local.set({
       apiUrl,
       googleClientId: clientId,
+      googleClientSecret: clientSecret,
       firebaseApiKey,
       firebaseAuthDomain: authDomain,
       sessionToken: data.session_token,
