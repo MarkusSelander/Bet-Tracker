@@ -12,7 +12,7 @@ Utvidelsen kjører i **din** Chrome-økt. Den kan ikke kjøre på Vercel.
 4. Velg mappen `extension/` i dette repoet
 5. Klikk utvidelsesikonet → **Innstillinger**
 6. Lim inn Bet Tracker **backend-URL** (ikke Vercel-frontenden), f.eks. `https://api.ditt-domene.com` eller `http://localhost:8000`
-7. Logg inn med samme e-post/passord som i appen, eller lim inn et `session_`-token
+7. Logg inn med Google (samme konto som på nettsiden), eller lim inn et `session_`-token fra Innstillinger
 8. Vær innlogget på [coolbet.com](https://www.coolbet.com) i Chrome. En ny innlogging starter synk av seg selv
 9. Trykk **Synk nå**, eller åpne Coolbet bet-history, hvis du vil synke uten å logge inn på nytt
 
@@ -24,7 +24,7 @@ Utvidelsen kjører i **din** Chrome-økt. Den kan ikke kjøre på Vercel.
 
 ## CORS / auth
 
-Utvidelsen bruker **ikke** session-cookie fra Vercel. Den logger inn mot `/api/auth/login` og lagrer `session_token` i `chrome.storage.local`.
+Utvidelsen bruker **ikke** session-cookie fra Vercel. Den veksler et Firebase-token fra Google mot `/api/auth/google` og lagrer `session_token` i `chrome.storage.local`.
 
 Backend tillater `chrome-extension://` + 32 bokstaver via `allow_origin_regex` (se `backend/coolbet_sync.py`). Du trenger ikke å legge utvidelses-ID i `CORS_ORIGINS`. `CORS_ORIGINS` skal fortsatt inneholde Vercel-frontenden.
 

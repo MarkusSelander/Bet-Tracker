@@ -1,3 +1,4 @@
+import { getRedirectResult, onAuthStateChanged, signOut } from 'firebase/auth';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { authErrorMessage, networkErrorMessage } from '../lib/authForm';
 import {
@@ -8,17 +9,45 @@ import {
   isAuthTimeoutError,
   setSessionToken,
 } from '../lib/fetch';
+import { getFirebaseAuth, isFirebaseReady } from '../lib/firebase';
 import { prefetchDashboard } from '../lib/queries';
 import { queryClient } from '../lib/queryClient';
-import { sessionCheckPlan } from '../lib/sessionCheck';
+import { SESSION_RESTORE_GRACE_MS, SESSION_RESTORE_TIMEOUT_MS, sessionCheckPlan } from '../lib/sessionCheck';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
-// Render legger API-et i dvale. En ping mens brukeren fyller ut skjemaet
-// gjør at innloggingen ikke selv må vente på at prosessen starter.
+let activeGoogleLogin = null;
+
+function shareGoogleLogin(uid, run) {
+  if (!activeGoogleLogin || activeGoogleLogin.uid !== uid) {
+    const promise = run().finally(() => {
+      if (activeGoogleLogin?.promise === promise) activeGoogleLogin = null;
+    });
+    activeGoogleLogin = { uid, promise };
+  }
+  return activeGoogleLogin.promise;
+}
+
 export function warmUpBackend() {
   if (!BACKEND_URL) return;
   fetch(`${BACKEND_URL}/api/health`, { credentials: 'omit', cache: 'no-store' }).catch(() => {});
+}
+
+async function fetchCurrentUser(signal) {
+  if (!BACKEND_URL) return null;
+  const response = await fetchWithTimeout(
+    `${BACKEND_URL}/api/auth/me`,
+    { credentials: 'include', signal },
+    SESSION_RESTORE_TIMEOUT_MS
+  );
+  if (response.status === 401) {
+    setSessionToken(null);
+    return null;
+  }
+  if (!response.ok) return null;
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return null;
+  return response.json();
 }
 
 const AuthContext = createContext(null);
@@ -33,74 +62,14 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(() => sessionCheckPlan(getSessionToken()).block);
-  const authCheckId = useRef(0);
-  const authCheckAbort = useRef(null);
-
-  useEffect(() => {
-    warmUpBackend();
-
-    const plan = sessionCheckPlan(getSessionToken());
-    if (!plan.restore) {
-      setLoading(false);
-      return undefined;
-    }
-
-    const checkId = ++authCheckId.current;
-    const controller = new AbortController();
-    authCheckAbort.current = controller;
-    const graceTimer = setTimeout(() => {
-      if (authCheckId.current === checkId) setLoading(false);
-    }, plan.graceMs);
-
-    const checkAuth = async () => {
-      try {
-        if (!BACKEND_URL) {
-          throw new Error('REACT_APP_BACKEND_URL is not defined');
-        }
-
-        const response = await fetchWithTimeout(
-          `${BACKEND_URL}/api/auth/me`,
-          { credentials: 'include', signal: controller.signal },
-          plan.timeoutMs
-        );
-
-        if (authCheckId.current !== checkId) return;
-
-        if (!response.ok) {
-          if (response.status === 401) setSessionToken(null);
-          setUser(null);
-          return;
-        }
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-          throw new Error('Non-JSON response from /me');
-        }
-
-        const userData = await response.json();
-        if (authCheckId.current !== checkId) return;
-        setUser(userData);
-      } catch (error) {
-        if (authCheckId.current !== checkId || controller.signal.aborted) return;
-        if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
-        setUser(null);
-      } finally {
-        if (authCheckId.current === checkId) setLoading(false);
-      }
-    };
-
-    checkAuth();
-    return () => {
-      clearTimeout(graceTimer);
-      controller.abort();
-    };
-  }, []);
+  const [loading, setLoading] = useState(() => sessionCheckPlan(getSessionToken()).block || isFirebaseReady());
+  const epoch = useRef(0);
 
   const authenticate = useCallback(async (path, payload) => {
     if (!BACKEND_URL) {
       throw new Error('REACT_APP_BACKEND_URL mangler i bygget');
     }
+    const generation = epoch.current;
 
     let response;
     try {
@@ -122,40 +91,131 @@ export const AuthProvider = ({ children }) => {
     const data = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
 
     if (!response.ok) {
-      throw new Error(authErrorMessage(response.status, data?.detail));
+      const failure = new Error(authErrorMessage(response.status, data?.detail));
+      failure.status = response.status;
+      throw failure;
     }
     if (!data) {
-      throw new Error(authErrorMessage(response.status));
+      const failure = new Error(authErrorMessage(response.status));
+      failure.status = response.status;
+      throw failure;
     }
 
-    // /auth/me avbrytes først når innloggingen lyktes, så et feilet forsøk ikke
-    // stopper sjekken av en gyldig cookie-sesjon.
-    authCheckId.current += 1;
-    authCheckAbort.current?.abort();
-    setLoading(false);
-
     const { session_token: sessionToken, ...userData } = data;
+    if (epoch.current !== generation) return userData;
     if (sessionToken) setSessionToken(sessionToken);
     queryClient.clear();
     setUser(userData);
+    setLoading(false);
     prefetchDashboard().catch(() => {});
     return userData;
   }, []);
 
-  const login = useCallback(
-    (email, password) => authenticate('/api/auth/login', { email: email.trim(), password }),
+  const loginWithGoogle = useCallback(
+    (firebaseUser, { force = false } = {}) => {
+      if (force) epoch.current += 1;
+      const generation = epoch.current;
+      return shareGoogleLogin(`${firebaseUser.uid}:${force ? 'new' : 'restore'}`, async () => {
+        if (!force && getSessionToken()) {
+          try {
+            const existing = await fetchCurrentUser();
+            if (existing) {
+              if (epoch.current === generation) {
+                setUser(existing);
+                setLoading(false);
+              }
+              return existing;
+            }
+          } catch (error) {
+            if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
+          }
+        }
+
+        const idToken = await firebaseUser.getIdToken();
+        try {
+          return await authenticate('/api/auth/google', {
+            id_token: idToken,
+            name: firebaseUser.displayName || '',
+            picture: firebaseUser.photoURL || '',
+          });
+        } catch (error) {
+          if (error.status === 401) {
+            const auth = getFirebaseAuth();
+            if (auth) await signOut(auth).catch(() => {});
+          }
+          throw error;
+        }
+      });
+    },
     [authenticate]
   );
 
-  const register = useCallback(
-    ({ name, email, password }) =>
-      authenticate('/api/auth/register', { name: name.trim(), email: email.trim(), password }),
-    [authenticate]
-  );
+  useEffect(() => {
+    warmUpBackend();
+    let cancelled = false;
+    const grace = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, SESSION_RESTORE_GRACE_MS);
+
+    const applyUser = (next, generation) => {
+      if (cancelled || epoch.current !== generation) return;
+      setUser(next);
+      setLoading(false);
+    };
+
+    const restore = async (firebaseUser) => {
+      const generation = epoch.current;
+      try {
+        if (firebaseUser) {
+          applyUser(await loginWithGoogle(firebaseUser), generation);
+          return;
+        }
+        if (getSessionToken()) {
+          applyUser(await fetchCurrentUser(), generation);
+          return;
+        }
+        applyUser(null, generation);
+      } catch (error) {
+        if (cancelled || epoch.current !== generation) return;
+        if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
+        applyUser(null, generation);
+      }
+    };
+
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      restore(null);
+      return () => {
+        cancelled = true;
+        clearTimeout(grace);
+      };
+    }
+
+    getRedirectResult(auth).catch((error) => {
+      if (!cancelled) console.error('Google redirect failed:', error);
+    });
+
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      restore(firebaseUser);
+    });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(grace);
+      unsubscribe();
+    };
+  }, [loginWithGoogle]);
 
   const logout = useCallback(async () => {
-    authCheckId.current += 1;
-    authCheckAbort.current?.abort();
+    epoch.current += 1;
+    activeGoogleLogin = null;
+    setSessionToken(null);
+    try {
+      const auth = getFirebaseAuth();
+      if (auth) await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     try {
       if (BACKEND_URL) {
         await fetchWithTimeout(`${BACKEND_URL}/api/auth/logout`, {
@@ -166,7 +226,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      setSessionToken(null);
       queryClient.clear();
       setUser(null);
       setLoading(false);
@@ -178,8 +237,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, updateUser }),
-    [user, loading, login, register, logout, updateUser]
+    () => ({ user, loading, loginWithGoogle, logout, updateUser }),
+    [user, loading, loginWithGoogle, logout, updateUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, ConfigDict
-from pymongo.errors import ConnectionFailure, OperationFailure, ServerSelectionTimeoutError
+from pymongo.errors import ConnectionFailure, DuplicateKeyError, OperationFailure, ServerSelectionTimeoutError
 from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
@@ -22,14 +22,8 @@ from fx import nok_per_usd, nok_per_usd_from_norges_bank
 from coolbet import COOLBET_USER_FIELDS, map_coolbet_ticket, preserved_coolbet_user_fields
 from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, is_incomplete_stored_bet, login_payload
 from mongo import mongo_client_kwargs
-from passwords import (
-    email_error,
-    hash_password,
-    normalize_email,
-    password_error,
-    public_user,
-    verify_password,
-)
+from firebase_auth import FirebaseNotConfigured, InvalidFirebaseToken, verify_id_token
+from passwords import email_error, normalize_email, public_user
 from sofascore_favorites import (
     SofaScoreError,
     SofaScoreGateway,
@@ -683,7 +677,6 @@ async def health():
     return {"ok": True}
 
 
-INVALID_CREDENTIALS = "Feil e-post eller passord"
 MAX_NAME_LENGTH = 80
 
 
@@ -733,82 +726,90 @@ async def _start_session(response: Response, user_doc: dict) -> dict:
     return login_payload(public_user(user_doc), session_token)
 
 
-async def _claim_legacy_account(user_doc: dict, password: str) -> bool:
-    """Kontoer fra demo-innloggingen har ikke passord. Første innlogging setter det.
-
-    Filteret på manglende hash gjør at bare ett samtidig forsøk vinner; taperen
-    må matche passordet vinneren satte.
-    """
-    error = password_error(password)
-    if error:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Kontoen har ikke passord ennå. Velg et nytt: {error[0].lower()}{error[1:]}",
-        )
-    password_hash = await asyncio.to_thread(hash_password, password)
-    result = await db.users.update_one(
-        {"user_id": user_doc["user_id"], "password_hash": {"$exists": False}},
-        {"$set": {"password_hash": password_hash, "password_set_at": datetime.now(timezone.utc)}},
-    )
-    if result.modified_count:
-        return True
-    fresh = await db.users.find_one({"user_id": user_doc["user_id"]}, {"_id": 0, "password_hash": 1})
-    return await asyncio.to_thread(verify_password, password, (fresh or {}).get("password_hash"))
+def _person_name(value) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())[:MAX_NAME_LENGTH]
 
 
-@api_router.post("/auth/register", status_code=201)
-async def register(request: Request, response: Response):
-    body = await _json_body(request)
-    email = normalize_email(body.get("email"))
-    password = body.get("password")
-    name = body.get("name").strip() if isinstance(body.get("name"), str) else ""
+def _https_picture(value) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    picture = value.strip()
+    if len(picture) > 2000 or not picture.startswith("https://"):
+        return None
+    return picture
 
-    error = email_error(email) or password_error(password)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-    if len(name) > MAX_NAME_LENGTH:
-        raise HTTPException(status_code=400, detail=f"Navnet kan være maks {MAX_NAME_LENGTH} tegn")
 
+async def _refresh_google_profile(user_doc: dict, picture: Optional[str]) -> dict:
+    if not picture or picture == user_doc.get("picture"):
+        return user_doc
+    await db.users.update_one({"user_id": user_doc["user_id"]}, {"$set": {"picture": picture}})
+    return {**user_doc, "picture": picture}
+
+
+async def _upsert_google_user(identity: dict, body: dict) -> dict:
+    uid = identity["uid"]
+    email = normalize_email(identity["email"])
+    if email_error(email):
+        raise HTTPException(status_code=401, detail="Google-kontoen mangler gyldig e-post")
+    name = _person_name(identity.get("name")) or _person_name(body.get("name"))
+    picture = _https_picture(identity.get("picture")) or _https_picture(body.get("picture"))
+
+    existing = await db.users.find_one({"firebase_uid": uid}, {"_id": 0})
+    if existing:
+        return await _refresh_google_profile(existing, picture)
+
+    by_email = await _find_user_by_email(email)
+    if by_email:
+        other = by_email.get("firebase_uid")
+        if other and other != uid:
+            raise HTTPException(status_code=409, detail="E-posten er knyttet til en annen Google-konto")
+        patch = {"firebase_uid": uid, "email": email}
+        if picture:
+            patch["picture"] = picture
+        if name and not _person_name(by_email.get("name")):
+            patch["name"] = name
+        await db.users.update_one({"user_id": by_email["user_id"]}, {"$set": patch})
+        return {**by_email, **patch}
+
+    user_doc = {
+        "user_id": f"user_{uuid.uuid4().hex[:12]}",
+        "firebase_uid": uid,
+        "email": email,
+        "name": name or email.split("@")[0].title(),
+        "picture": picture,
+        "currency": "NOK",
+        "created_at": datetime.now(timezone.utc),
+    }
     try:
-        if await _find_user_by_email(body.get("email")):
-            raise HTTPException(status_code=409, detail="E-postadressen er allerede registrert. Logg inn i stedet.")
-        user_doc = {
-            "user_id": f"user_{uuid.uuid4().hex[:12]}",
-            "email": email,
-            "name": name or email.split("@")[0].title(),
-            "picture": None,
-            "currency": "NOK",
-            "created_at": datetime.now(timezone.utc),
-            "password_hash": await asyncio.to_thread(hash_password, password),
-        }
         await db.users.insert_one({**user_doc})
-        return await _start_session(response, user_doc)
-    except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
-        raise _unavailable_db() from None
+    except DuplicateKeyError:
+        raced = await db.users.find_one({"firebase_uid": uid}, {"_id": 0})
+        if not raced:
+            raced = await _find_user_by_email(email)
+        if raced:
+            return raced
+        raise
+    return user_doc
 
 
-@api_router.post("/auth/login")
-async def login(request: Request, response: Response):
+@api_router.post("/auth/google")
+async def google_login(request: Request, response: Response):
     body = await _json_body(request)
-    email = body.get("email")
-    password = body.get("password")
-
-    if not normalize_email(email) or not isinstance(password, str) or not password:
-        raise HTTPException(status_code=400, detail="Skriv inn e-post og passord")
+    token = body.get("id_token")
+    if not isinstance(token, str) or not token.strip():
+        raise HTTPException(status_code=400, detail="Mangler Google-token")
 
     try:
-        user_doc = await _find_user_by_email(email)
-        if not user_doc:
-            raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
+        identity = await asyncio.to_thread(verify_id_token, token.strip())
+    except FirebaseNotConfigured:
+        raise HTTPException(status_code=503, detail="Firebase er ikke konfigurert") from None
+    except InvalidFirebaseToken as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from None
 
-        stored_hash = user_doc.get("password_hash")
-        if stored_hash:
-            valid = await asyncio.to_thread(verify_password, password, stored_hash)
-        else:
-            valid = await _claim_legacy_account(user_doc, password)
-        if not valid:
-            raise HTTPException(status_code=401, detail=INVALID_CREDENTIALS)
-
+    try:
+        user_doc = await _upsert_google_user(identity, body)
         return await _start_session(response, user_doc)
     except (ConnectionFailure, OperationFailure, ServerSelectionTimeoutError):
         raise _unavailable_db() from None
@@ -1825,6 +1826,12 @@ async def ensure_indexes():
         await db.user_sessions.create_index("session_token", unique=True, name="sessions_token")
         await db.users.create_index("user_id", name="users_user_id")
         await db.users.create_index("email", name="users_email")
+        await db.users.create_index(
+            "firebase_uid",
+            name="users_firebase_uid",
+            unique=True,
+            partialFilterExpression={"firebase_uid": {"$type": "string"}},
+        )
         await db.favorite_teams.create_index(
             [("user_id", 1), ("sofascore_id", 1), ("kind", 1)],
             name="favorites_user_team",

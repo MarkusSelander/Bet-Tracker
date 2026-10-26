@@ -35,7 +35,7 @@
   }
 
   function loginUrl(apiBase) {
-    return `${String(apiBase).replace(/\/$/, "")}/api/auth/login`;
+    return `${String(apiBase).replace(/\/$/, "")}/api/auth/google`;
   }
 
   function meUrl(apiBase) {

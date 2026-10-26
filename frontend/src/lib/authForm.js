@@ -1,38 +1,13 @@
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_PASSWORD_BYTES = 72;
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const TIMEOUT_MESSAGE = 'Forespørselen tok for lang tid';
 
-function byteLength(value) {
-  return new TextEncoder().encode(value).length;
-}
-
-function validateLogin({ email, password }) {
-  if (!email.trim()) return 'Skriv inn e-post';
-  if (!EMAIL_RE.test(email.trim())) return 'Ugyldig e-postadresse';
-  if (!password) return 'Skriv inn passord';
-  return null;
-}
-
-function validateRegister({ name = '', email, password, confirm }) {
-  const loginError = validateLogin({ email, password });
-  if (loginError) return loginError;
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Passordet må være minst ${MIN_PASSWORD_LENGTH} tegn`;
-  }
-  if (byteLength(password) > MAX_PASSWORD_BYTES) {
-    return `Passordet kan være maks ${MAX_PASSWORD_BYTES} tegn`;
-  }
-  if (!password.trim()) return 'Passordet kan ikke bare være mellomrom';
-  if (password !== confirm) return 'Passordene er ikke like';
-  if (name.trim().length > 80) return 'Navnet kan være maks 80 tegn';
-  return null;
-}
-
 function authErrorMessage(status, detail) {
-  if (status === 401) return 'Feil e-post eller passord';
-  if (status === 409) return detail || 'E-postadressen er allerede registrert. Logg inn i stedet.';
-  if (status === 503) return 'Databasen er utilgjengelig. Prøv igjen om et øyeblikk.';
+  if (status === 401) {
+    return typeof detail === 'string' && detail ? detail : 'Google-innloggingen ble avvist. Prøv igjen.';
+  }
+  if (status === 409) return detail || 'E-posten er knyttet til en annen konto.';
+  if (status === 503) {
+    return typeof detail === 'string' && detail ? detail : 'Databasen er utilgjengelig. Prøv igjen om et øyeblikk.';
+  }
   if (status === 400 && typeof detail === 'string' && detail) return detail;
   if (status >= 500) return 'Serveren svarer ikke som den skal. Prøv igjen om litt.';
   return 'Noe gikk galt. Prøv igjen.';
@@ -45,4 +20,19 @@ function networkErrorMessage(error) {
   return 'Fikk ikke kontakt med serveren. Sjekk nettet og prøv igjen.';
 }
 
-export { MIN_PASSWORD_LENGTH, authErrorMessage, networkErrorMessage, validateLogin, validateRegister };
+function googleAuthError(error) {
+  const code = error?.code || '';
+  if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+    return 'Innloggingen ble avbrutt.';
+  }
+  if (code === 'auth/popup-blocked') {
+    return 'Nettleseren blokkerte vinduet. Tillat popup og prøv igjen.';
+  }
+  if (code === 'auth/unauthorized-domain') {
+    return 'Dette domenet er ikke godkjent i Firebase.';
+  }
+  if (code === 'auth/network-request-failed') return networkErrorMessage(error);
+  return 'Google-innlogging feilet. Prøv igjen.';
+}
+
+export { authErrorMessage, googleAuthError, networkErrorMessage };

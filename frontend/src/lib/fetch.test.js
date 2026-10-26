@@ -77,7 +77,7 @@ test('fetchAuth does not retry a timed-out auth call', async () => {
   };
   try {
     await assert.rejects(
-      () => fetchApi.fetchAuth('https://example.test/api/auth/login', { method: 'POST' }, 30),
+      () => fetchApi.fetchAuth('https://example.test/api/auth/google', { method: 'POST' }, 30),
       (error) => error.message === 'Forespørselen tok for lang tid'
     );
     assert.equal(calls, 1);
@@ -141,12 +141,13 @@ test('fetchAuth does not retry after a fast response', async () => {
   }
 });
 
-test('auth page asks the browser for current and new passwords', () => {
+test('auth page signs in with Google and keeps the slow-start hint', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../pages/Login.jsx'), 'utf8');
-  assert.match(source, /type=\{visible \? 'text' : 'password'\}/);
-  assert.match(source, /autoComplete="current-password"/);
-  assert.equal(source.match(/autoComplete="new-password"/g).length, 2);
-  assert.match(source, /autoComplete="email"/);
+  assert.match(source, /signInWithPopup/);
+  assert.match(source, /Fortsett med Google/);
+  assert.match(source, /data-testid="google-login-btn"/);
+  assert.doesNotMatch(source, /autoComplete="current-password"/);
+  assert.doesNotMatch(source, /autoComplete="new-password"/);
   assert.match(source, /Vekker serveren, første innlogging kan ta litt tid…/);
   assert.match(source, /setTimeout\(\(\) => setWarming\(true\), 3000\)/);
   assert.match(source, /preloadDashboard\(\)/);

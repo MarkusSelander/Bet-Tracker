@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useAuth } from '../contexts/AuthContext';
-import { fetchWithTimeout } from '../lib/fetch';
+import { fetchWithTimeout, getSessionToken } from '../lib/fetch';
 import { formatCurrency } from '../lib/format';
 import { useBankroll, useUsdRate } from '../lib/queries';
 import { invalidateTrackerData } from '../lib/queryClient';
@@ -227,6 +227,33 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Innstillinger" subtitle="Bankroll, valuta og data" testId="settings-title" />
+
+      <section className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
+        <h2 className="text-xl font-bold mb-1">Chrome-utvidelse</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Utvidelsen bruker samme Google-innlogging. Kopier token hit og lim det inn der, eller logg inn med Google i
+          utvidelsen.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={async () => {
+            const token = getSessionToken();
+            if (!token) {
+              toast.error('Logg inn på nytt, så kan token kopieres.');
+              return;
+            }
+            try {
+              await navigator.clipboard.writeText(token);
+              toast.success('Token kopiert. Lim det inn i Chrome-utvidelsen.');
+            } catch (_error) {
+              toast.error('Klarte ikke å kopiere token.');
+            }
+          }}
+        >
+          Kopier innloggingstoken
+        </Button>
+      </section>
 
       <form
         onSubmit={handleBankrollSave}

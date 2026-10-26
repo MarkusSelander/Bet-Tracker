@@ -10,19 +10,22 @@
       <h1>Bet Tracker-innlogging</h1>
       <p class="lead">
         Utvidelsen henter spillhistorikk fra Coolbet (der du er innlogget i Chrome) og sender
-        kupongene til Bet Tracker med Bearer-token. Coolbet-passord lagres ikke.
+        kupongene til Bet Tracker. Logg inn med samme Google-konto som på nettsiden, eller lim inn
+        token derfra. Coolbet-passord lagres ikke.
       </p>
 
       <label for="api-url">Backend-URL</label>
       <input id="api-url" type="url" placeholder="https://ditt-api-domene.example" />
 
       <fieldset>
-        <legend>Logg inn med e-post og passord</legend>
-        <label for="email">E-post</label>
-        <input id="email" type="email" autocomplete="username" />
-        <label for="password">Passord</label>
-        <input id="password" type="password" autocomplete="current-password" />
-        <button id="login" type="button">Logg inn på Bet Tracker</button>
+        <legend>Logg inn med Google</legend>
+        <label for="google-client-id">Google OAuth-klient-ID</label>
+        <input id="google-client-id" type="text" autocomplete="off" placeholder="….apps.googleusercontent.com" />
+        <label for="firebase-api-key">Firebase API-nøkkel</label>
+        <input id="firebase-api-key" type="text" autocomplete="off" />
+        <label for="firebase-auth-domain">Firebase auth-domene</label>
+        <input id="firebase-auth-domain" type="text" autocomplete="off" placeholder="prosjekt.firebaseapp.com" />
+        <button id="login" type="button">Logg inn med Google</button>
       </fieldset>
 
       <label for="token">Eller lim inn session-token</label>
@@ -44,6 +47,8 @@
       <button id="save" type="button">Lagre</button>
       <p id="message" class="message" hidden></p>
     </main>
+    <script src="auth-config.js"></script>
+    <script src="lib/googleAuth.js"></script>
     <script src="lib/history.js"></script>
     <script src="options.js"></script>
   </body>
