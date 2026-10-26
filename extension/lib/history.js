@@ -14,6 +14,7 @@
   const OPEN_STATUSES = { PENDING: true, CONFIRMED: true };
   const COMBO_TYPES = { combo: true, system: true, betbuilder: true };
   const DIRECT_FETCH_LIMIT = 100;
+  const DETAIL_FETCH_LIMIT = 80;
 
   function historyQuery(pageNumber) {
     return {
@@ -101,6 +102,13 @@
 
   function mergeKnownIds(localIds, bets) {
     return Array.from(new Set([...(localIds || []), ...collectKnownIdsFromBets(bets)]));
+  }
+
+  // Lokale id-er kan peke på kuponger som aldri ble lagret på kontoen.
+  // Når Spill-lista svarer, er den lista den eneste grunnen til å hoppe over import.
+  function knownIdsForSync(localIds, bets, serverOk) {
+    if (serverOk) return collectKnownIdsFromBets(bets);
+    return (localIds || []).filter(Boolean);
   }
 
   function collectPendingIdsFromBets(bets) {
@@ -472,11 +480,13 @@
     MAX_HISTORY_PAGES,
     IMPORT_CHUNK_SIZE,
     DIRECT_FETCH_LIMIT,
+    DETAIL_FETCH_LIMIT,
     authHeaders,
     betsUrl,
     collectIncompleteIdsFromBets,
     collectKnownIdsFromBets,
     collectPendingIdsFromBets,
+    knownIdsForSync,
     mergeKnownIds,
     collectTicketIds,
     chunkTickets,
