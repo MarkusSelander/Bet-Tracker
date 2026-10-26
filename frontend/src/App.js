@@ -9,6 +9,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { loadDashboard } from './lib/dashboardLoader';
 import { queryClient } from './lib/queryClient';
 import Login from './pages/Login';
+import PrivacyPage from './pages/PrivacyPage';
 
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const BetsPage = lazy(() => import('./pages/BetsPage'));
@@ -25,6 +26,7 @@ function App() {
           <Toaster position="top-right" />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/personvern" element={<PrivacyPage />} />
             <Route path="/register" element={<Navigate to="/login" replace />} />
             <Route
               element={

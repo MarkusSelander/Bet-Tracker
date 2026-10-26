@@ -1,7 +1,7 @@
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { AlertCircle, Loader2, TrendingUp } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { useAuth, warmUpBackend } from '../contexts/AuthContext';
@@ -135,6 +135,11 @@ export default function Login() {
                   Vekker serveren, første innlogging kan ta litt tid…
                 </p>
               ) : null}
+              <p className="text-center text-sm">
+                <Link to="/personvern" className="text-text-secondary underline" data-testid="privacy-link">
+                  Personvern
+                </Link>
+              </p>
             </div>
           </div>
         </div>
