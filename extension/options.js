@@ -30,33 +30,58 @@ async function load() {
     "autoAlarm",
   ]);
   apiUrlEl.value = state.apiUrl || "";
-  clientIdEl.value = manifestClientId() || configuredValue(state, "googleClientId");
+  clientIdEl.value = configuredValue(state, "googleClientId");
   firebaseKeyEl.value = configuredValue(state, "firebaseApiKey");
   authDomainEl.value = configuredValue(state, "firebaseAuthDomain");
   tokenEl.value = state.sessionToken || "";
   autoHistoryEl.checked = state.autoOnHistory !== false;
   document.getElementById("auto-login").checked = state.autoOnLogin !== false;
   autoAlarmEl.checked = Boolean(state.autoAlarm);
+  const redirectEl = document.getElementById("redirect-uri");
+  if (redirectEl && chrome.identity?.getRedirectURL) {
+    redirectEl.value = chrome.identity.getRedirectURL();
+  }
 }
 
-function manifestClientId() {
-  return chrome.runtime?.getManifest?.()?.oauth2?.client_id || "";
+let preparedLogin = null;
+
+async function prepareLogin() {
+  const verifier = GoogleAuth.randomVerifier();
+  const challenge = await GoogleAuth.codeChallenge(verifier);
+  preparedLogin = { verifier, challenge, nonce: GoogleAuth.randomVerifier() };
 }
 
-function chromeAccessToken() {
+function launchGooglePopup(clientId) {
+  const redirectUri = chrome.identity.getRedirectURL();
+  const prepared = preparedLogin;
+  preparedLogin = null;
+  prepareLogin();
+  if (!prepared) {
+    return Promise.reject(new Error("Innloggingen er ikke klar ennå. Prøv igjen."));
+  }
+  const url = GoogleAuth.googleAuthorizeUrl({
+    clientId,
+    redirectUri,
+    challenge: prepared.challenge,
+    nonce: prepared.nonce,
+  });
   return new Promise((resolve, reject) => {
-    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+    chrome.identity.launchWebAuthFlow({ url, interactive: true }, (responseUrl) => {
       const err = chrome.runtime.lastError;
       if (err) reject(new Error(err.message));
-      else if (!token) reject(new Error("Google returnerte ikke noe token."));
-      else resolve(token);
+      else if (!responseUrl) reject(new Error("Innloggingen ble avbrutt."));
+      else {
+        try {
+          resolve({
+            redirectUri,
+            code: GoogleAuth.authorizationCodeFromRedirect(responseUrl),
+            verifier: prepared.verifier,
+          });
+        } catch (error) {
+          reject(error);
+        }
+      }
     });
-  });
-}
-
-function forgetAccessToken(token) {
-  return new Promise((resolve) => {
-    chrome.identity.removeCachedAuthToken({ token }, () => resolve());
   });
 }
 
@@ -86,16 +111,20 @@ document.getElementById("save").addEventListener("click", async () => {
 
 document.getElementById("login").addEventListener("click", () => {
   const apiUrl = apiUrlEl.value.trim().replace(/\/$/, "");
-  const clientId = clientIdEl.value.trim() || manifestClientId();
+  const clientId = clientIdEl.value.trim();
   const firebaseApiKey = firebaseKeyEl.value.trim();
   const authDomain = authDomainEl.value.trim();
   if (!apiUrl || !clientId || !firebaseApiKey) {
     showMessage("Fyll inn backend-URL, Google-klient-ID og Firebase API-nøkkel.", false);
     return;
   }
-  const useChromeToken = Boolean(manifestClientId() && chrome.identity?.getAuthToken);
-  if (!useChromeToken && (!chrome.identity?.launchWebAuthFlow || !chrome.identity.getRedirectURL)) {
+  if (!chrome.identity?.launchWebAuthFlow || !chrome.identity.getRedirectURL) {
     showMessage("Denne Chrome-versjonen kan ikke åpne Google-innlogging.", false);
+    return;
+  }
+  if (!preparedLogin) {
+    showMessage("Innloggingen er ikke klar ennå. Prøv igjen.", false);
+    prepareLogin();
     return;
   }
 
@@ -103,55 +132,27 @@ document.getElementById("login").addEventListener("click", () => {
   loginButton.disabled = true;
   showMessage("Åpner Google-innlogging…", true);
   // Chrome viser bare vinduet når kallet skjer i selve klikket, før noe await.
-  const authPromise = useChromeToken ? chromeAccessToken() : null;
+  const authPromise = launchGooglePopup(clientId);
 
-  finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, useChromeToken, authPromise })
+  finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, authPromise })
     .catch((err) => showMessage(String(err.message || err), false))
     .finally(() => {
       loginButton.disabled = false;
     });
 });
 
-async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, useChromeToken, authPromise }) {
+async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, authPromise }) {
   try {
     await saveExtras();
-    let firebaseData;
-    if (useChromeToken) {
-      const accessToken = await authPromise;
-      try {
-        firebaseData = await GoogleAuth.exchangeGoogleAccessToken({
-          firebaseApiKey,
-          authDomain,
-          accessToken,
-        });
-      } catch (err) {
-        await forgetAccessToken(accessToken);
-        throw err;
-      }
-    } else {
-      const redirectUri = chrome.identity.getRedirectURL();
-      const verifier = GoogleAuth.randomVerifier();
-      const challenge = await GoogleAuth.codeChallenge(verifier);
-      const nonce = GoogleAuth.randomVerifier();
-      const url = GoogleAuth.googleAuthorizeUrl({ clientId, redirectUri, challenge, nonce });
-      const redirected = await new Promise((resolve, reject) => {
-        chrome.identity.launchWebAuthFlow({ url, interactive: true }, (responseUrl) => {
-          const err = chrome.runtime.lastError;
-          if (err) reject(new Error(err.message));
-          else resolve(responseUrl);
-        });
-      });
-      if (!redirected) throw new Error("Innloggingen ble avbrutt.");
-      const code = GoogleAuth.authorizationCodeFromRedirect(redirected);
-      firebaseData = await GoogleAuth.exchangeGoogleCode({
-        clientId,
-        firebaseApiKey,
-        authDomain,
-        redirectUri,
-        code,
-        verifier,
-      });
-    }
+    const { redirectUri, code, verifier } = await authPromise;
+    const firebaseData = await GoogleAuth.exchangeGoogleCode({
+      clientId,
+      firebaseApiKey,
+      authDomain,
+      redirectUri,
+      code,
+      verifier,
+    });
     const response = await fetch(CoolbetHistory.loginUrl(apiUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -186,3 +187,4 @@ async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain,
 }
 
 load();
+prepareLogin();
