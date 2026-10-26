@@ -154,6 +154,7 @@ async function runSync(reason) {
         "sessionToken",
         "knownIds",
         "lastSyncAt",
+        "historyBackfillDone",
       ]);
 
       if (!config.apiUrl || !config.sessionToken) {
@@ -213,6 +214,7 @@ async function runSync(reason) {
         knownIds,
         pendingIds,
         incompleteIds,
+        fullHistory: !config.historyBackfillDone,
       });
 
       if (!result || result.status === "need_coolbet") {
@@ -279,6 +281,7 @@ async function runSync(reason) {
           reason,
         },
         knownIds: nextKnownIds,
+        ...(result.historyComplete ? { historyBackfillDone: true } : {}),
       });
 
       return { ok: true, status: "ok", summary, fetched: fetched.length };

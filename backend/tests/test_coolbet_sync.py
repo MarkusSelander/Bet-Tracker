@@ -132,6 +132,15 @@ def test_direct_ticket_fetches_cap_at_100():
     assert plan["deferred"] == 3
 
 
+def test_full_history_keeps_paging_after_a_known_ticket():
+    assert not should_stop_pagination(
+        tickets=[{"id": "new", "status": "WON"}, {"id": "a", "status": "LOST"}],
+        has_next_page=True,
+        known_ids={"a"},
+        full_history=True,
+    )
+
+
 def test_first_sync_without_known_ids_keeps_paging():
     assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "WON"}, {"id": "b", "status": "LOST"}],

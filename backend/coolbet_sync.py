@@ -199,10 +199,13 @@ def should_stop_pagination(
     known_ids: Optional[Set[str]] = None,
     pending_ids: Optional[Set[str]] = None,
     incomplete_ids: Optional[Set[str]] = None,
+    full_history: bool = False,
 ) -> bool:
     tickets = list(tickets)
     if not has_next_page or len(tickets) == 0:
         return True
+    if full_history:
+        return False
     if not known_ids:
         return False
     last = tickets[-1]

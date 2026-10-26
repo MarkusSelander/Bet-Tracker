@@ -296,6 +296,21 @@ test("direct ticket fetches cap at 100 and defer the rest", () => {
   assert.equal(plan.deferred, 3);
 });
 
+test("full history keeps paging after an already imported ticket", () => {
+  assert.equal(
+    shouldStopPagination({
+      tickets: [
+        { id: "new", status: "WON" },
+        { id: "a", status: "LOST" },
+      ],
+      hasNextPage: true,
+      knownIds: new Set(["a"]),
+      fullHistory: true,
+    }),
+    false
+  );
+});
+
 test("first sync with no known ids keeps paging while Coolbet has more history", () => {
   assert.equal(
     shouldStopPagination({
