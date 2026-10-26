@@ -25,8 +25,10 @@
         <input id="firebase-api-key" type="text" autocomplete="off" />
         <label for="firebase-auth-domain">Firebase auth-domene</label>
         <input id="firebase-auth-domain" type="text" autocomplete="off" placeholder="prosjekt.firebaseapp.com" />
+        <label for="redirect-uri">Redirect-adresse</label>
+        <input id="redirect-uri" type="text" readonly />
         <p class="hint">
-          Klient-ID-en er Chrome-utvidelse-klienten. Chrome logger inn med den direkte, uten redirect-adresse.
+          Klient-ID-en må komme fra en Web application-klient. Lim redirect-adressen inn under Authorized redirect URIs på den klienten. Skråstreken på slutten skal være med.
         </p>
         <button id="login" type="button">Logg inn med Google</button>
       </fieldset>
