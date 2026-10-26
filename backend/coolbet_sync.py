@@ -6,6 +6,8 @@ CHROME_EXTENSION_ORIGIN_RE = r"^chrome-extension://[a-z]{32}$"
 HISTORY_PATH = "/s/sbgate/bets/history"
 TICKET_STATUS = "all,WON,LOST,CONFIRMED,CANCELLED,PUSHED,PARTIALLY_WON,VOIDED,CASHED,PENDING"
 PAGE_SIZE = 50
+MAX_HISTORY_PAGES = 400
+IMPORT_CHUNK_SIZE = 80
 OPEN_STATUSES = {"PENDING", "CONFIRMED"}
 COMBO_TYPES = {"combo", "system", "betbuilder"}
 DIRECT_FETCH_LIMIT = 100
@@ -193,6 +195,86 @@ def ticket_from_direct_response(ticket_id: str, detail: Any) -> Dict[str, Any]:
     return merge_ticket_details(base, detail)
 
 
+def _positive_int(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return number if number > 0 else 0
+
+
+def _explicit_flag(value: Any) -> Optional[bool]:
+    if value is True or value in (1, "1", "true", "True"):
+        return True
+    if value is False or value in (0, "0", "false", "False"):
+        return False
+    return None
+
+
+def history_page_size(data: Optional[Dict[str, Any]]) -> int:
+    payload = data if isinstance(data, dict) else {}
+    return _positive_int(payload.get("pageSize", payload.get("page_size"))) or PAGE_SIZE
+
+
+def history_total_pages(data: Optional[Dict[str, Any]]) -> int:
+    payload = data if isinstance(data, dict) else {}
+    for key in ("totalPages", "total_pages", "pageCount", "numberOfPages"):
+        if key in payload:
+            found = _positive_int(payload.get(key))
+            if found:
+                return found
+    return 0
+
+
+def history_total_count(data: Optional[Dict[str, Any]]) -> Optional[int]:
+    payload = data if isinstance(data, dict) else {}
+    for key in ("total", "totalCount", "totalElements", "totalTickets", "count"):
+        if payload.get(key) is None:
+            continue
+        try:
+            return int(payload.get(key))
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def resolve_has_next_page(
+    data: Optional[Dict[str, Any]],
+    page: int,
+    tickets: Optional[Iterable[Dict[str, Any]]] = None,
+) -> bool:
+    """A full page always continues. Older settled tickets sit on later pages."""
+    payload = data if isinstance(data, dict) else {}
+    page_tickets = list(tickets or [])
+    page_size = history_page_size(payload)
+    current = _positive_int(page) or 1
+    if len(page_tickets) >= page_size:
+        return True
+    total_pages = history_total_pages(payload)
+    if total_pages:
+        return current < total_pages
+    total = history_total_count(payload)
+    if total is not None and total >= 0:
+        return current * page_size < total
+    flag = _explicit_flag(
+        payload.get(
+            "hasNextPage",
+            payload.get("has_next_page", payload.get("hasMore", payload.get("has_more"))),
+        )
+    )
+    return flag is True
+
+
+def page_already_seen(tickets: Iterable[Dict[str, Any]], seen_ids: Optional[Iterable[str]] = None) -> bool:
+    seen = set(seen_ids or [])
+    if not seen:
+        return False
+    ids = [ticket.get("id") for ticket in tickets if isinstance(ticket, dict) and ticket.get("id")]
+    if not ids:
+        return False
+    return all(ticket_id in seen for ticket_id in ids)
+
+
 def should_stop_pagination(
     tickets: Iterable[Dict[str, Any]],
     has_next_page: bool,
@@ -200,16 +282,23 @@ def should_stop_pagination(
     pending_ids: Optional[Set[str]] = None,
     incomplete_ids: Optional[Set[str]] = None,
     full_history: bool = False,
+    page: int = 0,
 ) -> bool:
+    # known_ids must not end the walk. Newest-first history would then
+    # leave every older settled ticket unread.
+    del known_ids, pending_ids, incomplete_ids, full_history
     tickets = list(tickets)
-    if not has_next_page or len(tickets) == 0:
+    if len(tickets) == 0:
         return True
-    if full_history:
-        return False
-    if not known_ids:
-        return False
-    last = tickets[-1]
-    return bool(last.get("id") and last.get("id") in known_ids)
+    if page and page >= MAX_HISTORY_PAGES:
+        return True
+    return not has_next_page
+
+
+def chunk_tickets(tickets: Iterable[Dict[str, Any]], size: Optional[int] = None) -> list:
+    items = list(tickets or [])
+    chunk_size = _positive_int(size) or IMPORT_CHUNK_SIZE
+    return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
 
 
 def _stored_bet_leg_count(bet: Dict[str, Any]) -> int:

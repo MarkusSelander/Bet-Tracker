@@ -39,7 +39,7 @@
     return total > 0 ? total : 0;
   }
 
-  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds, fullHistory) {
+  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
       accept: "*/*",
@@ -79,8 +79,13 @@
 
       const data = await response.json();
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
+      const seenBefore = new Set(CoolbetHistory.collectTicketIds(all));
+      if (CoolbetHistory.pageAlreadySeen(tickets, seenBefore)) {
+        historyComplete = true;
+        break;
+      }
       all.push(...tickets);
-      const hasNextPage = Boolean(data.hasNextPage);
+      const hasNextPage = CoolbetHistory.resolveHasNextPage(data, page, tickets);
       reportProgress({
         phase: "history",
         page,
@@ -93,13 +98,12 @@
         CoolbetHistory.shouldStopPagination({
           tickets,
           hasNextPage,
-          knownIds: known,
-          pendingIds: pending,
-          incompleteIds: incomplete,
-          fullHistory,
+          page,
         })
       ) {
-        historyComplete = !hasNextPage || tickets.length === 0;
+        const capped =
+          page >= CoolbetHistory.MAX_HISTORY_PAGES && hasNextPage && tickets.length > 0;
+        historyComplete = !capped;
         break;
       }
 
@@ -213,8 +217,7 @@
       message.auth,
       message.knownIds,
       message.pendingIds,
-      message.incompleteIds,
-      message.fullHistory
+      message.incompleteIds
     )
       .then(sendResponse)
       .catch((err) => sendResponse({ status: "error", error: String(err.message || err), tickets: [] }));
