@@ -21,6 +21,9 @@ from coolbet_sync import (  # noqa: E402
     import_url,
     merge_ticket_details,
     needs_ticket_details,
+    page_already_seen,
+    resolve_has_next_page,
+    should_stop_pagination,
     ticket_detail_paths,
 )
 
@@ -94,6 +97,7 @@ def get_fresh_tokens(context: BrowserContext):
 def fetch_all_bets(headers: dict, cookies: dict) -> List[Dict]:
     url = "https://www.coolbet.com/s/sbgate/bets/history"
     all_tickets = []
+    seen_ids = set()
     page_num = 1
 
     while True:
@@ -108,12 +112,19 @@ def fetch_all_bets(headers: dict, cookies: dict) -> List[Dict]:
 
         data = resp.json()
         tickets = data.get("tickets", [])
+        if page_already_seen(tickets, seen_ids):
+            print(f"Page {page_num}: repeated tickets, history complete")
+            break
         all_tickets.extend(tickets)
+        seen_ids.update(
+            ticket.get("id") for ticket in tickets if isinstance(ticket, dict) and ticket.get("id")
+        )
 
         print(
             f"Page {page_num}: got {len(tickets)} tickets (total: {len(all_tickets)})")
 
-        if not data.get("hasNextPage") or len(tickets) == 0:
+        has_next = resolve_has_next_page(data, page_num, tickets)
+        if should_stop_pagination(tickets, has_next, page=page_num):
             break
 
         page_num += 1

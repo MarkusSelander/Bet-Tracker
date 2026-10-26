@@ -11,8 +11,13 @@ const {
   collectIncompleteIdsFromBets,
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
+  chunkTickets,
   directTicketIds,
+  IMPORT_CHUNK_SIZE,
+  MAX_HISTORY_PAGES,
   mergeKnownIds,
+  pageAlreadySeen,
+  resolveHasNextPage,
   computeSyncProgress,
   formatLastSync,
   historyQuery,
@@ -193,7 +198,7 @@ test("coolbet login request matches password login, not history or logout", () =
   assert.equal(isCoolbetLoginRequest("https://evil.example/login", "POST"), false);
 });
 
-test("stops when page is all known settled tickets", () => {
+test("known settled tickets do not stop a page that still has more history", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -203,7 +208,7 @@ test("stops when page is all known settled tickets", () => {
       hasNextPage: true,
       knownIds: new Set(["a", "b"]),
     }),
-    true
+    false
   );
 });
 
@@ -221,7 +226,7 @@ test("continues while the oldest ticket on the page is still unknown", () => {
   );
 });
 
-test("stops once newest-first page reaches an already-imported ticket", () => {
+test("an already imported ticket does not push older pages aside", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -231,7 +236,7 @@ test("stops once newest-first page reaches an already-imported ticket", () => {
       hasNextPage: true,
       knownIds: new Set(["a"]),
     }),
-    true
+    false
   );
   assert.equal(
     shouldStopPagination({
@@ -239,11 +244,11 @@ test("stops once newest-first page reaches an already-imported ticket", () => {
       hasNextPage: true,
       knownIds: new Set(["a"]),
     }),
-    true
+    false
   );
 });
 
-test("does not walk older pages just because pending or incomplete ids remain", () => {
+test("keeps walking older pages while Coolbet still has another page", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -255,7 +260,7 @@ test("does not walk older pages just because pending or incomplete ids remain", 
       pendingIds: new Set(["older-open"]),
       incompleteIds: new Set(["older-combo"]),
     }),
-    true
+    false
   );
 });
 
@@ -267,7 +272,7 @@ test("fetches unseen pending and incomplete tickets directly after pagination st
   assert.equal(
     shouldStopPagination({
       tickets: page,
-      hasNextPage: true,
+      hasNextPage: false,
       knownIds: new Set(["a", "b", "older-open", "older-combo"]),
       pendingIds: new Set(["older-open"]),
       incompleteIds: new Set(["older-combo"]),
@@ -296,19 +301,53 @@ test("direct ticket fetches cap at 100 and defer the rest", () => {
   assert.equal(plan.deferred, 3);
 });
 
-test("full history keeps paging after an already imported ticket", () => {
+test("full page keeps paging even when hasNextPage is missing or false", () => {
+  const tickets = Array.from({ length: 50 }, (_, index) => ({ id: `t-${index}`, status: "LOST" }));
+  assert.equal(resolveHasNextPage({ hasNextPage: false }, 1, tickets), true);
+  assert.equal(resolveHasNextPage({}, 3, tickets), true);
   assert.equal(
-    shouldStopPagination({
-      tickets: [
-        { id: "new", status: "WON" },
-        { id: "a", status: "LOST" },
-      ],
-      hasNextPage: true,
-      knownIds: new Set(["a"]),
-      fullHistory: true,
-    }),
+    shouldStopPagination({ tickets, hasNextPage: resolveHasNextPage({}, 3, tickets), page: 3 }),
     false
   );
+});
+
+test("short page stops when Coolbet does not announce another page", () => {
+  const tickets = [{ id: "last", status: "LOST" }];
+  assert.equal(resolveHasNextPage({ hasNextPage: false }, 4, tickets), false);
+  assert.equal(resolveHasNextPage({}, 4, tickets), false);
+  assert.equal(resolveHasNextPage({ hasNextPage: true }, 4, tickets), true);
+  assert.equal(resolveHasNextPage({ totalPages: 8 }, 4, tickets), true);
+  assert.equal(resolveHasNextPage({ total: 120 }, 2, tickets), true);
+  assert.equal(resolveHasNextPage({ total: 51 }, 2, [{ id: "only" }]), false);
+});
+
+test("a repeated page ends the walk", () => {
+  const tickets = [{ id: "a" }, { id: "b" }];
+  assert.equal(pageAlreadySeen(tickets, new Set(["a", "b"])), true);
+  assert.equal(pageAlreadySeen(tickets, new Set(["a"])), false);
+  assert.equal(pageAlreadySeen(tickets, new Set()), false);
+});
+
+test("pagination stops at the page cap so a stuck next-page flag cannot loop", () => {
+  assert.equal(MAX_HISTORY_PAGES, 400);
+  assert.equal(
+    shouldStopPagination({
+      tickets: [{ id: "a", status: "WON" }],
+      hasNextPage: true,
+      page: MAX_HISTORY_PAGES,
+    }),
+    true
+  );
+});
+
+test("import chunks keep earlier tickets instead of one request", () => {
+  const tickets = Array.from({ length: IMPORT_CHUNK_SIZE + 3 }, (_, index) => ({ id: `t-${index}` }));
+  const chunks = chunkTickets(tickets);
+  assert.equal(chunks.length, 2);
+  assert.equal(chunks[0].length, IMPORT_CHUNK_SIZE);
+  assert.equal(chunks[0][0].id, "t-0");
+  assert.equal(chunks[1][0].id, `t-${IMPORT_CHUNK_SIZE}`);
+  assert.equal(chunks[1].length, 3);
 });
 
 test("first sync with no known ids keeps paging while Coolbet has more history", () => {
@@ -818,6 +857,17 @@ test("content script asks history.js which unseen tickets to fetch and which nee
   assert.ok(directAt > 0);
   assert.ok(detailAt > directAt);
   assert.match(src, /Coolbet-synk utsatte/);
+  assert.match(src, /CoolbetHistory\.resolveHasNextPage/);
+  assert.match(src, /CoolbetHistory\.pageAlreadySeen/);
+  assert.doesNotMatch(src, /fullHistory/);
+});
+
+test("background walks every history page and posts older tickets in chunks", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
+  assert.match(src, /CoolbetHistory\.chunkTickets/);
+  assert.doesNotMatch(src, /historyBackfillDone/);
+  assert.doesNotMatch(src, /fullHistory/);
+  assert.doesNotMatch(src, /slice\(-4000\)/);
 });
 
 test("manifest registers the background service worker as an ES module", () => {

@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from coolbet_sync import (
     CHROME_EXTENSION_ORIGIN_RE,
     DIRECT_FETCH_LIMIT,
+    IMPORT_CHUNK_SIZE,
+    MAX_HISTORY_PAGES,
     auth_headers,
+    chunk_tickets,
     collect_incomplete_ids_from_bets,
     direct_ticket_ids,
     history_query,
@@ -13,6 +16,8 @@ from coolbet_sync import (
     login_payload,
     merge_ticket_details,
     needs_ticket_details,
+    page_already_seen,
+    resolve_has_next_page,
     resolve_last_coolbet_sync_at,
     should_fetch_ticket_details,
     should_stop_pagination,
@@ -62,12 +67,12 @@ def test_should_stop_when_no_next_page_or_empty():
     assert should_stop_pagination(tickets=[], has_next_page=True, known_ids=set())
 
 
-def test_should_stop_when_page_is_all_known_settled_tickets():
+def test_known_settled_tickets_do_not_stop_while_more_history_exists():
     tickets = [
         {"id": "a", "status": "WON"},
         {"id": "b", "status": "LOST"},
     ]
-    assert should_stop_pagination(
+    assert not should_stop_pagination(
         tickets=tickets,
         has_next_page=True,
         known_ids={"a", "b"},
@@ -83,21 +88,21 @@ def test_should_continue_while_oldest_ticket_on_page_is_unknown():
     )
 
 
-def test_should_stop_once_newest_first_page_reaches_known_ticket():
-    assert should_stop_pagination(
+def test_known_ticket_does_not_push_older_pages_aside():
+    assert not should_stop_pagination(
         tickets=[{"id": "new", "status": "WON"}, {"id": "a", "status": "LOST"}],
         has_next_page=True,
         known_ids={"a"},
     )
-    assert should_stop_pagination(
+    assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "PENDING"}],
         has_next_page=True,
         known_ids={"a"},
     )
 
 
-def test_should_not_walk_older_pages_for_pending_or_incomplete_ids():
-    assert should_stop_pagination(
+def test_keeps_walking_older_pages_while_coolbet_has_another_page():
+    assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "LOST"}, {"id": "b", "status": "LOST"}],
         has_next_page=True,
         known_ids={"a", "b"},
@@ -110,7 +115,7 @@ def test_unseen_pending_and_incomplete_are_fetched_directly_after_pagination_sto
     page = [{"id": "a", "status": "LOST"}, {"id": "b", "status": "LOST"}]
     assert should_stop_pagination(
         tickets=page,
-        has_next_page=True,
+        has_next_page=False,
         known_ids={"a", "b", "older-open", "older-combo"},
         pending_ids={"older-open"},
         incomplete_ids={"older-combo"},
@@ -132,13 +137,51 @@ def test_direct_ticket_fetches_cap_at_100():
     assert plan["deferred"] == 3
 
 
-def test_full_history_keeps_paging_after_a_known_ticket():
+def test_full_page_keeps_paging_when_has_next_page_is_missing_or_false():
+    tickets = [{"id": f"t-{index}", "status": "LOST"} for index in range(50)]
+    assert resolve_has_next_page({"hasNextPage": False}, 1, tickets) is True
+    assert resolve_has_next_page({}, 3, tickets) is True
     assert not should_stop_pagination(
-        tickets=[{"id": "new", "status": "WON"}, {"id": "a", "status": "LOST"}],
-        has_next_page=True,
-        known_ids={"a"},
-        full_history=True,
+        tickets=tickets,
+        has_next_page=resolve_has_next_page({}, 3, tickets),
+        page=3,
     )
+
+
+def test_short_page_stops_when_coolbet_does_not_announce_another_page():
+    tickets = [{"id": "last", "status": "LOST"}]
+    assert resolve_has_next_page({"hasNextPage": False}, 4, tickets) is False
+    assert resolve_has_next_page({}, 4, tickets) is False
+    assert resolve_has_next_page({"hasNextPage": True}, 4, tickets) is True
+    assert resolve_has_next_page({"totalPages": 8}, 4, tickets) is True
+    assert resolve_has_next_page({"total": 120}, 2, tickets) is True
+    assert resolve_has_next_page({"total": 51}, 2, [{"id": "only"}]) is False
+
+
+def test_repeated_page_ends_the_walk():
+    tickets = [{"id": "a"}, {"id": "b"}]
+    assert page_already_seen(tickets, {"a", "b"}) is True
+    assert page_already_seen(tickets, {"a"}) is False
+    assert page_already_seen(tickets, set()) is False
+
+
+def test_pagination_stops_at_the_page_cap():
+    assert MAX_HISTORY_PAGES == 400
+    assert should_stop_pagination(
+        tickets=[{"id": "a", "status": "WON"}],
+        has_next_page=True,
+        page=MAX_HISTORY_PAGES,
+    )
+
+
+def test_import_chunks_keep_earlier_tickets():
+    tickets = [{"id": f"t-{index}"} for index in range(IMPORT_CHUNK_SIZE + 3)]
+    chunks = chunk_tickets(tickets)
+    assert len(chunks) == 2
+    assert len(chunks[0]) == IMPORT_CHUNK_SIZE
+    assert chunks[0][0]["id"] == "t-0"
+    assert chunks[1][0]["id"] == f"t-{IMPORT_CHUNK_SIZE}"
+    assert len(chunks[1]) == 3
 
 
 def test_first_sync_without_known_ids_keeps_paging():

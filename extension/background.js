@@ -154,7 +154,6 @@ async function runSync(reason) {
         "sessionToken",
         "knownIds",
         "lastSyncAt",
-        "historyBackfillDone",
       ]);
 
       if (!config.apiUrl || !config.sessionToken) {
@@ -214,7 +213,6 @@ async function runSync(reason) {
         knownIds,
         pendingIds,
         incompleteIds,
-        fullHistory: !config.historyBackfillDone,
       });
 
       if (!result || result.status === "need_coolbet") {
@@ -238,18 +236,24 @@ async function runSync(reason) {
         new Set(pendingIds),
         new Set(incompleteIds)
       );
-      const nextKnownIds = Array.from(
-        new Set([...knownIds, ...CoolbetHistory.collectTicketIds(fetched)])
-      ).slice(-4000);
-
-      let summary = { imported: 0, updated: 0, skipped: fetched.length - tickets.length };
-      if (tickets.length > 0) {
-        await setProgress({ phase: "import" });
+      let summary = { imported: 0, updated: 0, skipped: tickets.length ? 0 : fetched.length };
+      const acceptedIds = [];
+      const chunks = CoolbetHistory.chunkTickets(tickets);
+      for (let index = 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index];
+        await setProgress({
+          phase: "import",
+          percent: 95,
+          label:
+            chunks.length > 1
+              ? `Lagrer kuponger · ${index + 1}/${chunks.length}`
+              : "Sender til Bet Tracker…",
+        });
         const importResponse = await fetch(CoolbetHistory.importUrl(config.apiUrl), {
           method: "POST",
           headers: CoolbetHistory.authHeaders(config.sessionToken),
           credentials: "omit",
-          body: JSON.stringify({ tickets }),
+          body: JSON.stringify({ tickets: chunk }),
         });
 
         if (importResponse.status === 401) {
@@ -262,8 +266,14 @@ async function runSync(reason) {
           throw new Error(`Import ${importResponse.status}: ${text.slice(0, 180)}`);
         }
 
-        summary = await importResponse.json();
+        const part = await importResponse.json();
+        summary.imported += part.imported || 0;
+        summary.updated += part.updated || 0;
+        summary.skipped += part.skipped || 0;
+        acceptedIds.push(...CoolbetHistory.collectTicketIds(chunk));
       }
+
+      const nextKnownIds = Array.from(new Set([...knownIds, ...acceptedIds]));
 
       const lastSyncAt = Date.now();
       await setState({ lastSyncAt });
@@ -281,7 +291,6 @@ async function runSync(reason) {
           reason,
         },
         knownIds: nextKnownIds,
-        ...(result.historyComplete ? { historyBackfillDone: true } : {}),
       });
 
       return { ok: true, status: "ok", summary, fetched: fetched.length };

@@ -9,6 +9,8 @@
   const TICKET_STATUS =
     "all,WON,LOST,CONFIRMED,CANCELLED,PUSHED,PARTIALLY_WON,VOIDED,CASHED,PENDING";
   const PAGE_SIZE = "50";
+  const MAX_HISTORY_PAGES = 400;
+  const IMPORT_CHUNK_SIZE = 80;
   const OPEN_STATUSES = { PENDING: true, CONFIRMED: true };
   const COMBO_TYPES = { combo: true, system: true, betbuilder: true };
   const DIRECT_FETCH_LIMIT = 100;
@@ -137,12 +139,79 @@
     return Boolean(pendingIds && ticket && pendingIds.has(ticket.id));
   }
 
-  function shouldStopPagination({ tickets, hasNextPage, knownIds, fullHistory }) {
-    if (!hasNextPage || !tickets || tickets.length === 0) return true;
-    if (fullHistory) return false;
-    if (!knownIds || knownIds.size === 0) return false;
-    const last = tickets[tickets.length - 1];
-    return Boolean(last && last.id && knownIds.has(last.id));
+  function positiveInt(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  }
+
+  function explicitFlag(value) {
+    if (value === true || value === 1 || value === "1" || value === "true") return true;
+    if (value === false || value === 0 || value === "0" || value === "false") return false;
+    return null;
+  }
+
+  function historyPageSize(data) {
+    const payload = data && typeof data === "object" ? data : {};
+    return positiveInt(payload.pageSize ?? payload.page_size) || Number(PAGE_SIZE);
+  }
+
+  function historyTotalPages(data) {
+    const payload = data && typeof data === "object" ? data : {};
+    return positiveInt(
+      payload.totalPages ?? payload.total_pages ?? payload.pageCount ?? payload.numberOfPages
+    );
+  }
+
+  function historyTotalCount(data) {
+    const payload = data && typeof data === "object" ? data : {};
+    const value =
+      payload.total ?? payload.totalCount ?? payload.totalElements ?? payload.totalTickets ?? payload.count;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  // Historikken er nyest først. En full side kan ha eldre kuponger bak seg
+  // selv når hasNextPage mangler, så en full side betyr at vi leser videre.
+  function resolveHasNextPage(data, page, tickets) {
+    const payload = data && typeof data === "object" ? data : {};
+    const currentPage = positiveInt(page) || 1;
+    const pageTickets = Array.isArray(tickets) ? tickets : [];
+    const pageSize = historyPageSize(payload);
+    const totalPages = historyTotalPages(payload);
+    if (pageTickets.length >= pageSize) return true;
+    if (totalPages > 0) return currentPage < totalPages;
+    const total = historyTotalCount(payload);
+    if (total != null) return currentPage * pageSize < total;
+    const flag = explicitFlag(
+      payload.hasNextPage ?? payload.has_next_page ?? payload.hasMore ?? payload.has_more
+    );
+    return flag === true;
+  }
+
+  function pageAlreadySeen(tickets, seenIds) {
+    const seen = seenIds instanceof Set ? seenIds : new Set(seenIds || []);
+    if (seen.size === 0) return false;
+    const ids = (tickets || []).map((ticket) => ticket && ticket.id).filter(Boolean);
+    if (!ids.length) return false;
+    return ids.every((id) => seen.has(id));
+  }
+
+  // Ikke stopp fordi en kupong-id allerede er lagret. Det skyver alle eldre
+  // oppgjorte kuponger av, siden de ligger på senere sider.
+  function shouldStopPagination({ tickets, hasNextPage, page }) {
+    if (!tickets || tickets.length === 0) return true;
+    if (typeof page === "number" && page >= MAX_HISTORY_PAGES) return true;
+    return !hasNextPage;
+  }
+
+  function chunkTickets(tickets, size) {
+    const list = Array.isArray(tickets) ? tickets : [];
+    const chunkSize = positiveInt(size) || IMPORT_CHUNK_SIZE;
+    const chunks = [];
+    for (let index = 0; index < list.length; index += chunkSize) {
+      chunks.push(list.slice(index, index + chunkSize));
+    }
+    return chunks;
   }
 
   function directTicketIds({ seenIds, pendingIds, incompleteIds, limit }) {
@@ -400,6 +469,8 @@
     HISTORY_PATH,
     TICKET_STATUS,
     PAGE_SIZE,
+    MAX_HISTORY_PAGES,
+    IMPORT_CHUNK_SIZE,
     DIRECT_FETCH_LIMIT,
     authHeaders,
     betsUrl,
@@ -408,6 +479,7 @@
     collectPendingIdsFromBets,
     mergeKnownIds,
     collectTicketIds,
+    chunkTickets,
     countComboTicketsWithLegs,
     computeSyncProgress,
     directTicketIds,
@@ -424,6 +496,8 @@
     mergeTicketDetails,
     needsTicketDetails,
     parseTimestamp,
+    pageAlreadySeen,
+    resolveHasNextPage,
     resolveLastSyncAt,
     shouldFetchTicketDetails,
     shouldStopPagination,
