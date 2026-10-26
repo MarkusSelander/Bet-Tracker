@@ -208,3 +208,23 @@ def map_coolbet_ticket(ticket: Dict[str, Any]) -> Dict[str, Any]:
         "cashout_amount": _cashout_amount(ticket),
         "legs": legs,
     }
+
+
+# Fields the user can edit that map_coolbet_ticket never writes.
+# Bookmaker fields (game, bet, stake, odds, status, result, sport, bookie, date, time)
+# keep updating from Coolbet on reimport.
+COOLBET_USER_FIELDS = ("tipster", "notes")
+
+
+def preserved_coolbet_user_fields(existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not existing:
+        return {}
+    kept: Dict[str, Any] = {}
+    for key in COOLBET_USER_FIELDS:
+        if key not in existing:
+            continue
+        value = existing.get(key)
+        if value is None:
+            continue
+        kept[key] = value
+    return kept

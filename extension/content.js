@@ -54,8 +54,8 @@
     }
 
     const known = new Set(knownIds || []);
-    const remainingPending = new Set(pendingIds || []);
-    const remainingIncomplete = new Set(incompleteIds || []);
+    const pending = new Set(pendingIds || []);
+    const incomplete = new Set(incompleteIds || []);
     const all = [];
     let page = 1;
 
@@ -79,10 +79,6 @@
       const data = await response.json();
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
       all.push(...tickets);
-      for (const ticket of tickets) {
-        remainingPending.delete(ticket.id);
-        remainingIncomplete.delete(ticket.id);
-      }
       const hasNextPage = Boolean(data.hasNextPage);
       reportProgress({
         phase: "history",
@@ -97,8 +93,8 @@
           tickets,
           hasNextPage,
           knownIds: known,
-          pendingIds: remainingPending,
-          incompleteIds: remainingIncomplete,
+          pendingIds: pending,
+          incompleteIds: incomplete,
         })
       ) {
         break;
@@ -108,18 +104,68 @@
       await sleep(700);
     }
 
-    const pending = new Set(pendingIds || []);
-    const incomplete = new Set(incompleteIds || []);
-    const detailsTotal = all.filter((ticket) =>
-      CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending, incomplete)
-    ).length;
-    const enriched = [];
-    let detailsDone = 0;
-    for (const ticket of all) {
-      if (!CoolbetHistory.shouldFetchTicketDetails(ticket, known, pending, incomplete)) {
-        enriched.push(ticket);
-        continue;
+    const seenIds = new Set(CoolbetHistory.collectTicketIds(all));
+    const directPlan = CoolbetHistory.directTicketIds({
+      seenIds,
+      pendingIds,
+      incompleteIds,
+    });
+    if (directPlan.deferred > 0) {
+      console.warn(
+        `Coolbet-synk utsatte ${directPlan.deferred} pending/incomplete-kuponger (maks ${CoolbetHistory.DIRECT_FETCH_LIMIT} direkte kall)`
+      );
+    }
+
+    const directIds = new Set();
+    for (let index = 0; index < directPlan.ids.length; index += 1) {
+      const ticketId = directPlan.ids[index];
+      reportProgress({
+        phase: "history",
+        percent: 69,
+        label: `Henter eldre kuponger · ${index + 1}/${directPlan.ids.length}`,
+      });
+      const paths = CoolbetHistory.ticketDetailPaths(ticketId);
+      const path = paths[0];
+      if (path) {
+        const detailResponse = await fetch(path, { credentials: "include", headers });
+        if (detailResponse.status === 401 || detailResponse.status === 403) {
+          return { status: "need_coolbet", tickets: [] };
+        }
+        if (detailResponse.status === 404) {
+          // Kupongen blir liggende i trackeren. 404 er ikke void og ikke sletting.
+          console.warn("Coolbet ticket 404", path);
+        } else if (!detailResponse.ok) {
+          console.warn("Coolbet ticket", detailResponse.status, path);
+        } else {
+          try {
+            const detail = await detailResponse.json();
+            const ticket = CoolbetHistory.ticketFromDirectResponse(ticketId, detail);
+            if (ticket && ticket.id) {
+              all.push(ticket);
+              directIds.add(ticket.id);
+            }
+          } catch (_err) {
+            /* ignore malformed direct payloads */
+          }
+        }
+        await sleep(250);
       }
+    }
+
+    const detailTargets = CoolbetHistory.ticketsNeedingDetails(
+      all,
+      known,
+      pending,
+      incomplete,
+      directIds
+    );
+    const indexById = new Map();
+    all.forEach((ticket, index) => {
+      if (ticket && ticket.id && !indexById.has(ticket.id)) indexById.set(ticket.id, index);
+    });
+    const detailsTotal = detailTargets.length;
+    let detailsDone = 0;
+    for (const ticket of detailTargets) {
       if (detailsTotal > 0) {
         reportProgress({
           phase: "details",
@@ -144,7 +190,8 @@
           /* ignore malformed detail payloads */
         }
       }
-      enriched.push(merged);
+      const index = indexById.get(ticket.id);
+      if (index != null) all[index] = merged;
       detailsDone += 1;
       reportProgress({
         phase: "details",
@@ -154,7 +201,7 @@
       await sleep(250);
     }
 
-    return { status: "ok", tickets: enriched };
+    return { status: "ok", tickets: all };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

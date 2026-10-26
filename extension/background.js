@@ -182,10 +182,13 @@ async function runSync(reason) {
       let knownIds = Array.isArray(config.knownIds) ? config.knownIds : [];
       let pendingIds = [];
       let incompleteIds = [];
-      const betsResponse = await fetch(CoolbetHistory.betsUrl(config.apiUrl, "Coolbet"), {
-        headers: CoolbetHistory.authHeaders(config.sessionToken),
-        credentials: "omit",
-      });
+      const betsResponse = await fetch(
+        CoolbetHistory.betsUrl(config.apiUrl, "Coolbet", { view: "summary" }),
+        {
+          headers: CoolbetHistory.authHeaders(config.sessionToken),
+          credentials: "omit",
+        }
+      );
       if (betsResponse.ok) {
         const bets = await betsResponse.json();
         pendingIds = CoolbetHistory.collectPendingIdsFromBets(bets);

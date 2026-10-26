@@ -19,8 +19,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from auth_cookies import use_cross_site_cookies
 from fx import nok_per_usd, nok_per_usd_from_norges_bank
-from coolbet import map_coolbet_ticket
-from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, login_payload
+from coolbet import COOLBET_USER_FIELDS, map_coolbet_ticket, preserved_coolbet_user_fields
+from coolbet_sync import CHROME_EXTENSION_ORIGIN_RE, is_incomplete_stored_bet, login_payload
 from mongo import mongo_client_kwargs
 from passwords import (
     email_error,
@@ -1372,12 +1372,68 @@ async def get_recent_bets(request: Request, limit: int = 10, include_legs: bool 
     return await list_recent_bets(user_id, limit=limit, include_legs=include_legs)
 
 
-@api_router.get("/bets/source-ids")
-async def get_bet_source_ids(request: Request, bookie: Optional[str] = None):
-    user_id = await get_current_user(request)
+SOURCE_IDS_LIMIT = 10000
+
+
+def _source_id_query(user_id: str, bookie: Optional[str]) -> dict:
     query = {"user_id": user_id, "source_id": {"$exists": True, "$nin": [None, ""]}}
     if bookie:
         query["bookie"] = bookie
+    return query
+
+
+def _compact_source_row(row: dict) -> dict:
+    legs = row.get("legs")
+    return {
+        "source_id": row.get("source_id"),
+        "status": row.get("status"),
+        "ticket_type": row.get("ticket_type"),
+        "total_matches": row.get("total_matches"),
+        "legs_count": len(legs) if isinstance(legs, list) else 0,
+    }
+
+
+def _summary_source_row(row: dict) -> dict:
+    return {
+        "source_id": row.get("source_id"),
+        "status": row.get("status"),
+        "incomplete": is_incomplete_stored_bet(row),
+    }
+
+
+@api_router.get("/bets/source-ids")
+async def get_bet_source_ids(
+    request: Request,
+    bookie: Optional[str] = None,
+    view: Optional[str] = None,
+):
+    user_id = await get_current_user(request)
+    query = _source_id_query(user_id, bookie)
+    if view == "summary":
+        # legs_count via $size so the leg array stays in Mongo.
+        pipeline = [
+            {"$match": query},
+            {
+                "$project": {
+                    "_id": 0,
+                    "source_id": 1,
+                    "status": 1,
+                    "ticket_type": 1,
+                    "total_matches": 1,
+                    "legs_count": {
+                        "$cond": [
+                            {"$isArray": "$legs"},
+                            {"$size": "$legs"},
+                            0,
+                        ]
+                    },
+                }
+            },
+            {"$limit": SOURCE_IDS_LIMIT},
+        ]
+        rows = await db.bets.aggregate(pipeline).to_list(SOURCE_IDS_LIMIT)
+        return [_summary_source_row(row) for row in rows]
+
     rows = await db.bets.find(
         query,
         {
@@ -1388,20 +1444,8 @@ async def get_bet_source_ids(request: Request, bookie: Optional[str] = None):
             "total_matches": 1,
             "legs": 1,
         },
-    ).to_list(10000)
-    compact = []
-    for row in rows:
-        legs = row.get("legs")
-        compact.append(
-            {
-                "source_id": row.get("source_id"),
-                "status": row.get("status"),
-                "ticket_type": row.get("ticket_type"),
-                "total_matches": row.get("total_matches"),
-                "legs_count": len(legs) if isinstance(legs, list) else 0,
-            }
-        )
-    return compact
+    ).to_list(SOURCE_IDS_LIMIT)
+    return [_compact_source_row(row) for row in rows]
 
 
 # Bookmaker Routes
@@ -1584,9 +1628,12 @@ async def import_coolbet_bets(request: Request):
     source_ids = [mapped["source_id"] for mapped in mapped_tickets if mapped.get("source_id")]
     existing_docs = []
     if source_ids:
+        existing_projection = {"_id": 0, "bet_id": 1, "source_id": 1, "created_at": 1}
+        for key in COOLBET_USER_FIELDS:
+            existing_projection[key] = 1
         existing_docs = await db.bets.find(
             {"user_id": user_id, "source_id": {"$in": source_ids}},
-            {"_id": 0, "bet_id": 1, "source_id": 1, "created_at": 1},
+            existing_projection,
         ).to_list(len(source_ids))
     existing_by_source = {doc["source_id"]: doc for doc in existing_docs}
 
@@ -1601,6 +1648,7 @@ async def import_coolbet_bets(request: Request):
             "created_at": existing["created_at"] if existing else now,
         }
         if existing:
+            doc.update(preserved_coolbet_user_fields(existing))
             ops.append(ReplaceOne({"bet_id": existing["bet_id"], "user_id": user_id}, doc))
             updated += 1
         else:
