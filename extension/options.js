@@ -30,7 +30,7 @@ async function load() {
     "autoAlarm",
   ]);
   apiUrlEl.value = state.apiUrl || "";
-  clientIdEl.value = configuredValue(state, "googleClientId");
+  clientIdEl.value = manifestClientId() || configuredValue(state, "googleClientId");
   firebaseKeyEl.value = configuredValue(state, "firebaseApiKey");
   authDomainEl.value = configuredValue(state, "firebaseAuthDomain");
   tokenEl.value = state.sessionToken || "";
