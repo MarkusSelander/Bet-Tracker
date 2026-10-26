@@ -84,7 +84,7 @@ docker run -d -p 27017:27017 --name mongodb mongo
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=bet_tracker
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000
-FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_PROJECT_ID=bettracker-f5d99
 API_SPORTS_KEY=your_api_sports_key_here
 TENNIS_API_KEY=your_rapidapi_key_here
 # Chrome-utvidelsen bruker Bearer-token (ikke cookies). Backend tillater også
@@ -94,19 +94,19 @@ TENNIS_API_KEY=your_rapidapi_key_here
 ### Frontend (.env)
 ```
 REACT_APP_BACKEND_URL=http://localhost:8000
+# Valgfritt. Appen bruker bettracker-f5d99 når disse ikke er satt.
 REACT_APP_FIREBASE_API_KEY=
-REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-REACT_APP_FIREBASE_PROJECT_ID=your-firebase-project-id
+REACT_APP_FIREBASE_AUTH_DOMAIN=bettracker-f5d99.firebaseapp.com
+REACT_APP_FIREBASE_PROJECT_ID=bettracker-f5d99
 REACT_APP_FIREBASE_APP_ID=
 ```
 
 ### Google sign-in
 
-1. In the Firebase console, enable Authentication → Google and add a web app.
-2. Put the web config in the frontend variables above (and on Vercel). Add the site domain to Authorized domains. `localhost` is already allowed.
-3. Set `FIREBASE_PROJECT_ID` on the API. The backend checks Google's public certificates, so it does not need a service account.
-4. An existing account with the same email is linked, and its bets stay on that user.
-5. For the Chrome extension, create a Chrome extension OAuth client in the same Google Cloud project. Authorize the redirect `https://<extension-id>.chromiumapp.org/` and paste the client id, Firebase API key and auth domain into the extension options.
+1. In the Firebase console, enable Authentication → Google for project `bettracker-f5d99`. Add the site domain to Authorized domains. `localhost` is already allowed.
+2. The web config is in the frontend. Set the variables above only to point at another Firebase project. The API uses `bettracker-f5d99` unless `FIREBASE_PROJECT_ID` is set.
+3. An existing account with the same email is linked, and its bets stay on that user.
+4. For the Chrome extension, create a Chrome extension OAuth client in the same Google Cloud project. Authorize the redirect `https://<extension-id>.chromiumapp.org/` and paste the client id, Firebase API key and auth domain into the extension options.
 
 ## Deploy (Vercel + Render)
 

@@ -210,7 +210,7 @@ def test_invalid_token_is_rejected_without_a_session():
 
 
 def test_google_login_without_firebase_project_returns_503(monkeypatch):
-    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "")
     users = MagicMock()
     users.find_one = AsyncMock(side_effect=AssertionError("no lookup"))
     client = TestClient(app)
