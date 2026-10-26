@@ -165,7 +165,7 @@
       pending,
       incomplete,
       directIds
-    );
+    ).slice(0, CoolbetHistory.DETAIL_FETCH_LIMIT);
     const indexById = new Map();
     all.forEach((ticket, index) => {
       if (ticket && ticket.id && !indexById.has(ticket.id)) indexById.set(ticket.id, index);

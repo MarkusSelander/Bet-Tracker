@@ -36,7 +36,7 @@ function render(state) {
     const r = state.lastResult;
     const comboLegs = Number(r.comboLegs) || 0;
     const comboText = comboLegs > 0 ? ` · ${comboLegs} kombier med bein` : "";
-    resultEl.textContent = `${r.fetched || 0} hentet · ${r.imported || 0} nye · ${r.updated || 0} oppdatert${comboText}`;
+    resultEl.textContent = `${r.fetched || 0} hentet fra Coolbet · ${r.imported || 0} nye på Spill · ${r.updated || 0} oppdatert${comboText}`;
   } else {
     resultEl.textContent = "";
   }

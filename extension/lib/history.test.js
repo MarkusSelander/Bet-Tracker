@@ -12,8 +12,10 @@ const {
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
   chunkTickets,
+  DETAIL_FETCH_LIMIT,
   directTicketIds,
   IMPORT_CHUNK_SIZE,
+  knownIdsForSync,
   MAX_HISTORY_PAGES,
   mergeKnownIds,
   pageAlreadySeen,
@@ -428,6 +430,13 @@ test("mergeKnownIds unions local cache with backend source ids", () => {
     ["ticket-a", "ticket-b"]
   );
   assert.deepEqual(mergeKnownIds([], [{ source_id: "ticket-c" }]), ["ticket-c"]);
+});
+
+test("known ids for sync follow Spill and drop remembered ids that were never saved", () => {
+  const bets = [{ source_id: "open", status: "pending" }];
+  assert.deepEqual(knownIdsForSync(["old-settled", "open", "never-saved"], bets, true), ["open"]);
+  assert.deepEqual(knownIdsForSync(["old-settled"], [], true), []);
+  assert.deepEqual(knownIdsForSync(["old-settled", ""], [], false), ["old-settled"]);
 });
 
 test("bets url uses source-ids endpoint", () => {
@@ -868,6 +877,20 @@ test("background walks every history page and posts older tickets in chunks", ()
   assert.doesNotMatch(src, /historyBackfillDone/);
   assert.doesNotMatch(src, /fullHistory/);
   assert.doesNotMatch(src, /slice\(-4000\)/);
+  assert.match(src, /CoolbetHistory\.knownIdsForSync/);
+  assert.doesNotMatch(src, /mergeKnownIds/);
+});
+
+test("popup says new coupons land on Spill", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "popup.js"), "utf8");
+  assert.match(src, /hentet fra Coolbet/);
+  assert.match(src, /nye på Spill/);
+});
+
+test("content script caps detail fetches so the history list can still be saved", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
+  assert.equal(DETAIL_FETCH_LIMIT, 80);
+  assert.match(src, /DETAIL_FETCH_LIMIT/);
 });
 
 test("manifest registers the background service worker as an ES module", () => {
