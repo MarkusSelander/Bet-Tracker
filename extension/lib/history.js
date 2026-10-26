@@ -137,8 +137,9 @@
     return Boolean(pendingIds && ticket && pendingIds.has(ticket.id));
   }
 
-  function shouldStopPagination({ tickets, hasNextPage, knownIds }) {
+  function shouldStopPagination({ tickets, hasNextPage, knownIds, fullHistory }) {
     if (!hasNextPage || !tickets || tickets.length === 0) return true;
+    if (fullHistory) return false;
     if (!knownIds || knownIds.size === 0) return false;
     const last = tickets[tickets.length - 1];
     return Boolean(last && last.id && knownIds.has(last.id));

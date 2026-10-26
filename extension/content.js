@@ -39,7 +39,7 @@
     return total > 0 ? total : 0;
   }
 
-  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds) {
+  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds, fullHistory) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
       accept: "*/*",
@@ -58,6 +58,7 @@
     const incomplete = new Set(incompleteIds || []);
     const all = [];
     let page = 1;
+    let historyComplete = false;
 
     while (true) {
       const response = await fetch(CoolbetHistory.historyUrl(page), {
@@ -95,8 +96,10 @@
           knownIds: known,
           pendingIds: pending,
           incompleteIds: incomplete,
+          fullHistory,
         })
       ) {
+        historyComplete = !hasNextPage || tickets.length === 0;
         break;
       }
 
@@ -201,12 +204,18 @@
       await sleep(250);
     }
 
-    return { status: "ok", tickets: all };
+    return { status: "ok", tickets: all, historyComplete };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!message || message.type !== "FETCH_TICKETS") return undefined;
-    fetchTickets(message.auth, message.knownIds, message.pendingIds, message.incompleteIds)
+    fetchTickets(
+      message.auth,
+      message.knownIds,
+      message.pendingIds,
+      message.incompleteIds,
+      message.fullHistory
+    )
       .then(sendResponse)
       .catch((err) => sendResponse({ status: "error", error: String(err.message || err), tickets: [] }));
     return true;
