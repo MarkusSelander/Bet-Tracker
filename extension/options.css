@@ -72,6 +72,9 @@ button {
   color: #052e1c;
 }
 
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+input[readonly] { color: var(--muted); }
+
 .message { margin-top: 12px; }
 .message.ok { color: var(--primary); }
 .message.error { color: #f87171; }

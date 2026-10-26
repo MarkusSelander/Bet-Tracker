@@ -25,6 +25,11 @@
         <input id="firebase-api-key" type="text" autocomplete="off" />
         <label for="firebase-auth-domain">Firebase auth-domene</label>
         <input id="firebase-auth-domain" type="text" autocomplete="off" placeholder="prosjekt.firebaseapp.com" />
+        <label for="redirect-uri">Redirect-adresse til OAuth-klienten</label>
+        <input id="redirect-uri" type="text" readonly />
+        <p class="hint">
+          Lim adressen inn under Authorized redirect URIs på den samme klienten som ID-en over. Skråstreken på slutten skal være med.
+        </p>
         <button id="login" type="button">Logg inn med Google</button>
       </fieldset>
 
