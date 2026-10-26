@@ -8,6 +8,7 @@ TICKET_STATUS = "all,WON,LOST,CONFIRMED,CANCELLED,PUSHED,PARTIALLY_WON,VOIDED,CA
 PAGE_SIZE = 50
 OPEN_STATUSES = {"PENDING", "CONFIRMED"}
 COMBO_TYPES = {"combo", "system", "betbuilder"}
+DIRECT_FETCH_LIMIT = 100
 
 
 def history_query(page_number: int = 1) -> Dict[str, Any]:
@@ -22,12 +23,18 @@ def history_query(page_number: int = 1) -> Dict[str, Any]:
     }
 
 
+def _is_numeric_display_id(value: Any) -> bool:
+    if value is None or value == "":
+        return False
+    return str(value).isdigit()
+
+
 def ticket_detail_paths(ticket_id: str, display_id: Optional[Any] = None) -> list:
     if ticket_id is None or ticket_id == "":
         return []
-    tid = str(ticket_id)
-    if tid.isdigit():
+    if _is_numeric_display_id(ticket_id):
         return []
+    tid = str(ticket_id)
     query = "language=eu&layout=EUROPEAN"
     return [f"/s/sbgate/bets/tickets/{tid}?{query}&ticketId={tid}"]
 
@@ -130,6 +137,62 @@ def resolve_last_coolbet_sync_at(
     return latest_bet_created_at
 
 
+def direct_ticket_ids(
+    seen_ids: Optional[Iterable[str]] = None,
+    pending_ids: Optional[Iterable[str]] = None,
+    incomplete_ids: Optional[Iterable[str]] = None,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Pending and incomplete ids missing from the history pages already read."""
+    seen = set(seen_ids or [])
+    cap = DIRECT_FETCH_LIMIT if limit is None else limit
+    if cap < 0:
+        cap = 0
+    wanted: list = []
+    queued = set()
+
+    def push(ticket_id: Any) -> None:
+        if ticket_id is None or ticket_id == "":
+            return
+        if ticket_id in queued or ticket_id in seen or _is_numeric_display_id(ticket_id):
+            return
+        queued.add(ticket_id)
+        wanted.append(ticket_id)
+
+    for ticket_id in list(pending_ids or []):
+        push(ticket_id)
+    for ticket_id in list(incomplete_ids or []):
+        push(ticket_id)
+    return {"ids": wanted[:cap], "deferred": max(0, len(wanted) - cap)}
+
+
+def tickets_needing_details(
+    tickets: Iterable[Dict[str, Any]],
+    known_ids: Optional[Set[str]] = None,
+    pending_ids: Optional[Set[str]] = None,
+    incomplete_ids: Optional[Set[str]] = None,
+    skip_ids: Optional[Iterable[str]] = None,
+) -> list:
+    skip = set(skip_ids or [])
+    selected = tickets_to_import(tickets, known_ids, pending_ids, incomplete_ids)
+    return [
+        ticket
+        for ticket in selected
+        if ticket.get("id")
+        and ticket.get("id") not in skip
+        and should_fetch_ticket_details(ticket, known_ids, pending_ids, incomplete_ids)
+    ]
+
+
+def ticket_from_direct_response(ticket_id: str, detail: Any) -> Dict[str, Any]:
+    if isinstance(detail, list):
+        return merge_ticket_details({"id": ticket_id}, detail)
+    flat = detail if isinstance(detail, dict) else {}
+    nested = flat.get("ticket") if isinstance(flat.get("ticket"), dict) else {}
+    base = {**flat, **nested, "id": nested.get("id") or flat.get("id") or ticket_id}
+    return merge_ticket_details(base, detail)
+
+
 def should_stop_pagination(
     tickets: Iterable[Dict[str, Any]],
     has_next_page: bool,
@@ -161,6 +224,8 @@ def _stored_bet_leg_count(bet: Dict[str, Any]) -> int:
 def is_incomplete_stored_bet(bet: Dict[str, Any]) -> bool:
     if not bet.get("source_id"):
         return False
+    if isinstance(bet.get("incomplete"), bool):
+        return bool(bet["incomplete"])
     total = int(bet.get("total_matches") or 1)
     ticket_type = str(bet.get("ticket_type") or "").lower()
     if total <= 1 and ticket_type not in COMBO_TYPES:

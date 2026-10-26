@@ -6,10 +6,12 @@ const vm = require("node:vm");
 const {
   HISTORY_PATH,
   authHeaders,
+  DIRECT_FETCH_LIMIT,
   betsUrl,
   collectIncompleteIdsFromBets,
   collectKnownIdsFromBets,
   collectPendingIdsFromBets,
+  directTicketIds,
   mergeKnownIds,
   computeSyncProgress,
   formatLastSync,
@@ -25,6 +27,8 @@ const {
   shouldFetchTicketDetails,
   shouldStopPagination,
   ticketDetailPaths,
+  ticketFromDirectResponse,
+  ticketsNeedingDetails,
   ticketsToImport,
   countComboTicketsWithLegs,
 } = require("./history.js");
@@ -250,6 +254,43 @@ test("does not walk older pages just because pending or incomplete ids remain", 
   );
 });
 
+test("fetches unseen pending and incomplete tickets directly after pagination stops", () => {
+  const page = [
+    { id: "a", status: "LOST" },
+    { id: "b", status: "LOST" },
+  ];
+  assert.equal(
+    shouldStopPagination({
+      tickets: page,
+      hasNextPage: true,
+      knownIds: new Set(["a", "b", "older-open", "older-combo"]),
+      pendingIds: new Set(["older-open"]),
+      incompleteIds: new Set(["older-combo"]),
+    }),
+    true
+  );
+  const plan = directTicketIds({
+    seenIds: new Set(page.map((ticket) => ticket.id)),
+    pendingIds: ["older-open", "a", "2004"],
+    incompleteIds: ["older-combo", "older-open"],
+  });
+  assert.deepEqual(plan.ids, ["older-open", "older-combo"]);
+  assert.equal(plan.deferred, 0);
+});
+
+test("direct ticket fetches cap at 100 and defer the rest", () => {
+  const pendingIds = Array.from({ length: 103 }, (_, index) => `open-${index}`);
+  const plan = directTicketIds({
+    seenIds: new Set(),
+    pendingIds,
+    incompleteIds: [],
+  });
+  assert.equal(DIRECT_FETCH_LIMIT, 100);
+  assert.equal(plan.ids.length, 100);
+  assert.deepEqual(plan.ids, pendingIds.slice(0, 100));
+  assert.equal(plan.deferred, 3);
+});
+
 test("first sync with no known ids keeps paging while Coolbet has more history", () => {
   assert.equal(
     shouldStopPagination({
@@ -335,6 +376,21 @@ test("bets url uses source-ids endpoint", () => {
     betsUrl("https://api.example.com/", "Coolbet"),
     "https://api.example.com/api/bets/source-ids?bookie=Coolbet"
   );
+  assert.equal(
+    betsUrl("https://api.example.com/", "Coolbet", { view: "summary" }),
+    "https://api.example.com/api/bets/source-ids?bookie=Coolbet&view=summary"
+  );
+});
+
+test("summary rows mark incomplete without legs", () => {
+  const summary = [
+    { source_id: "open", status: "pending", incomplete: false },
+    { source_id: "old-combo", status: "won", incomplete: true },
+    { source_id: "done", status: "lost", incomplete: false },
+  ];
+  assert.deepEqual(collectPendingIdsFromBets(summary), ["open"]);
+  assert.deepEqual(collectIncompleteIdsFromBets(summary), ["old-combo"]);
+  assert.deepEqual(collectKnownIdsFromBets(summary), ["open", "old-combo", "done"]);
 });
 
 test("reimports known tickets that settled after we stored them as pending", () => {
@@ -421,6 +477,49 @@ test("reimports known settled tickets that are missing stored legs", () => {
   assert.deepEqual(
     imported.map((ticket) => ticket.id),
     ["incomplete-combo"]
+  );
+});
+
+test("detail fetch is only for importable tickets that still need legs", () => {
+  const knownSettled = { id: "known-won", status: "WON", total_matches: 3, ticket_type: "combo" };
+  const fresh = { id: "fresh", status: "WON", total_matches: 3, ticket_type: "combo" };
+  const directThin = { id: "older-combo", status: "WON", total_matches: 4, ticket_type: "combo" };
+  const known = new Set(["known-won", "older-combo"]);
+  const incomplete = new Set(["older-combo"]);
+  assert.deepEqual(
+    ticketsNeedingDetails([knownSettled, fresh, directThin], known, new Set(), incomplete).map(
+      (ticket) => ticket.id
+    ),
+    ["fresh", "older-combo"]
+  );
+  assert.deepEqual(
+    ticketsNeedingDetails(
+      [knownSettled, fresh, directThin],
+      known,
+      new Set(),
+      incomplete,
+      new Set(["older-combo"])
+    ).map((ticket) => ticket.id),
+    ["fresh"]
+  );
+});
+
+test("direct ticket response keeps id and legs so it does not need a second detail call", () => {
+  const ticket = ticketFromDirectResponse(CHELSEA_HULL_UUID, chelseaHullTicketDetail());
+  assert.equal(ticket.id, CHELSEA_HULL_UUID);
+  assert.equal(ticket.status, "PENDING");
+  assert.equal(ticket.total_stake, 500);
+  assert.equal(ticket.uniqueSelections.length, 2);
+  assert.equal(needsTicketDetails(ticket), false);
+  assert.deepEqual(
+    ticketsNeedingDetails(
+      [ticket],
+      new Set([CHELSEA_HULL_UUID]),
+      new Set([CHELSEA_HULL_UUID]),
+      new Set(),
+      new Set([CHELSEA_HULL_UUID])
+    ),
+    []
   );
 });
 
@@ -686,6 +785,19 @@ test("service worker loads history.js with a static import instead of importScri
   const src = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
   assert.match(src, /^import\s+["']\.\/lib\/history\.js["'];/m);
   assert.doesNotMatch(src, /importScripts\s*\(/);
+  assert.match(
+    src,
+    /betsUrl\(\s*config\.apiUrl,\s*"Coolbet",\s*\{\s*view:\s*"summary"\s*\}\s*\)/
+  );
+});
+
+test("content script asks history.js which unseen tickets to fetch and which need details", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "content.js"), "utf8");
+  const directAt = src.indexOf("CoolbetHistory.directTicketIds");
+  const detailAt = src.indexOf("CoolbetHistory.ticketsNeedingDetails");
+  assert.ok(directAt > 0);
+  assert.ok(detailAt > directAt);
+  assert.match(src, /Coolbet-synk utsatte/);
 });
 
 test("manifest registers the background service worker as an ES module", () => {

@@ -11,6 +11,7 @@
   const PAGE_SIZE = "50";
   const OPEN_STATUSES = { PENDING: true, CONFIRMED: true };
   const COMBO_TYPES = { combo: true, system: true, betbuilder: true };
+  const DIRECT_FETCH_LIMIT = 100;
 
   function historyQuery(pageNumber) {
     return {
@@ -41,10 +42,14 @@
     return `${String(apiBase).replace(/\/$/, "")}/api/auth/me`;
   }
 
-  function betsUrl(apiBase, bookie) {
+  function betsUrl(apiBase, bookie, options) {
     const base = `${String(apiBase).replace(/\/$/, "")}/api/bets/source-ids`;
-    if (!bookie) return base;
-    return `${base}?bookie=${encodeURIComponent(bookie)}`;
+    const params = new URLSearchParams();
+    if (bookie) params.set("bookie", bookie);
+    const view = options && typeof options === "object" ? options.view : "";
+    if (view) params.set("view", String(view));
+    const query = params.toString();
+    return query ? `${base}?${query}` : base;
   }
 
   function authHeaders(token) {
@@ -112,6 +117,7 @@
 
   function isIncompleteStoredBet(bet) {
     if (!bet || !bet.source_id) return false;
+    if (typeof bet.incomplete === "boolean") return bet.incomplete;
     const total = Number(bet.total_matches || 1);
     const type = String(bet.ticket_type || "").toLowerCase();
     if (total <= 1 && !COMBO_TYPES[type]) return false;
@@ -136,6 +142,53 @@
     if (!knownIds || knownIds.size === 0) return false;
     const last = tickets[tickets.length - 1];
     return Boolean(last && last.id && knownIds.has(last.id));
+  }
+
+  function directTicketIds({ seenIds, pendingIds, incompleteIds, limit }) {
+    const seen = seenIds instanceof Set ? seenIds : new Set(seenIds || []);
+    const cap = limit == null ? DIRECT_FETCH_LIMIT : Number(limit);
+    const safeCap = Number.isFinite(cap) && cap >= 0 ? cap : DIRECT_FETCH_LIMIT;
+    const queued = new Set();
+    const wanted = [];
+
+    function push(id) {
+      if (!id || queued.has(id) || seen.has(id) || isNumericDisplayId(id)) return;
+      queued.add(id);
+      wanted.push(id);
+    }
+
+    for (const id of pendingIds || []) push(id);
+    for (const id of incompleteIds || []) push(id);
+    return {
+      ids: wanted.slice(0, safeCap),
+      deferred: Math.max(0, wanted.length - safeCap),
+    };
+  }
+
+  function ticketsNeedingDetails(tickets, knownIds, pendingIds, incompleteIds, skipIds) {
+    const skip = skipIds instanceof Set ? skipIds : new Set(skipIds || []);
+    return ticketsToImport(tickets, knownIds, pendingIds, incompleteIds).filter(
+      (ticket) =>
+        ticket &&
+        ticket.id &&
+        !skip.has(ticket.id) &&
+        shouldFetchTicketDetails(ticket, knownIds, pendingIds, incompleteIds)
+    );
+  }
+
+  function ticketFromDirectResponse(ticketId, detail) {
+    if (Array.isArray(detail)) {
+      return mergeTicketDetails({ id: ticketId }, detail);
+    }
+    const flat = detail && typeof detail === "object" ? detail : {};
+    const nested =
+      flat.ticket && typeof flat.ticket === "object" && !Array.isArray(flat.ticket) ? flat.ticket : {};
+    const base = {
+      ...flat,
+      ...nested,
+      id: nested.id || flat.id || ticketId,
+    };
+    return mergeTicketDetails(base, detail);
   }
 
   function hasImportableComboLegs(ticket) {
@@ -346,6 +399,7 @@
     HISTORY_PATH,
     TICKET_STATUS,
     PAGE_SIZE,
+    DIRECT_FETCH_LIMIT,
     authHeaders,
     betsUrl,
     collectIncompleteIdsFromBets,
@@ -355,6 +409,7 @@
     collectTicketIds,
     countComboTicketsWithLegs,
     computeSyncProgress,
+    directTicketIds,
     formatLastSync,
     historyQuery,
     historyUrl,
@@ -372,6 +427,8 @@
     shouldFetchTicketDetails,
     shouldStopPagination,
     ticketDetailPaths,
+    ticketFromDirectResponse,
+    ticketsNeedingDetails,
     ticketsToImport,
   };
 });

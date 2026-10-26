@@ -383,6 +383,135 @@ def test_pending_list_does_not_return_settled_bets():
     assert [bet["bet_id"] for bet in response.json()] == ["open"]
 
 
+class _AggCursor:
+    def __init__(self, docs):
+        self.docs = list(docs)
+
+    async def to_list(self, n):
+        return list(self.docs)[:n]
+
+
+def test_source_ids_summary_is_small_and_marks_incomplete_like_legs():
+    from coolbet_sync import is_incomplete_stored_bet
+
+    bets = [
+        {
+            "source_id": "incomplete-settled",
+            "status": "won",
+            "bookie": "Coolbet",
+            "ticket_type": "combo",
+            "total_matches": 5,
+            "legs": [{"match": "Secret Match Alpha"}],
+        },
+        {
+            "source_id": "complete-settled",
+            "status": "lost",
+            "bookie": "Coolbet",
+            "ticket_type": "combo",
+            "total_matches": 2,
+            "legs": [{"match": "Secret Match Alpha"}, {"match": "Secret Match Beta"}],
+        },
+        {
+            "source_id": "single",
+            "status": "won",
+            "bookie": "Coolbet",
+            "ticket_type": "single",
+            "total_matches": 1,
+            "legs": [{"match": "Secret Match Alpha"}],
+        },
+        {
+            "source_id": "thin-betbuilder",
+            "status": "pending",
+            "bookie": "Coolbet",
+            "ticket_type": "betbuilder",
+            "total_matches": 1,
+            "legs": [],
+        },
+        {
+            "source_id": "other-book",
+            "status": "pending",
+            "bookie": "Unibet",
+            "ticket_type": "combo",
+            "total_matches": 4,
+            "legs": [],
+        },
+    ]
+    expected = {
+        "incomplete-settled": True,
+        "complete-settled": False,
+        "single": False,
+        "thin-betbuilder": True,
+    }
+    for bet in bets:
+        if bet["bookie"] != "Coolbet":
+            continue
+        assert is_incomplete_stored_bet(bet) is expected[bet["source_id"]]
+
+    captured = {}
+
+    def aggregate(pipeline, **kwargs):
+        captured["pipeline"] = pipeline
+        matched = list(bets)
+        for stage in pipeline:
+            if "$match" in stage:
+                bookie = stage["$match"].get("bookie")
+                if bookie is not None:
+                    matched = [bet for bet in matched if bet.get("bookie") == bookie]
+            if "$project" in stage:
+                project = stage["$project"]
+                assert project.get("legs", 0) == 0
+                legs_count = project["legs_count"]["$cond"]
+                assert legs_count[0] == {"$isArray": "$legs"}
+                assert legs_count[1] == {"$size": "$legs"}
+                assert legs_count[2] == 0
+        rows = []
+        for bet in matched:
+            if not bet.get("source_id"):
+                continue
+            legs = bet.get("legs")
+            rows.append(
+                {
+                    "source_id": bet.get("source_id"),
+                    "status": bet.get("status"),
+                    "ticket_type": bet.get("ticket_type"),
+                    "total_matches": bet.get("total_matches"),
+                    "legs_count": len(legs) if isinstance(legs, list) else 0,
+                }
+            )
+        return _AggCursor(rows)
+
+    mock_db = MagicMock()
+    mock_db.bets.find.side_effect = lambda *args, **kwargs: _FakeCursor(
+        bets, args[1] if len(args) > 1 else kwargs.get("projection")
+    )
+    mock_db.bets.aggregate.side_effect = aggregate
+    client = TestClient(app)
+    with patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"), patch(
+        "server.db", mock_db
+    ):
+        full = client.get("/api/bets/source-ids?bookie=Coolbet")
+        summary = client.get("/api/bets/source-ids?bookie=Coolbet&view=summary")
+
+    assert full.status_code == 200
+    assert summary.status_code == 200
+    assert full.json()[0]["legs_count"] == 1
+    assert "legs" not in full.json()[0]
+    assert "legs" not in summary.text
+    assert len(summary.content) < len(full.content)
+    assert summary.json() == [
+        {"source_id": source_id, "status": status, "incomplete": incomplete}
+        for source_id, status, incomplete in (
+            ("incomplete-settled", "won", True),
+            ("complete-settled", "lost", False),
+            ("single", "won", False),
+            ("thin-betbuilder", "pending", True),
+        )
+    ]
+    match = next(stage["$match"] for stage in captured["pipeline"] if "$match" in stage)
+    assert match["user_id"] == "user_1"
+    assert match["bookie"] == "Coolbet"
+
+
 def test_source_ids_returns_compact_rows():
     bets = [
         {
@@ -513,6 +642,92 @@ def test_coolbet_import_uses_bulk_write():
     assert response.json()["imported"] == 1
     mock_db.bets.bulk_write.assert_awaited_once()
     assert len(mock_db.bets.bulk_write.await_args.args[0]) == 1
+    inserted = mock_db.bets.bulk_write.await_args.args[0][0]._doc
+    assert "tipster" not in inserted
+    assert "notes" not in inserted
+
+
+def test_coolbet_reimport_keeps_tipster_and_notes_and_updates_result():
+    created_at = "2026-08-01T10:00:00+00:00"
+    existing = {
+        "bet_id": "bet_existing",
+        "source_id": "ticket-abc",
+        "created_at": created_at,
+        "tipster": "Ada",
+        "notes": "hjemmekamp",
+        "status": "pending",
+        "result": 0,
+        "game": "Gammel kamp",
+        "odds": 1.5,
+        "stake": 100,
+    }
+    captured = {}
+
+    def find(*args, **kwargs):
+        projection = args[1] if len(args) > 1 else kwargs.get("projection")
+        captured["projection"] = projection
+        return _FakeCursor([existing], projection)
+
+    mock_db = MagicMock()
+    mock_db.bets.find.side_effect = find
+    mock_db.bets.bulk_write = AsyncMock()
+    mock_db.users.update_one = AsyncMock()
+    settled = {
+        "id": "ticket-abc",
+        "display_id": 1949,
+        "created_at": "2026-09-02T17:12:17.012Z",
+        "status": "LOST",
+        "total_stake": 700,
+        "max_win": 0,
+        "remaining_max_win": 0,
+        "product": "PREMATCH",
+        "currency": "NOK",
+        "ticket_type": "single",
+        "total_matches": 1,
+        "first_bet_odds": 1.82,
+        "first_match": {
+            "sport_name": "Fotball",
+            "match_name": "Brann - Rosenborg",
+            "league_name": "Eliteserien",
+            "market_name": "Match Result (1X2)",
+            "outcome_name": "Brann",
+        },
+    }
+    fresh = {
+        **settled,
+        "id": "ticket-new",
+        "status": "WON",
+        "remaining_max_win": 1274,
+        "max_win": 1274,
+    }
+    client = TestClient(app)
+    with (
+        patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"),
+        patch("server.db", mock_db),
+    ):
+        response = client.post("/api/bets/import/coolbet", json={"tickets": [settled, fresh]})
+
+    assert response.status_code == 200
+    assert response.json() == {"imported": 1, "updated": 1, "skipped": 0}
+    assert captured["projection"]["tipster"] == 1
+    assert captured["projection"]["notes"] == 1
+    ops = mock_db.bets.bulk_write.await_args.args[0]
+    updated = ops[0]._doc
+    inserted = ops[1]._doc
+    assert updated["bet_id"] == "bet_existing"
+    assert updated["created_at"] == created_at
+    assert updated["tipster"] == "Ada"
+    assert updated["notes"] == "hjemmekamp"
+    assert updated["status"] == "lost"
+    assert updated["result"] == -700
+    assert updated["stake"] == 700
+    assert updated["game"] == "Brann - Rosenborg"
+    assert updated["odds"] == 1.82
+    assert inserted["source_id"] == "ticket-new"
+    assert inserted["status"] == "won"
+    assert inserted["result"] == 574
+    assert "tipster" not in inserted
+    assert "notes" not in inserted
 
 
 def test_stats_query_sorts_by_date_then_time():

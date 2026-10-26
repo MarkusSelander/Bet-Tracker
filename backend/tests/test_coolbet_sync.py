@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 
 from coolbet_sync import (
     CHROME_EXTENSION_ORIGIN_RE,
+    DIRECT_FETCH_LIMIT,
     auth_headers,
     collect_incomplete_ids_from_bets,
+    direct_ticket_ids,
     history_query,
     import_url,
     login_payload,
@@ -15,6 +17,8 @@ from coolbet_sync import (
     should_fetch_ticket_details,
     should_stop_pagination,
     ticket_detail_paths,
+    ticket_from_direct_response,
+    tickets_needing_details,
     tickets_to_import,
 )
 
@@ -102,12 +106,89 @@ def test_should_not_walk_older_pages_for_pending_or_incomplete_ids():
     )
 
 
+def test_unseen_pending_and_incomplete_are_fetched_directly_after_pagination_stops():
+    page = [{"id": "a", "status": "LOST"}, {"id": "b", "status": "LOST"}]
+    assert should_stop_pagination(
+        tickets=page,
+        has_next_page=True,
+        known_ids={"a", "b", "older-open", "older-combo"},
+        pending_ids={"older-open"},
+        incomplete_ids={"older-combo"},
+    )
+    plan = direct_ticket_ids(
+        seen_ids=["a", "b"],
+        pending_ids=["older-open", "a", "2004"],
+        incomplete_ids=["older-combo", "older-open"],
+    )
+    assert plan["ids"] == ["older-open", "older-combo"]
+    assert plan["deferred"] == 0
+
+
+def test_direct_ticket_fetches_cap_at_100():
+    pending_ids = [f"open-{index}" for index in range(103)]
+    plan = direct_ticket_ids(seen_ids=[], pending_ids=pending_ids, incomplete_ids=[])
+    assert DIRECT_FETCH_LIMIT == 100
+    assert plan["ids"] == pending_ids[:100]
+    assert plan["deferred"] == 3
+
+
 def test_first_sync_without_known_ids_keeps_paging():
     assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "WON"}, {"id": "b", "status": "LOST"}],
         has_next_page=True,
         known_ids=set(),
     )
+
+
+def test_summary_incomplete_flag_replaces_leg_comparison():
+    assert collect_incomplete_ids_from_bets(
+        [
+            {"source_id": "open", "status": "pending", "incomplete": False},
+            {"source_id": "old-combo", "status": "won", "incomplete": True},
+            {"source_id": "done", "status": "lost", "incomplete": False},
+        ]
+    ) == ["old-combo"]
+
+
+def test_detail_fetch_is_only_for_importable_tickets_that_still_need_legs():
+    known_settled = {"id": "known-won", "status": "WON", "total_matches": 3, "ticket_type": "combo"}
+    fresh = {"id": "fresh", "status": "WON", "total_matches": 3, "ticket_type": "combo"}
+    direct_thin = {"id": "older-combo", "status": "WON", "total_matches": 4, "ticket_type": "combo"}
+    known = {"known-won", "older-combo"}
+    incomplete = {"older-combo"}
+    tickets = [known_settled, fresh, direct_thin]
+    assert [ticket["id"] for ticket in tickets_needing_details(tickets, known, set(), incomplete)] == [
+        "fresh",
+        "older-combo",
+    ]
+    assert [
+        ticket["id"]
+        for ticket in tickets_needing_details(tickets, known, set(), incomplete, skip_ids={"older-combo"})
+    ] == ["fresh"]
+
+
+def test_direct_response_keeps_id_and_legs():
+    ticket_id = "26091204-3cbd-47e8-8111-e3517af40f5d"
+    ticket = ticket_from_direct_response(
+        ticket_id,
+        {
+            "ticket": {
+                "id": ticket_id,
+                "status": "PENDING",
+                "ticket_type": "combo",
+                "total_matches": 2,
+                "total_stake": 500,
+            },
+            "uniqueSelections": [
+                {"match_name": "Chelsea - Hull"},
+                {"match_name": "Fukuoka SoftBank Hawks - Chiba Lotte Marines"},
+            ],
+        },
+    )
+    assert ticket["id"] == ticket_id
+    assert ticket["status"] == "PENDING"
+    assert len(ticket["uniqueSelections"]) == 2
+    assert not needs_ticket_details(ticket)
 
 
 def test_collect_incomplete_ids_from_bets_keeps_combos_missing_legs():
