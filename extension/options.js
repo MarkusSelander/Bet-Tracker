@@ -37,6 +37,10 @@ async function load() {
   autoHistoryEl.checked = state.autoOnHistory !== false;
   document.getElementById("auto-login").checked = state.autoOnLogin !== false;
   autoAlarmEl.checked = Boolean(state.autoAlarm);
+  const redirectEl = document.getElementById("redirect-uri");
+  if (redirectEl && chrome.identity?.getRedirectURL) {
+    redirectEl.value = chrome.identity.getRedirectURL();
+  }
 }
 
 async function saveExtras() {
@@ -130,7 +134,10 @@ document.getElementById("login").addEventListener("click", async () => {
     });
     showMessage("Innlogget med Google. Token er lagret lokalt i utvidelsen.", true);
   } catch (err) {
-    showMessage(String(err.message || err), false);
+    const redirectUri = chrome.identity?.getRedirectURL?.() || "";
+    const detail = String(err.message || err);
+    const hint = redirectUri ? ` Redirect-adressen som må stå på klienten: ${redirectUri}` : "";
+    showMessage(`${detail}${hint}`, false);
   }
 });
 
