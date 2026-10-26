@@ -59,9 +59,16 @@ def test_malformed_token_is_rejected_without_calling_google(monkeypatch):
         verify_id_token("ikke-et-jwt")
 
 
-def test_missing_project_id_is_not_configured(monkeypatch):
+def test_blank_project_id_is_not_configured(monkeypatch):
     from firebase_auth import FirebaseNotConfigured
 
-    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", " ")
     with pytest.raises(FirebaseNotConfigured):
         verify_id_token("a.b.c")
+
+
+def test_unset_project_uses_bet_tracker(monkeypatch):
+    from firebase_auth import firebase_project_id
+
+    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
+    assert firebase_project_id() == "bettracker-f5d99"

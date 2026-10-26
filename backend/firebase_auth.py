@@ -13,6 +13,7 @@ from google.auth.transport.urllib3 import Request
 from google.oauth2 import id_token
 
 _google_request: Optional[Request] = None
+DEFAULT_FIREBASE_PROJECT_ID = "bettracker-f5d99"
 
 
 class FirebaseNotConfigured(Exception):
@@ -55,8 +56,14 @@ def _request() -> Request:
     return _google_request
 
 
+def firebase_project_id() -> str:
+    if "FIREBASE_PROJECT_ID" in os.environ:
+        return os.environ.get("FIREBASE_PROJECT_ID", "").strip()
+    return DEFAULT_FIREBASE_PROJECT_ID
+
+
 def verify_id_token(token: str) -> dict:
-    project = os.environ.get("FIREBASE_PROJECT_ID", "").strip()
+    project = firebase_project_id()
     if not project:
         raise FirebaseNotConfigured()
     if not isinstance(token, str) or token.count(".") != 2 or len(token) > 12000:
