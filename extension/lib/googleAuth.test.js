@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   authorizationCodeFromRedirect,
   codeChallenge,
+  exchangeGoogleAccessToken,
   exchangeGoogleCode,
   firebaseSignInBody,
   googleAuthorizeUrl,
@@ -94,4 +95,20 @@ test("exchange turns a Google code into a Firebase id token", async () => {
   assert.match(calls[1].url, /key=key/);
   assert.match(calls[1].body, /id_token=google\.jwt\.token/);
   assert.match(calls[1].body, /https:\/\/app\.firebaseapp\.com/);
+});
+
+test("chrome access token is exchanged directly with Firebase", async () => {
+  let body = "";
+  const result = await exchangeGoogleAccessToken({
+    firebaseApiKey: "key",
+    authDomain: "app.firebaseapp.com",
+    accessToken: "ya29.token",
+    fetchImpl: async (_url, options) => {
+      body = options.body;
+      return { ok: true, json: async () => ({ idToken: "firebase-token" }) };
+    },
+  });
+  assert.equal(result.idToken, "firebase-token");
+  assert.match(body, /access_token=ya29\.token/);
+  assert.match(body, /https:\/\/app\.firebaseapp\.com/);
 });

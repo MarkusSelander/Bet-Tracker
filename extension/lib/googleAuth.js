@@ -70,6 +70,41 @@
     };
   }
 
+  async function signInWithFirebase({
+    firebaseApiKey,
+    authDomain,
+    redirectUri,
+    idToken,
+    accessToken,
+    fetchImpl,
+  }) {
+    const fetchFn = fetchImpl || fetch;
+    const domain = String(authDomain || "")
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    const requestUri = domain ? `https://${domain}` : redirectUri;
+    const firebaseResponse = await fetchFn(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(firebaseApiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          firebaseSignInBody({
+            idToken,
+            accessToken,
+            requestUri,
+          })
+        ),
+      }
+    );
+    const firebaseData = await firebaseResponse.json().catch(() => ({}));
+    if (!firebaseResponse.ok || !firebaseData.idToken) {
+      throw new Error(firebaseData.error?.message || "Firebase avviste Google-kontoen.");
+    }
+    return firebaseData;
+  }
+
   async function exchangeGoogleCode({
     clientId,
     firebaseApiKey,
@@ -89,36 +124,25 @@
     if (!tokenResponse.ok || (!tokenData.id_token && !tokenData.access_token)) {
       throw new Error(tokenData.error_description || "Google avviste innloggingen.");
     }
+    return signInWithFirebase({
+      firebaseApiKey,
+      authDomain,
+      redirectUri,
+      idToken: tokenData.id_token,
+      accessToken: tokenData.access_token,
+      fetchImpl,
+    });
+  }
 
-    const domain = String(authDomain || "")
-      .trim()
-      .replace(/^https?:\/\//, "")
-      .replace(/\/$/, "");
-    const requestUri = domain ? `https://${domain}` : redirectUri;
-    const firebaseResponse = await fetchFn(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(firebaseApiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          firebaseSignInBody({
-            idToken: tokenData.id_token,
-            accessToken: tokenData.access_token,
-            requestUri,
-          })
-        ),
-      }
-    );
-    const firebaseData = await firebaseResponse.json().catch(() => ({}));
-    if (!firebaseResponse.ok || !firebaseData.idToken) {
-      throw new Error(firebaseData.error?.message || "Firebase avviste Google-kontoen.");
-    }
-    return firebaseData;
+  async function exchangeGoogleAccessToken({ firebaseApiKey, authDomain, accessToken, fetchImpl }) {
+    if (!accessToken) throw new Error("Google returnerte ikke noe token.");
+    return signInWithFirebase({ firebaseApiKey, authDomain, accessToken, fetchImpl });
   }
 
   return {
     authorizationCodeFromRedirect,
     codeChallenge,
+    exchangeGoogleAccessToken,
     exchangeGoogleCode,
     firebaseSignInBody,
     googleAuthorizeUrl,
