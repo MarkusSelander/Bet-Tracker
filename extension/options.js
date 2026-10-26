@@ -84,7 +84,7 @@ document.getElementById("save").addEventListener("click", async () => {
   showMessage("Lagret.", true);
 });
 
-document.getElementById("login").addEventListener("click", async () => {
+document.getElementById("login").addEventListener("click", () => {
   const apiUrl = apiUrlEl.value.trim().replace(/\/$/, "");
   const clientId = clientIdEl.value.trim() || manifestClientId();
   const firebaseApiKey = firebaseKeyEl.value.trim();
@@ -99,11 +99,25 @@ document.getElementById("login").addEventListener("click", async () => {
     return;
   }
 
+  const loginButton = document.getElementById("login");
+  loginButton.disabled = true;
+  showMessage("Åpner Google-innlogging…", true);
+  // Chrome viser bare vinduet når kallet skjer i selve klikket, før noe await.
+  const authPromise = useChromeToken ? chromeAccessToken() : null;
+
+  finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, useChromeToken, authPromise })
+    .catch((err) => showMessage(String(err.message || err), false))
+    .finally(() => {
+      loginButton.disabled = false;
+    });
+});
+
+async function finishGoogleLogin({ apiUrl, clientId, firebaseApiKey, authDomain, useChromeToken, authPromise }) {
   try {
     await saveExtras();
     let firebaseData;
     if (useChromeToken) {
-      const accessToken = await chromeAccessToken();
+      const accessToken = await authPromise;
       try {
         firebaseData = await GoogleAuth.exchangeGoogleAccessToken({
           firebaseApiKey,
@@ -169,6 +183,6 @@ document.getElementById("login").addEventListener("click", async () => {
   } catch (err) {
     showMessage(String(err.message || err), false);
   }
-});
+}
 
 load();
