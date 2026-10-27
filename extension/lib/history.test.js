@@ -30,6 +30,7 @@ const {
   loginPayload,
   loginUrl,
   mergeTicketDetails,
+  needsFullHistory,
   needsTicketDetails,
   resolveLastSyncAt,
   shouldFetchTicketDetails,
@@ -200,7 +201,7 @@ test("coolbet login request matches password login, not history or logout", () =
   assert.equal(isCoolbetLoginRequest("https://evil.example/login", "POST"), false);
 });
 
-test("known settled tickets do not stop a page that still has more history", () => {
+test("known settled tickets do not stop a full history page", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -209,8 +210,22 @@ test("known settled tickets do not stop a page that still has more history", () 
       ],
       hasNextPage: true,
       knownIds: new Set(["a", "b"]),
+      fullHistory: true,
     }),
     false
+  );
+});
+
+test("later syncs stop after the newest page", () => {
+  const tickets = Array.from({ length: 50 }, (_, index) => ({ id: `t-${index}`, status: "LOST" }));
+  assert.equal(
+    shouldStopPagination({
+      tickets,
+      hasNextPage: true,
+      page: 1,
+      fullHistory: false,
+    }),
+    true
   );
 });
 
@@ -223,12 +238,13 @@ test("continues while the oldest ticket on the page is still unknown", () => {
       ],
       hasNextPage: true,
       knownIds: new Set(["a"]),
+      fullHistory: true,
     }),
     false
   );
 });
 
-test("an already imported ticket does not push older pages aside", () => {
+test("an already imported ticket does not push older pages aside during the first import", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -237,6 +253,7 @@ test("an already imported ticket does not push older pages aside", () => {
       ],
       hasNextPage: true,
       knownIds: new Set(["a"]),
+      fullHistory: true,
     }),
     false
   );
@@ -245,12 +262,13 @@ test("an already imported ticket does not push older pages aside", () => {
       tickets: [{ id: "a", status: "PENDING" }],
       hasNextPage: true,
       knownIds: new Set(["a"]),
+      fullHistory: true,
     }),
     false
   );
 });
 
-test("keeps walking older pages while Coolbet still has another page", () => {
+test("full history keeps walking older pages while Coolbet still has another page", () => {
   assert.equal(
     shouldStopPagination({
       tickets: [
@@ -261,6 +279,7 @@ test("keeps walking older pages while Coolbet still has another page", () => {
       knownIds: new Set(["a", "b"]),
       pendingIds: new Set(["older-open"]),
       incompleteIds: new Set(["older-combo"]),
+      fullHistory: true,
     }),
     false
   );
@@ -308,7 +327,12 @@ test("full page keeps paging even when hasNextPage is missing or false", () => {
   assert.equal(resolveHasNextPage({ hasNextPage: false }, 1, tickets), true);
   assert.equal(resolveHasNextPage({}, 3, tickets), true);
   assert.equal(
-    shouldStopPagination({ tickets, hasNextPage: resolveHasNextPage({}, 3, tickets), page: 3 }),
+    shouldStopPagination({
+      tickets,
+      hasNextPage: resolveHasNextPage({}, 3, tickets),
+      page: 3,
+      fullHistory: true,
+    }),
     false
   );
 });
@@ -337,6 +361,7 @@ test("pagination stops at the page cap so a stuck next-page flag cannot loop", (
       tickets: [{ id: "a", status: "WON" }],
       hasNextPage: true,
       page: MAX_HISTORY_PAGES,
+      fullHistory: true,
     }),
     true
   );
@@ -361,9 +386,17 @@ test("first sync with no known ids keeps paging while Coolbet has more history",
       ],
       hasNextPage: true,
       knownIds: new Set(),
+      fullHistory: true,
     }),
     false
   );
+});
+
+test("full history runs once, then accounts that already have a page of bets stay on the newest page", () => {
+  assert.equal(needsFullHistory(false, 0), true);
+  assert.equal(needsFullHistory(false, 50), true);
+  assert.equal(needsFullHistory(false, 51), false);
+  assert.equal(needsFullHistory(true, 0), false);
 });
 
 test("collectPendingIdsFromBets keeps only open tracker bets", () => {
@@ -868,14 +901,15 @@ test("content script asks history.js which unseen tickets to fetch and which nee
   assert.match(src, /Coolbet-synk utsatte/);
   assert.match(src, /CoolbetHistory\.resolveHasNextPage/);
   assert.match(src, /CoolbetHistory\.pageAlreadySeen/);
-  assert.doesNotMatch(src, /fullHistory/);
+  assert.match(src, /fullHistory/);
 });
 
-test("background walks every history page and posts older tickets in chunks", () => {
+test("background reads the full history once and then only the newest page", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
   assert.match(src, /CoolbetHistory\.chunkTickets/);
-  assert.doesNotMatch(src, /historyBackfillDone/);
-  assert.doesNotMatch(src, /fullHistory/);
+  assert.match(src, /historyBackfillDone/);
+  assert.match(src, /CoolbetHistory\.needsFullHistory/);
+  assert.match(src, /fullHistory/);
   assert.doesNotMatch(src, /slice\(-4000\)/);
   assert.match(src, /CoolbetHistory\.knownIdsForSync/);
   assert.doesNotMatch(src, /mergeKnownIds/);

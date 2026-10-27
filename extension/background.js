@@ -154,6 +154,7 @@ async function runSync(reason) {
         "sessionToken",
         "knownIds",
         "lastSyncAt",
+        "historyBackfillDone",
       ]);
 
       if (!config.apiUrl || !config.sessionToken) {
@@ -207,12 +208,17 @@ async function runSync(reason) {
         tabId = await ensureCoolbetTab();
       }
       const auth = await waitForAuth(10000);
+      const fullHistory = CoolbetHistory.needsFullHistory(
+        config.historyBackfillDone,
+        knownIds.length
+      );
       const result = await sendToTab(tabId, {
         type: "FETCH_TICKETS",
         auth,
         knownIds,
         pendingIds,
         incompleteIds,
+        fullHistory,
       });
 
       if (!result || result.status === "need_coolbet") {
@@ -291,6 +297,7 @@ async function runSync(reason) {
           reason,
         },
         knownIds: nextKnownIds,
+        ...(fullHistory && !result.historyComplete ? {} : { historyBackfillDone: true }),
       });
 
       return { ok: true, status: "ok", summary, fetched: fetched.length };

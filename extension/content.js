@@ -39,7 +39,7 @@
     return total > 0 ? total : 0;
   }
 
-  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds) {
+  async function fetchTickets(auth, knownIds, pendingIds, incompleteIds, fullHistory) {
     const resolvedAuth = (auth && auth.cbauth ? auth : null) || (await waitForPageAuth(8000));
     const headers = {
       accept: "*/*",
@@ -81,7 +81,7 @@
       const tickets = Array.isArray(data.tickets) ? data.tickets : [];
       const seenBefore = new Set(CoolbetHistory.collectTicketIds(all));
       if (CoolbetHistory.pageAlreadySeen(tickets, seenBefore)) {
-        historyComplete = true;
+        historyComplete = Boolean(fullHistory);
         break;
       }
       all.push(...tickets);
@@ -99,11 +99,15 @@
           tickets,
           hasNextPage,
           page,
+          fullHistory,
         })
       ) {
         const capped =
-          page >= CoolbetHistory.MAX_HISTORY_PAGES && hasNextPage && tickets.length > 0;
-        historyComplete = !capped;
+          Boolean(fullHistory) &&
+          page >= CoolbetHistory.MAX_HISTORY_PAGES &&
+          hasNextPage &&
+          tickets.length > 0;
+        historyComplete = Boolean(fullHistory) && !capped;
         break;
       }
 
@@ -115,7 +119,7 @@
     const directPlan = CoolbetHistory.directTicketIds({
       seenIds,
       pendingIds,
-      incompleteIds,
+      incompleteIds: fullHistory ? incompleteIds : [],
     });
     if (directPlan.deferred > 0) {
       console.warn(
@@ -217,7 +221,8 @@
       message.auth,
       message.knownIds,
       message.pendingIds,
-      message.incompleteIds
+      message.incompleteIds,
+      message.fullHistory
     )
       .then(sendResponse)
       .catch((err) => sendResponse({ status: "error", error: String(err.message || err), tickets: [] }));
