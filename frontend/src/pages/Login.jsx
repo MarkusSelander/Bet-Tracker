@@ -1,6 +1,6 @@
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { AlertCircle, Loader2, TrendingUp } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
@@ -53,10 +53,13 @@ export default function Login() {
   const [error, setError] = useState(configured ? '' : 'Firebase er ikke satt opp i dette bygget.');
   const [submitting, setSubmitting] = useState(false);
   const [warming, setWarming] = useState(false);
+  const submitRef = useRef(null);
+  const submittingRef = useRef(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     warmUpBackend();
     preloadDashboard();
+    submitRef.current?.focus();
   }, []);
 
   if (user) {
@@ -64,7 +67,7 @@ export default function Login() {
   }
 
   const signIn = async () => {
-    if (submitting) return;
+    if (submittingRef.current) return;
     const auth = getFirebaseAuth();
     if (!auth) {
       setError('Firebase er ikke satt opp i dette bygget.');
@@ -72,7 +75,7 @@ export default function Login() {
     }
 
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
+    submittingRef.current = true;
     setError('');
     setSubmitting(true);
     const warmingTimer = setTimeout(() => setWarming(true), 3000);
@@ -95,6 +98,7 @@ export default function Login() {
       }
       clearTimeout(warmingTimer);
       setWarming(false);
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -117,11 +121,17 @@ export default function Login() {
             <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
             <p className="text-text-secondary text-center mb-6">Hold oversikt over spill og resultat</p>
 
-            <div className="space-y-4">
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                signIn();
+              }}
+            >
               <Button
+                ref={submitRef}
                 data-testid="google-login-btn"
-                type="button"
-                onClick={signIn}
+                type="submit"
                 disabled={submitting || !configured}
                 aria-busy={submitting}
                 className="h-11 w-full bg-white font-semibold text-black hover:bg-white/90"
@@ -140,7 +150,7 @@ export default function Login() {
                   Personvern
                 </Link>
               </p>
-            </div>
+            </form>
           </div>
         </div>
       </main>
