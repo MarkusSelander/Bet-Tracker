@@ -1,3 +1,4 @@
+// Har vi et token, starter /auth/me med en gang — uten å vente på Firebase.
 // Kort venting når API-et allerede er våkent, så innloggede ikke ser innloggingsskjemaet.
 // Lengre kall fortsetter i bakgrunnen. Render kan bruke mange sekunder på å våkne,
 // og det skal ikke holde siden bak «Laster...».
@@ -5,10 +6,11 @@ const SESSION_RESTORE_GRACE_MS = 1200;
 const SESSION_RESTORE_TIMEOUT_MS = 20000;
 
 function sessionCheckPlan(token) {
-  if (!token) return { restore: false, block: false };
+  if (!token) return { restore: false, block: false, immediate: false };
   return {
     restore: true,
     block: true,
+    immediate: true,
     graceMs: SESSION_RESTORE_GRACE_MS,
     timeoutMs: SESSION_RESTORE_TIMEOUT_MS,
   };

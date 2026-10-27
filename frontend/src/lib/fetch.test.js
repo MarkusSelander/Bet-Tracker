@@ -151,4 +151,7 @@ test('auth page signs in with Google and keeps the slow-start hint', () => {
   assert.match(source, /Vekker serveren, første innlogging kan ta litt tid…/);
   assert.match(source, /setTimeout\(\(\) => setWarming\(true\), 3000\)/);
   assert.match(source, /preloadDashboard\(\)/);
+  assert.match(source, /type="submit"/);
+  assert.match(source, /submitRef\.current\?\.focus\(\)/);
+  assert.doesNotMatch(source, /select_account/);
 });

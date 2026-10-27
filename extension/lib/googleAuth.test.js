@@ -35,6 +35,7 @@ test("google authorize url asks for an authorization code", () => {
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
   assert.equal(url.searchParams.get("client_id"), "client.apps.googleusercontent.com");
   assert.equal(url.searchParams.get("redirect_uri"), "https://abc.chromiumapp.org/");
+  assert.equal(url.searchParams.get("prompt"), null);
 });
 
 test("redirect parser reads the code and surfaces Google errors", () => {
