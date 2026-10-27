@@ -54,6 +54,7 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const [warming, setWarming] = useState(false);
   const submitRef = useRef(null);
+  const submittingRef = useRef(false);
 
   useLayoutEffect(() => {
     warmUpBackend();
@@ -66,7 +67,7 @@ export default function Login() {
   }
 
   const signIn = async () => {
-    if (submitting) return;
+    if (submittingRef.current) return;
     const auth = getFirebaseAuth();
     if (!auth) {
       setError('Firebase er ikke satt opp i dette bygget.');
@@ -74,6 +75,7 @@ export default function Login() {
     }
 
     const provider = new GoogleAuthProvider();
+    submittingRef.current = true;
     setError('');
     setSubmitting(true);
     const warmingTimer = setTimeout(() => setWarming(true), 3000);
@@ -96,6 +98,7 @@ export default function Login() {
       }
       clearTimeout(warmingTimer);
       setWarming(false);
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
