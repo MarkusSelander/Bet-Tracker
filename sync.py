@@ -124,7 +124,7 @@ def fetch_all_bets(headers: dict, cookies: dict) -> List[Dict]:
             f"Page {page_num}: got {len(tickets)} tickets (total: {len(all_tickets)})")
 
         has_next = resolve_has_next_page(data, page_num, tickets)
-        if should_stop_pagination(tickets, has_next, page=page_num):
+        if should_stop_pagination(tickets, has_next, page=page_num, full_history=True):
             break
 
         page_num += 1

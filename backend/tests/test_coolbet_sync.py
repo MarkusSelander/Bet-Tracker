@@ -15,6 +15,7 @@ from coolbet_sync import (
     import_url,
     login_payload,
     merge_ticket_details,
+    needs_full_history,
     needs_ticket_details,
     page_already_seen,
     resolve_has_next_page,
@@ -76,6 +77,7 @@ def test_known_settled_tickets_do_not_stop_while_more_history_exists():
         tickets=tickets,
         has_next_page=True,
         known_ids={"a", "b"},
+        full_history=True,
     )
 
 
@@ -85,6 +87,7 @@ def test_should_continue_while_oldest_ticket_on_page_is_unknown():
         tickets=[{"id": "a", "status": "WON"}, {"id": "new", "status": "WON"}],
         has_next_page=True,
         known_ids=known,
+        full_history=True,
     )
 
 
@@ -93,11 +96,13 @@ def test_known_ticket_does_not_push_older_pages_aside():
         tickets=[{"id": "new", "status": "WON"}, {"id": "a", "status": "LOST"}],
         has_next_page=True,
         known_ids={"a"},
+        full_history=True,
     )
     assert not should_stop_pagination(
         tickets=[{"id": "a", "status": "PENDING"}],
         has_next_page=True,
         known_ids={"a"},
+        full_history=True,
     )
 
 
@@ -108,6 +113,17 @@ def test_keeps_walking_older_pages_while_coolbet_has_another_page():
         known_ids={"a", "b"},
         pending_ids={"older-open"},
         incomplete_ids={"older-combo"},
+        full_history=True,
+    )
+
+
+def test_later_syncs_stop_after_the_newest_page():
+    tickets = [{"id": f"t-{index}", "status": "LOST"} for index in range(50)]
+    assert should_stop_pagination(
+        tickets=tickets,
+        has_next_page=True,
+        page=1,
+        full_history=False,
     )
 
 
@@ -145,6 +161,7 @@ def test_full_page_keeps_paging_when_has_next_page_is_missing_or_false():
         tickets=tickets,
         has_next_page=resolve_has_next_page({}, 3, tickets),
         page=3,
+        full_history=True,
     )
 
 
@@ -171,6 +188,7 @@ def test_pagination_stops_at_the_page_cap():
         tickets=[{"id": "a", "status": "WON"}],
         has_next_page=True,
         page=MAX_HISTORY_PAGES,
+        full_history=True,
     )
 
 
@@ -189,7 +207,15 @@ def test_first_sync_without_known_ids_keeps_paging():
         tickets=[{"id": "a", "status": "WON"}, {"id": "b", "status": "LOST"}],
         has_next_page=True,
         known_ids=set(),
+        full_history=True,
     )
+
+
+def test_full_history_runs_once_then_a_saved_page_stays_incremental():
+    assert needs_full_history(False, 0) is True
+    assert needs_full_history(False, 50) is True
+    assert needs_full_history(False, 51) is False
+    assert needs_full_history(True, 0) is False
 
 
 def test_summary_incomplete_flag_replaces_leg_comparison():

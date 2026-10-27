@@ -275,6 +275,19 @@ def page_already_seen(tickets: Iterable[Dict[str, Any]], seen_ids: Optional[Iter
     return all(ticket_id in seen for ticket_id in ids)
 
 
+def needs_full_history(history_backfill_done: bool = False, known_count: int = 0) -> bool:
+    """The first import reads every page. Later syncs only need the newest page."""
+    if history_backfill_done:
+        return False
+    try:
+        saved = int(known_count or 0)
+    except (TypeError, ValueError):
+        saved = 0
+    if saved > PAGE_SIZE:
+        return False
+    return True
+
+
 def should_stop_pagination(
     tickets: Iterable[Dict[str, Any]],
     has_next_page: bool,
@@ -284,13 +297,13 @@ def should_stop_pagination(
     full_history: bool = False,
     page: int = 0,
 ) -> bool:
-    # known_ids must not end the walk. Newest-first history would then
-    # leave every older settled ticket unread.
-    del known_ids, pending_ids, incomplete_ids, full_history
+    del known_ids, pending_ids, incomplete_ids
     tickets = list(tickets)
     if len(tickets) == 0:
         return True
     if page and page >= MAX_HISTORY_PAGES:
+        return True
+    if not full_history:
         return True
     return not has_next_page
 

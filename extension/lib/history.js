@@ -204,11 +204,18 @@
     return ids.every((id) => seen.has(id));
   }
 
-  // Ikke stopp fordi en kupong-id allerede er lagret. Det skyver alle eldre
-  // oppgjorte kuponger av, siden de ligger på senere sider.
-  function shouldStopPagination({ tickets, hasNextPage, page }) {
+  // Første import leser hele historikken. Senere synker leser bare den nyeste siden.
+  function needsFullHistory(historyBackfillDone, knownCount) {
+    if (historyBackfillDone) return false;
+    const saved = Number(knownCount) || 0;
+    if (saved > Number(PAGE_SIZE)) return false;
+    return true;
+  }
+
+  function shouldStopPagination({ tickets, hasNextPage, page, fullHistory }) {
     if (!tickets || tickets.length === 0) return true;
     if (typeof page === "number" && page >= MAX_HISTORY_PAGES) return true;
+    if (!fullHistory) return true;
     return !hasNextPage;
   }
 
@@ -504,6 +511,7 @@
     loginUrl,
     meUrl,
     mergeTicketDetails,
+    needsFullHistory,
     needsTicketDetails,
     parseTimestamp,
     pageAlreadySeen,
