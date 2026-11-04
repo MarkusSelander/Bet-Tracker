@@ -1,5 +1,11 @@
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  getAuth,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from 'firebase/auth';
 import { firebaseConfigured, readFirebaseConfig } from './firebaseConfig';
 
 let authInstance = null;
@@ -26,7 +32,17 @@ function getFirebaseAuth() {
   if (!firebaseConfigured(config)) return null;
   if (!authInstance) {
     const app = getApps()[0] || initializeApp(config);
-    authInstance = getAuth(app);
+    // IndexedDB først, localStorage som reserve. Begge er LOCAL og overlever
+    // refresh, ny fane og at nettleseren lukkes.
+    try {
+      authInstance = initializeAuth(app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+        popupRedirectResolver: browserPopupRedirectResolver,
+      });
+    } catch (error) {
+      if (error?.code !== 'auth/already-initialized') throw error;
+      authInstance = getAuth(app);
+    }
   }
   return authInstance;
 }

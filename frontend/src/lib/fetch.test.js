@@ -141,17 +141,53 @@ test('fetchAuth does not retry after a fast response', async () => {
   }
 });
 
-test('auth page signs in with Google and keeps the slow-start hint', () => {
+test('session token is kept in localStorage so login survives a closed browser', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, 'fetch.js'), 'utf8');
+  assert.match(source, /localStorage\.getItem\(SESSION_TOKEN_KEY\)/);
+  assert.match(source, /localStorage\.setItem\(SESSION_TOKEN_KEY, token\)/);
+  assert.doesNotMatch(source, /sessionStorage/);
+
+  const store = new Map();
+  global.localStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: (key) => store.delete(key),
+  };
+  assert.equal(fetchApi.SESSION_TOKEN_KEY, 'bet_tracker_session_token');
+  fetchApi.setSessionToken('session_abc');
+  assert.equal(store.get('bet_tracker_session_token'), 'session_abc');
+  assert.equal(fetchApi.getSessionToken(), 'session_abc');
+  fetchApi.setSessionToken(null);
+  assert.equal(fetchApi.getSessionToken(), null);
+  assert.equal(store.has('bet_tracker_session_token'), false);
+});
+
+test('auth page signs in with Google without a server-wake hint', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../pages/Login.jsx'), 'utf8');
   assert.match(source, /signInWithPopup/);
   assert.match(source, /Fortsett med Google/);
+  assert.match(source, /Logger inn\.\.\./);
   assert.match(source, /data-testid="google-login-btn"/);
+  assert.match(source, /data-testid="privacy-link"/);
+  assert.match(source, /Personvern/);
   assert.doesNotMatch(source, /autoComplete="current-password"/);
   assert.doesNotMatch(source, /autoComplete="new-password"/);
-  assert.match(source, /Vekker serveren, første innlogging kan ta litt tid…/);
-  assert.match(source, /setTimeout\(\(\) => setWarming\(true\), 3000\)/);
+  assert.doesNotMatch(source, /Vekker serveren/);
+  assert.doesNotMatch(source, /setWarming/);
+  assert.doesNotMatch(source, /warmUpBackend/);
+  assert.doesNotMatch(source, /auth-warming/);
   assert.match(source, /preloadDashboard\(\)/);
   assert.match(source, /type="submit"/);
   assert.match(source, /submitRef\.current\?\.focus\(\)/);
   assert.doesNotMatch(source, /select_account/);
+
+  const firebaseSource = fs.readFileSync(path.resolve(__dirname, 'firebase.js'), 'utf8');
+  assert.match(firebaseSource, /indexedDBLocalPersistence/);
+  assert.match(firebaseSource, /browserLocalPersistence/);
+  assert.doesNotMatch(firebaseSource, /browserSessionPersistence/);
+  assert.doesNotMatch(firebaseSource, /inMemoryPersistence/);
+
+  const authSource = fs.readFileSync(path.resolve(__dirname, '../contexts/AuthContext.jsx'), 'utf8');
+  assert.doesNotMatch(authSource, /warmUpBackend/);
+  assert.doesNotMatch(authSource, /\/api\/health/);
 });
