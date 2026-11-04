@@ -1,7 +1,6 @@
-// eslint-disable-next-line import/no-named-as-default
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { STATUS_LABELS, formatCurrency } from '../lib/format';
+import { STATUS_LABELS, formatCurrency } from '../lib/format.js';
 
 const INK = [24, 24, 27];
 const MUTED = [113, 113, 122];
@@ -12,8 +11,22 @@ const HEADER = [9, 9, 11];
 const MARGIN = 16;
 const BOTTOM = 18;
 
+// Helvetica i jsPDF leser tegn over U+00FF som UTF-16. Norsk minus (U+2212)
+// blir da et anførselstegn foran beløpet, som i «" 4 346,47 kr».
+function pdfSafeAmount(text) {
+  const normalized = String(text)
+    .replace(/\u2212/g, '-')
+    .replace(/\u2013/g, '-')
+    .replace(/[\u202F\u2007\u2009]/g, '\u00A0');
+  let safe = '';
+  for (const char of normalized) {
+    if (char.codePointAt(0) <= 0xff) safe += char;
+  }
+  return safe;
+}
+
 function money(value, currency) {
-  return formatCurrency(value, currency, 2);
+  return pdfSafeAmount(formatCurrency(value, currency, 2));
 }
 
 function signedMoney(value, currency) {
