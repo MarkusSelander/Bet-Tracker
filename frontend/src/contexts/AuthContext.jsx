@@ -13,7 +13,12 @@ import {
 import { getFirebaseAuth, isFirebaseReady } from '../lib/firebase';
 import { prefetchDashboard } from '../lib/queries';
 import { queryClient } from '../lib/queryClient';
-import { SESSION_RESTORE_GRACE_MS, SESSION_RESTORE_TIMEOUT_MS, sessionCheckPlan } from '../lib/sessionCheck';
+import {
+  SESSION_RESTORE_GRACE_MS,
+  SESSION_RESTORE_TIMEOUT_MS,
+  sessionCheckPlan,
+  shouldReleaseLoading,
+} from '../lib/sessionCheck';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -32,11 +37,6 @@ function shareGoogleLogin(uid, run) {
     activeGoogleLogin = { uid, promise };
   }
   return activeGoogleLogin.promise;
-}
-
-export function warmUpBackend() {
-  if (!BACKEND_URL) return;
-  fetch(`${BACKEND_URL}/api/health`, { credentials: 'omit', cache: 'no-store' }).catch(() => {});
 }
 
 async function fetchCurrentUser(tokenAtStart, signal) {
@@ -172,11 +172,14 @@ export const AuthProvider = ({ children }) => {
   );
 
   useLayoutEffect(() => {
-    warmUpBackend();
     let cancelled = false;
+    let sawAuthState = false;
+    let restoreInFlight = 0;
     const generation = epoch.current;
     const grace = setTimeout(() => {
-      if (!cancelled && epoch.current === generation) setLoading(false);
+      if (cancelled || epoch.current !== generation) return;
+      if (!shouldReleaseLoading(getSessionToken(), restoreInFlight)) return;
+      setLoading(false);
     }, SESSION_RESTORE_GRACE_MS);
 
     const applyUser = (next, applyGeneration) => {
@@ -186,8 +189,7 @@ export const AuthProvider = ({ children }) => {
       if (next) prefetchDashboard().catch(() => {});
     };
 
-    // Gyldig sesjon vises med en gang. Et avvist token overlates til Firebase,
-    // så vi ikke blunker innloggingsskjemaet mens Google-kontoen gjenopprettes.
+    // Gyldig sesjon vises med en gang, uten å vente på Firebase.
     const plan = sessionCheckPlan(getSessionToken());
     if (plan.immediate) {
       const tokenAtStart = getSessionToken();
@@ -199,11 +201,13 @@ export const AuthProvider = ({ children }) => {
         .catch((error) => {
           if (cancelled || epoch.current !== generation) return;
           if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
+          if (!sawAuthState) applyUser(null, generation);
         });
     }
 
     const restore = async (firebaseUser) => {
       const restoreGeneration = epoch.current;
+      restoreInFlight += 1;
       try {
         if (firebaseUser) {
           applyUser(await loginWithGoogle(firebaseUser), restoreGeneration);
@@ -214,7 +218,7 @@ export const AuthProvider = ({ children }) => {
           const existing = await readCurrentSession();
           if (existing && getSessionToken() === tokenAtStart) {
             applyUser(existing, restoreGeneration);
-          } else if (!existing && !getSessionToken()) {
+          } else if (!existing) {
             applyUser(null, restoreGeneration);
           }
           return;
@@ -224,6 +228,8 @@ export const AuthProvider = ({ children }) => {
         if (cancelled || epoch.current !== restoreGeneration) return;
         if (!isAuthTimeoutError(error)) console.error('Auth check failed:', error);
         applyUser(null, restoreGeneration);
+      } finally {
+        restoreInFlight -= 1;
       }
     };
 
@@ -241,6 +247,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      sawAuthState = true;
       restore(firebaseUser);
     });
 

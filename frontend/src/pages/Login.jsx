@@ -4,9 +4,10 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
-import { useAuth, warmUpBackend } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
 import { googleAuthError } from '../lib/authForm';
 import { preloadDashboard } from '../lib/dashboardLoader';
+import { getSessionToken } from '../lib/fetch';
 import { getFirebaseAuth, isFirebaseReady } from '../lib/firebase';
 
 function GoogleMark() {
@@ -48,22 +49,31 @@ function FormError({ message }) {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, loginWithGoogle } = useAuth();
+  const { user, loading, loginWithGoogle } = useAuth();
   const configured = isFirebaseReady();
   const [error, setError] = useState(configured ? '' : 'Firebase er ikke satt opp i dette bygget.');
   const [submitting, setSubmitting] = useState(false);
-  const [warming, setWarming] = useState(false);
   const submitRef = useRef(null);
   const submittingRef = useRef(false);
 
   useLayoutEffect(() => {
-    warmUpBackend();
     preloadDashboard();
     submitRef.current?.focus();
   }, []);
 
   if (user) {
     return <Navigate to={location.state?.from?.pathname || '/dashboard'} replace />;
+  }
+
+  if (loading && getSessionToken()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-text-secondary">Laster...</p>
+        </div>
+      </div>
+    );
   }
 
   const signIn = async () => {
@@ -78,10 +88,8 @@ export default function Login() {
     submittingRef.current = true;
     setError('');
     setSubmitting(true);
-    const warmingTimer = setTimeout(() => setWarming(true), 3000);
     try {
       const result = await signInWithPopup(auth, provider);
-      clearTimeout(warmingTimer);
       await loginWithGoogle(result.user, { force: true });
       toast.success('Innlogget');
       navigate(location.state?.from?.pathname || '/dashboard', { replace: true });
@@ -96,8 +104,6 @@ export default function Login() {
       } else {
         setError(err?.code ? googleAuthError(err) : err.message || 'Noe gikk galt. Prøv igjen.');
       }
-      clearTimeout(warmingTimer);
-      setWarming(false);
       submittingRef.current = false;
       setSubmitting(false);
     }
@@ -140,11 +146,6 @@ export default function Login() {
                 {submitting ? 'Logger inn...' : 'Fortsett med Google'}
               </Button>
               <FormError message={error} />
-              {warming ? (
-                <p role="status" className="text-center text-sm text-text-secondary" data-testid="auth-warming">
-                  Vekker serveren, første innlogging kan ta litt tid…
-                </p>
-              ) : null}
               <p className="text-center text-sm">
                 <Link to="/personvern" className="text-text-secondary underline" data-testid="privacy-link">
                   Personvern
