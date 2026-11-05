@@ -1,19 +1,15 @@
 from datetime import datetime, timezone
 
 from stats import (
-    SETTLED_STATUSES,
-    bet_cash_pipeline,
     bets_mongo_query,
     build_analytics_summary,
     build_chart_data,
     chart_date_bounds,
-    compute_cash_position,
     compute_breakdown,
     compute_odds_range_breakdown,
     compute_stats,
     filter_bets,
     parse_days,
-    sum_bet_cash,
 )
 
 
@@ -384,76 +380,4 @@ def test_streak_is_empty_when_no_won_or_lost_bets():
     assert stats["current_streak_type"] is None
     assert stats["best_win_streak"] == 0
     assert stats["worst_loss_streak"] == 0
-
-
-def test_cash_position_is_the_balance_you_set_plus_later_moves():
-    bank = compute_cash_position(
-        [
-            {"type": "set", "amount": 15301, "at": "2026-09-01T10:00:00"},
-            {"type": "deposit", "amount": 1000, "at": "2026-09-02T10:00:00"},
-            {"type": "withdrawal", "amount": 500, "at": "2026-09-03T10:00:00"},
-            {"type": "set", "amount": 20000, "at": "2026-09-04T10:00:00"},
-            {"type": "deposit", "amount": 200, "at": "2026-09-05T10:00:00"},
-        ],
-        500,
-    )
-
-    assert bank["configured"] is True
-    assert bank["current"] == 20200
-    assert bank["baseline"] == 20000
-    assert bank["deposited"] == 200
-    assert bank["withdrawn"] == 0
-    assert bank["current_units"] == 40.4
-    assert bank["moves"][0]["type"] == "deposit"
-
-
-def test_cash_position_is_unconfigured_without_a_balance():
-    bank = compute_cash_position([{"type": "deposit", "amount": 100, "at": "2026-09-01"}], 500)
-    assert bank["configured"] is False
-    assert bank["current"] is None
-
-
-def test_cash_position_moves_with_settled_and_open_bets():
-    bank = compute_cash_position(
-        [{"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"}],
-        500,
-        [
-            {"status": "lost", "result": -1000, "stake": 1000},
-            {"status": "won", "result": 400, "stake": 200},
-            {"status": "pending", "result": 0, "stake": 300},
-        ],
-    )
-
-    assert bank["baseline"] == 74337
-    assert bank["current"] == 73437
-    assert bank["bet_result"] == -600
-    assert bank["pending_stake"] == 300
-
-
-def test_aggregated_bet_totals_match_the_cash_loop_for_known_bets():
-    bets = [
-        {"status": "lost", "result": -1000, "stake": 1000},
-        {"status": "won", "result": 400.25, "stake": 200},
-        {"status": "pending", "result": 0, "stake": 300.5},
-        {"status": "pending", "stake": None, "result": 0},
-        {"status": "cashed", "result": 25.75, "stake": 40},
-        {"status": "push", "result": 0, "stake": 10},
-        {"status": "void", "result": 999, "stake": 999},
-        {"status": "won", "result": None, "stake": 15},
-    ]
-    entries = [{"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"}]
-    expected = compute_cash_position(entries, 500, bets)
-    actual = compute_cash_position(entries, 500, bet_totals=sum_bet_cash(bets))
-
-    assert actual["current"] == expected["current"] == 73462.5
-    assert actual["bet_result"] == expected["bet_result"] == -574.0
-    assert actual["pending_stake"] == expected["pending_stake"] == 300.5
-    assert actual["baseline"] == 74337
-
-    pipeline = bet_cash_pipeline("user_1")
-    assert pipeline[0] == {"$match": {"user_id": "user_1"}}
-    group = pipeline[1]["$group"]
-    assert group["bet_result"]["$sum"]["$cond"][0] == {"$in": ["$status", sorted(SETTLED_STATUSES)]}
-    assert group["pending_stake"]["$sum"]["$cond"][0] == {"$eq": ["$status", "pending"]}
-    assert "void" not in SETTLED_STATUSES
 

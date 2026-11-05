@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 import server
 from server import app
-from stats import bet_cash_pipeline, compute_cash_position, sum_bet_cash
 
 
 class _FakeCursor:
@@ -41,14 +40,6 @@ class _FakeCursor:
     async def to_list(self, n):
         take = self.docs if n is None else self.docs[:n]
         return [self._project(doc) for doc in take]
-
-
-class _AggCursor:
-    def __init__(self, rows):
-        self.rows = rows
-
-    async def to_list(self, n):
-        return self.rows[:n]
 
 
 class _HangingFxClient:
@@ -187,42 +178,31 @@ def test_dashboard_returns_summary_recent_and_pending_in_one_auth():
     assert auth.await_count == 1
 
 
-def test_bankroll_aggregation_matches_python_cash_position():
-    bets = [
-        {"status": "lost", "result": -1000, "stake": 1000},
-        {"status": "won", "result": 400, "stake": 200},
-        {"status": "pending", "result": 0, "stake": 300},
-        {"status": "void", "result": 999, "stake": 999},
-        {"status": "cashed", "result": 25, "stake": 40},
-        {"status": "push", "result": 0, "stake": 10},
-    ]
-    entries = [{"type": "set", "amount": 74337, "at": "2026-01-01T00:00:00"}]
+def test_bankroll_routes_are_gone():
+    client = TestClient(app)
+    with patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"):
+        assert client.get("/api/bankroll").status_code == 404
+        assert client.post("/api/bankroll/moves", json={"type": "deposit", "amount": 10}).status_code == 404
+        assert client.patch("/api/auth/bankroll", json={"cash_balance": 1, "unit_size": 1}).status_code == 404
+
+
+def test_currency_update_stores_unit_size_without_bankroll_fields():
     mock_db = MagicMock()
-    mock_db.users.find_one = AsyncMock(
-        return_value={"unit_size": 500, "cash_entries": entries, "starting_bankroll": 74337}
-    )
-    seen = {}
-
-    def aggregate(pipeline):
-        seen["pipeline"] = pipeline
-        return _AggCursor([sum_bet_cash(bets)])
-
-    mock_db.bets.aggregate.side_effect = aggregate
+    mock_db.users.update_one = AsyncMock()
     client = TestClient(app)
     with (
         patch("server.get_current_user", new_callable=AsyncMock, return_value="user_1"),
         patch("server.db", mock_db),
     ):
-        response = client.get("/api/bankroll")
+        response = client.patch("/api/auth/currency", json={"currency": "UNITS", "unit_size": "500"})
 
-    expected = compute_cash_position(entries, 500, bets)
     assert response.status_code == 200
-    body = response.json()
-    assert body["current"] == expected["current"] == 73462
-    assert body["bet_result"] == expected["bet_result"] == -575
-    assert body["pending_stake"] == expected["pending_stake"] == 300
-    assert seen["pipeline"] == bet_cash_pipeline("user_1")
-    mock_db.bets.find.assert_not_called()
+    assert response.json() == {"currency": "UNITS", "unit_size": 500.0}
+    query, update = mock_db.users.update_one.await_args.args
+    assert query == {"user_id": "user_1"}
+    assert update == {"$set": {"currency": "UNITS", "unit_size": 500.0}}
+    assert "starting_bankroll" not in update["$set"]
+    assert "cash_entries" not in update
 
 
 def test_fx_returns_stored_rate_without_network():
