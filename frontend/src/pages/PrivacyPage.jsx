@@ -10,7 +10,7 @@ export default function PrivacyPage() {
         <h1 className="mt-2 text-3xl font-bold" data-testid="privacy-title">
           Personvern
         </h1>
-        <p className="mt-2 text-sm text-text-secondary">Sist oppdatert 26. oktober 2026</p>
+        <p className="mt-2 text-sm text-text-secondary">Sist oppdatert 5. november 2026</p>
 
         <div className="mt-8 space-y-8 text-sm leading-6 text-text-secondary">
           <section>
@@ -36,9 +36,9 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-base font-semibold text-[#FAFAFA]">Det du selv legger inn</h2>
             <p className="mt-2">
-              Spill, innsats, odds, resultat, bookmaker, sport, notater, tipster, favoritter og bankroll lagres for å
-              vise oversikten din. Økten varer i sju dager. Nettstedet lagrer en session-token i en informasjonskapsel
-              og i nettleserens lokale lagring. Chrome-utvidelsen lagrer den samme tokenen lokalt på maskinen din.
+              Spill, innsats, odds, resultat, bookmaker, sport, notater, tipster og favoritter lagres for å vise
+              oversikten din. Økten varer i sju dager. Nettstedet lagrer en session-token i en informasjonskapsel og i
+              nettleserens lokale lagring. Chrome-utvidelsen lagrer den samme tokenen lokalt på maskinen din.
             </p>
           </section>
 

@@ -21,14 +21,6 @@ export function useUsdRate() {
   });
 }
 
-export function useBankroll() {
-  return useQuery({
-    queryKey: queryKeys.bankroll,
-    queryFn: () => fetchJson('/api/bankroll'),
-    staleTime: STALE_STATS_MS,
-  });
-}
-
 export function dashboardSearch(now = new Date()) {
   return toAnalyticsApiSearch({ period: '30' }, now);
 }

@@ -273,5 +273,8 @@ def test_me_returns_stored_user_without_scanning_bets():
     assert body["email"] == "a@b.c"
     assert body["last_coolbet_sync_at"] == "2026-09-04T12:00:00+00:00"
     assert "session_token" not in body
-    users.find_one.assert_awaited_once_with({"user_id": "user_1"}, {"_id": 0, "password_hash": 0})
+    users.find_one.assert_awaited_once_with(
+        {"user_id": "user_1"},
+        {"_id": 0, "password_hash": 0, "starting_bankroll": 0, "cash_entries": 0},
+    )
     bets.find_one.assert_not_called()

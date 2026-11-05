@@ -18,5 +18,5 @@ def email_error(email: str) -> Optional[str]:
 
 
 def public_user(user_doc: dict) -> dict:
-    hidden = {"_id", "password_hash"}
+    hidden = {"_id", "password_hash", "starting_bankroll", "cash_entries"}
     return {key: value for key, value in user_doc.items() if key not in hidden}

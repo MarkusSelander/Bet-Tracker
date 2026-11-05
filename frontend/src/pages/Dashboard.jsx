@@ -14,7 +14,6 @@ import {
   YAxis,
 } from 'recharts';
 import { toast } from 'sonner';
-import BankrollCard from '../components/BankrollCard';
 import BetTicketDialog from '../components/BetTicketDialog';
 import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import PageHeader from '../components/PageHeader';
@@ -183,8 +182,6 @@ export default function Dashboard() {
           </p>
         </Link>
       </div>
-
-      <BankrollCard currency={currency} />
 
       {pendingBets.length > 0 ? (
         <div className={`${cardClass} animate-fade-in-up`}>

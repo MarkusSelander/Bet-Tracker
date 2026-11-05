@@ -9,8 +9,7 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchWithTimeout, getSessionToken } from '../lib/fetch';
-import { formatCurrency } from '../lib/format';
-import { useBankroll, useUsdRate } from '../lib/queries';
+import { useUsdRate } from '../lib/queries';
 import { invalidateTrackerData } from '../lib/queryClient';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -18,14 +17,10 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export default function SettingsPage() {
   const { user } = useOutletContext();
   const { updateUser } = useAuth();
-  const { data: bankroll } = useBankroll();
   const { data: fx } = useUsdRate();
   const [currency, setCurrency] = useState(user?.currency || 'NOK');
-  const [startingBankroll, setStartingBankroll] = useState('');
-  const [unitSize, setUnitSize] = useState('');
-  const [savingBankroll, setSavingBankroll] = useState(false);
-  const [moveAmount, setMoveAmount] = useState('');
-  const [savingMove, setSavingMove] = useState(false);
+  const [unitSize, setUnitSize] = useState(user?.unit_size ? String(user.unit_size) : '');
+  const [savingUnit, setSavingUnit] = useState(false);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importingCoolbet, setImportingCoolbet] = useState(false);
@@ -33,60 +28,32 @@ export default function SettingsPage() {
   const coolbetInputRef = useRef(null);
 
   useEffect(() => {
-    if (!bankroll?.configured) return;
-    setStartingBankroll(bankroll.baseline != null ? String(bankroll.baseline) : '');
-    setUnitSize(bankroll.unit_size ? String(bankroll.unit_size) : '');
-  }, [bankroll]);
+    if (user?.unit_size) setUnitSize(String(user.unit_size));
+  }, [user?.unit_size]);
 
-  const handleBankrollSave = async (event) => {
+  const handleUnitSizeSave = async (event) => {
     event.preventDefault();
-    setSavingBankroll(true);
+    const value = Number(String(unitSize).replace(',', '.'));
+    if (!(value > 0)) {
+      toast.error('Enhet må være større enn 0');
+      return;
+    }
+    setSavingUnit(true);
     try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/bankroll`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/currency`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          cash_balance: Number(String(startingBankroll).replace(',', '.')),
-          unit_size: Number(String(unitSize).replace(',', '.')),
-        }),
+        body: JSON.stringify({ unit_size: value }),
       });
-      if (!response.ok) throw new Error('Failed to update bankroll');
-      await invalidateTrackerData();
-      toast.success('Bankroll oppdatert');
+      if (!response.ok) throw new Error('Failed to update unit size');
+      updateUser({ unit_size: value });
+      toast.success('Enhet oppdatert');
     } catch (error) {
-      console.error('Error updating bankroll:', error);
-      toast.error('Saldo og enhet må være større enn 0');
+      console.error('Error updating unit size:', error);
+      toast.error('Enhet må være større enn 0');
     } finally {
-      setSavingBankroll(false);
-    }
-  };
-
-  const submitMove = async (type) => {
-    const value = Number(String(moveAmount).replace(',', '.'));
-    if (!(value > 0)) {
-      toast.error('Skriv inn et beløp større enn 0');
-      return;
-    }
-    setSavingMove(true);
-    try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/bankroll/moves`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ type, amount: value }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || 'Kunne ikke lagre');
-      }
-      setMoveAmount('');
-      await invalidateTrackerData();
-      toast.success(type === 'deposit' ? 'Innskudd lagt til' : 'Uttak lagt til');
-    } catch (error) {
-      toast.error(error.message || 'Kunne ikke lagre');
-    } finally {
-      setSavingMove(false);
+      setSavingUnit(false);
     }
   };
 
@@ -226,7 +193,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Innstillinger" subtitle="Bankroll, valuta og data" testId="settings-title" />
+      <PageHeader title="Innstillinger" subtitle="Valuta og data" testId="settings-title" />
 
       <section className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
         <h2 className="text-xl font-bold mb-1">Chrome-utvidelse</h2>
@@ -255,109 +222,6 @@ export default function SettingsPage() {
         </Button>
       </section>
 
-      <form
-        onSubmit={handleBankrollSave}
-        className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up"
-        data-testid="bankroll-settings"
-      >
-        <h2 className="text-xl font-bold mb-1">Bankroll</h2>
-        <p className="text-sm text-text-secondary mb-4">
-          Utgangspunkt er banken før spillene i appen. Linjen på oversikten er dette pluss resultater, minus åpne
-          innsatser, pluss innskudd og minus uttak.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="starting-bankroll">Utgangspunkt</Label>
-            <Input
-              id="starting-bankroll"
-              inputMode="decimal"
-              value={startingBankroll}
-              onChange={(event) => setStartingBankroll(event.target.value)}
-              placeholder="15301"
-              className="bg-black/20 border-white/20 mt-2"
-              data-testid="starting-bankroll-input"
-            />
-          </div>
-          <div>
-            <Label htmlFor="unit-size">1 enhet</Label>
-            <Input
-              id="unit-size"
-              inputMode="decimal"
-              value={unitSize}
-              onChange={(event) => setUnitSize(event.target.value)}
-              placeholder="500"
-              className="bg-black/20 border-white/20 mt-2"
-              data-testid="unit-size-input"
-            />
-          </div>
-        </div>
-        <Button
-          type="submit"
-          disabled={savingBankroll}
-          className="mt-4 bg-primary hover:bg-primary/90 text-black font-bold"
-          data-testid="save-bankroll-btn"
-        >
-          {savingBankroll ? 'Lagrer...' : 'Lagre bankroll'}
-        </Button>
-        {bankroll?.configured ? (
-          <div className="mt-6 pt-4 border-t border-[#27272A]">
-            <h3 className="font-medium mb-3">Innskudd og uttak</h3>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                inputMode="decimal"
-                value={moveAmount}
-                onChange={(event) => setMoveAmount(event.target.value)}
-                placeholder="Beløp i kroner"
-                className="bg-black/20 border-white/20 sm:max-w-[180px]"
-                data-testid="bankroll-move-amount"
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') event.preventDefault();
-                }}
-              />
-              <Button
-                type="button"
-                disabled={savingMove}
-                onClick={() => submitMove('deposit')}
-                className="bg-primary hover:bg-primary/90 text-black font-bold"
-                data-testid="bankroll-deposit"
-              >
-                Innskudd
-              </Button>
-              <Button
-                type="button"
-                disabled={savingMove}
-                onClick={() => submitMove('withdrawal')}
-                className="bg-white/5 hover:bg-white/10 border border-white/10"
-                data-testid="bankroll-withdrawal"
-              >
-                Uttak
-              </Button>
-            </div>
-            {bankroll.moves?.some((move) => move.type !== 'set') ? (
-              <ul className="mt-4 max-w-lg space-y-1.5">
-                {bankroll.moves
-                  .filter((move) => move.type !== 'set')
-                  .map((move) => (
-                    <li
-                      key={move.id || `${move.type}-${move.at}`}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span className="text-text-secondary">
-                        {move.type === 'deposit' ? 'Innskudd' : 'Uttak'}
-                        {move.at ? ` · ${String(move.at).slice(0, 10)}` : ''}
-                      </span>
-                      <span className={`font-mono ${move.type === 'deposit' ? 'text-primary' : ''}`}>
-                        {move.type === 'withdrawal' ? '−' : '+'}
-                        {formatCurrency(move.amount, currency)}
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
-      </form>
-
       {/* Currency Settings */}
       <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-1">
         <h2 className="text-xl font-bold mb-4">Valuta</h2>
@@ -380,6 +244,28 @@ export default function SettingsPage() {
                 ? 'Beløp deles på enhetsstørrelsen, som lagres i kroner.'
                 : 'Beløpene vises i kroner, slik de er lagret fra Coolbet.'}
           </p>
+          {currency === 'UNITS' ? (
+            <form onSubmit={handleUnitSizeSave} className="mt-4" data-testid="unit-size-form">
+              <Label htmlFor="unit-size">1 enhet</Label>
+              <Input
+                id="unit-size"
+                inputMode="decimal"
+                value={unitSize}
+                onChange={(event) => setUnitSize(event.target.value)}
+                placeholder="500"
+                className="bg-black/20 border-white/20 mt-2"
+                data-testid="unit-size-input"
+              />
+              <Button
+                type="submit"
+                disabled={savingUnit}
+                className="mt-3 bg-primary hover:bg-primary/90 text-black font-bold"
+                data-testid="save-unit-btn"
+              >
+                {savingUnit ? 'Lagrer...' : 'Lagre enhet'}
+              </Button>
+            </form>
+          ) : null}
         </div>
       </div>
 

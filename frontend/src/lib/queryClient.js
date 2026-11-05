@@ -28,7 +28,6 @@ export const queryKeys = {
   calendarBets: (from, to) => ['bets', 'calendar', from, to],
   favoriteTeams: ['favorites', 'teams'],
   favoriteToday: ['favorites', 'today'],
-  bankroll: ['bankroll'],
   usdRate: ['fx', 'usd'],
 };
 
@@ -71,7 +70,6 @@ export function invalidateTrackerData(client = queryClient) {
     client.invalidateQueries({ queryKey: ['dashboard'] }),
     client.invalidateQueries({ queryKey: ['analytics'] }),
     client.invalidateQueries({ queryKey: ['bets'] }),
-    client.invalidateQueries({ queryKey: ['bankroll'] }),
     client.invalidateQueries({ queryKey: ['favorites'] }),
   ]);
 }
