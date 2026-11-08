@@ -1,9 +1,16 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
+import { CalendarX2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import BetSummary from '../components/BetSummary';
 import BetTicketDialog from '../components/BetTicketDialog';
 import CalendarYearView from '../components/CalendarYearView';
+import HeatLegend from '../components/ds/HeatLegend';
+import { Metric, MetricRail, SplitBar } from '../components/ds/Metric';
+import Money from '../components/ds/Money';
+import { EmptyState, Panel, TextLink } from '../components/ds/Section';
+import Segmented from '../components/ds/Segmented';
+import StatusBadge from '../components/ds/StatusBadge';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { needsFullTicketBet } from '../lib/betTicket';
@@ -17,11 +24,12 @@ import {
   yearRange,
 } from '../lib/calendar';
 import { betsPath, parseFilters, toSearch } from '../lib/filters';
-import { STATUS_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { formatPercent, formatSignedCurrency } from '../lib/format';
 import { useBet, useCalendarBets } from '../lib/queries';
+import { heatLevel, heatStyle, isoWeek, maxAbs } from '../lib/tone';
+import { cn } from '../lib/utils';
 
 const EMPTY_BETS = [];
-const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
 const DAYS = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
 const MONTHS = [
   'januar',
@@ -37,17 +45,23 @@ const MONTHS = [
   'november',
   'desember',
 ];
+const MAX_PIPS = 6;
 
-function signedClass(value) {
-  if (value > 0) return 'text-primary';
-  if (value < 0) return 'text-destructive';
+const VIEW_OPTIONS = [
+  { value: 'day', label: 'Dag', testId: 'calendar-view-day' },
+  { value: 'month', label: 'Måned', testId: 'calendar-view-month' },
+];
+
+function signedClass(value, strong = false) {
+  if (value > 0) return strong ? 'text-primary-strong' : 'text-primary';
+  if (value < 0) return strong ? 'text-destructive-strong' : 'text-destructive';
   return 'text-text-secondary';
 }
 
 function formatDayHeading(dateStr) {
   const parsed = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return dateStr;
-  return parsed.toLocaleDateString('nb-NO', { day: 'numeric', month: 'long' });
+  return parsed.toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 function formatKpiDate(dateStr) {
@@ -61,36 +75,126 @@ function monthKeyFromParts(year, monthIndex) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
 }
 
-const VIEW_OPTIONS = [
-  { value: 'day', label: 'Dag' },
-  { value: 'month', label: 'Måned' },
-];
+function shiftDate(dateKey, days) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
 
-function ViewToggle({ view, onChange }) {
+function ActivityPips({ won, lost, pending }) {
+  const pips = [
+    ...Array.from({ length: won }, () => 'bg-primary'),
+    ...Array.from({ length: lost }, () => 'bg-destructive'),
+    ...Array.from({ length: pending }, () => 'bg-accent'),
+  ];
+  const extra = pips.length - MAX_PIPS;
+  return (
+    <span className="hidden items-center gap-[3px] sm:flex" aria-hidden="true">
+      {pips.slice(0, MAX_PIPS).map((tone, index) => (
+        // eslint-disable-next-line react/no-array-index-key
+        <span key={index} className={cn('h-1 w-1 rounded-full', tone)} />
+      ))}
+      {extra > 0 ? <span className="ml-0.5 text-[9.5px] leading-none text-text-muted figure">+{extra}</span> : null}
+    </span>
+  );
+}
+
+function DayCell({ cell, max, isToday, isSelected, isFuture, currency, onSelect, onKeyDown }) {
+  const hasData = cell.bets > 0;
+  const settled = hasData && cell.hasSettled;
+  const level = settled ? heatLevel(cell.profit, max) : 0;
+  const style = settled ? heatStyle(cell.profit, max) : undefined;
+  const pendingOnly = hasData && !cell.hasSettled;
+  const dayResult = settled ? formatSignedCurrency(cell.profit, currency, 0) : 'åpne spill';
+  const label = hasData
+    ? `${formatDayHeading(cell.date)}: ${dayResult}, ${cell.bets} spill`
+    : `${formatDayHeading(cell.date)}: ingen spill`;
+
+  return (
+    <button
+      type="button"
+      data-testid={`calendar-day-${cell.day}`}
+      data-date={cell.date}
+      tabIndex={isSelected ? 0 : -1}
+      aria-pressed={isSelected}
+      aria-current={isToday ? 'date' : undefined}
+      aria-label={label}
+      onClick={() => onSelect(cell.date)}
+      onKeyDown={(event) => onKeyDown(event, cell.date)}
+      style={style}
+      className={cn(
+        'group relative flex min-h-[64px] flex-col justify-between rounded-lg border p-1.5 text-left transition-[box-shadow,transform,background-color] duration-150 ease-out sm:min-h-[88px] sm:p-2',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70',
+        !style && (pendingOnly ? 'border-accent/30 bg-accent/[0.06]' : 'border-hairline bg-sunken/50'),
+        !hasData && isFuture && 'opacity-50',
+        'hover:z-10 hover:shadow-[0_0_0_1px_rgb(var(--text-muted)/0.6)]',
+        isSelected && 'z-10 shadow-[0_0_0_1.5px_rgb(var(--text-primary)),0_8px_24px_-12px_rgb(0_0_0/0.9)]'
+      )}
+    >
+      <span className="flex items-start justify-between gap-1">
+        <span
+          className={cn(
+            'inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[11px] font-medium figure',
+            isToday ? 'bg-text-primary text-background' : 'text-text-secondary'
+          )}
+        >
+          {cell.day}
+        </span>
+        {cell.pending > 0 ? (
+          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-accent" title={`${cell.pending} åpne`} aria-hidden="true" />
+        ) : null}
+      </span>
+      {hasData ? (
+        <span className="block">
+          {settled ? (
+            <Money
+              value={cell.profit}
+              currency={currency}
+              digits={0}
+              signed
+              tone={signedClass(cell.profit, level > 0.55)}
+              className="block text-[11.5px] font-semibold sm:text-[13px]"
+              unitClassName="hidden sm:inline text-[0.75em] text-current opacity-70"
+            />
+          ) : (
+            <span className="block text-[11.5px] font-medium text-accent sm:text-[13px]">Åpen</span>
+          )}
+          <span className="mt-1 flex items-center justify-between gap-1">
+            <ActivityPips won={cell.won} lost={cell.lost} pending={cell.pending} />
+            <span className="hidden text-[10px] text-text-muted figure md:inline">{cell.bets} spill</span>
+          </span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function WeekCell({ week, weekNumber, max, currency }) {
+  const style = week.bets ? heatStyle(week.profit, max, { floor: 0.05, ceil: 0.22 }) : undefined;
   return (
     <div
-      role="group"
-      aria-label="Kalendervisning"
-      className="inline-flex rounded-md border border-white/10 bg-white/5 p-0.5"
-      data-testid="calendar-view-toggle"
+      style={style}
+      className={cn(
+        'hidden min-h-[88px] flex-col justify-between rounded-lg border p-2 md:flex',
+        !style && 'border-dashed border-hairline'
+      )}
     >
-      {VIEW_OPTIONS.map((option) => {
-        const active = view === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            data-testid={`calendar-view-${option.value}`}
-            onClick={() => onChange(option.value)}
-            className={`px-3 py-1.5 text-sm rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              active ? 'bg-primary/15 text-primary font-medium' : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+      <span className="eyebrow">Uke {weekNumber ?? '—'}</span>
+      {week.bets ? (
+        <span>
+          <Money
+            value={week.profit}
+            currency={currency}
+            digits={0}
+            signed
+            className="block text-[13px] font-semibold"
+            unitClassName="text-[0.75em] text-current opacity-70"
+          />
+          <span className="text-[10px] text-text-muted figure">{week.bets} spill</span>
+        </span>
+      ) : (
+        <span className="text-xs text-text-muted">—</span>
+      )}
     </div>
   );
 }
@@ -100,6 +204,7 @@ export default function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = parseFilters(searchParams);
   const [detailBet, setDetailBet] = useState(null);
+  const gridRef = useRef(null);
   const currency = user?.currency || 'NOK';
   const needsFullBet = needsFullTicketBet(detailBet);
   const { data: fullDetailBet } = useBet(detailBet?.bet_id, { enabled: needsFullBet });
@@ -130,6 +235,15 @@ export default function CalendarPage() {
   const model = buildCalendarModel(safeYear, monthIndex, isMonthView ? EMPTY_BETS : bets);
   const yearModel = isMonthView ? buildYearModel(safeYear, bets) : null;
   const selectedDay = model.byDate[selectedDate] || { bets: [], profit: 0, won: 0, lost: 0, pending: 0, count: 0 };
+  const dayMax = maxAbs(model.cells.filter((cell) => !cell.empty && cell.hasSettled).map((cell) => cell.profit));
+  const weekMax = maxAbs(model.weeks.map((week) => week.profit));
+  const weekRows = [];
+  for (let i = 0; i < model.cells.length; i += 7) {
+    const slice = model.cells.slice(i, i + 7);
+    while (slice.length < 7) slice.push({ empty: true });
+    const firstDate = slice.find((cell) => !cell.empty)?.date;
+    weekRows.push({ cells: slice, week: model.weeks[i / 7], weekNumber: firstDate ? isoWeek(firstDate) : null });
+  }
 
   const writeCalendar = (next) => {
     setSearchParams(toSearch({ date: next.date || '', month: next.month || '' }), { replace: true });
@@ -171,39 +285,37 @@ export default function CalendarPage() {
 
   const openBetDetails = (bet) => setDetailBet(bet);
 
-  const handleRowKeyDown = (event, bet) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openBetDetails(bet);
-    }
-  };
+  const selectDate = (date) => writeCalendar({ date, month: date.slice(0, 7) });
 
   const handleCellKeyDown = (event, date) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      writeCalendar({ date, month: date.slice(0, 7) });
-    }
+    const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    if (!(event.key in steps)) return;
+    event.preventDefault();
+    const next = shiftDate(date, steps[event.key]);
+    const clamped = next < dateFrom ? dateFrom : next > dateTo ? dateTo : next;
+    selectDate(clamped);
+    requestAnimationFrame(() => gridRef.current?.querySelector(`[data-date="${clamped}"]`)?.focus());
   };
 
-  const subtitle = isMonthView ? 'Resultat per måned' : 'Resultat per dag';
   const header = (
     <PageHeader
+      eyebrow={isMonthView ? `Kalender · ${safeYear}` : `Kalender · ${MONTHS[monthIndex]} ${safeYear}`}
       title="Kalender"
-      subtitle={subtitle}
+      subtitle={isMonthView ? 'Resultat per måned' : 'Resultat per dag'}
       testId="calendar-title"
       action={
-        <div className="flex items-center gap-2">
-          <ViewToggle view={view} onChange={changeView} />
-          <Button
-            variant="secondary"
-            onClick={goToToday}
-            className="bg-white/5 hover:bg-white/10 border border-white/10"
-            data-testid="calendar-today-btn"
-          >
+        <>
+          <Segmented
+            label="Kalendervisning"
+            testId="calendar-view-toggle"
+            options={VIEW_OPTIONS}
+            value={view}
+            onChange={changeView}
+          />
+          <Button variant="secondary" onClick={goToToday} data-testid="calendar-today-btn">
             I dag
           </Button>
-        </div>
+        </>
       }
     />
   );
@@ -212,11 +324,12 @@ export default function CalendarPage() {
     return (
       <div className="space-y-6">
         {header}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl lg:grid-cols-5">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 h-24 shimmer" />
+            <div key={i} className="skeleton h-24 rounded-none" />
           ))}
         </div>
+        <div className="skeleton h-[520px] w-full rounded-xl" />
       </div>
     );
   }
@@ -239,253 +352,245 @@ export default function CalendarPage() {
   }
 
   const { kpis } = model;
+  const monthPath = betsPath({ from: dateFrom, to: dateTo });
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       {header}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Link
-          to={betsPath({ from: dateFrom, to: dateTo })}
-          className={`${cardClass} hover-lift animate-fade-in-up`}
-          data-testid="calendar-profit-card"
-        >
-          <p className="text-sm text-text-secondary mb-1">Resultat</p>
-          <p className={`text-2xl font-bold font-mono ${signedClass(kpis.profit)}`}>
-            {kpis.profit > 0 ? '+' : ''}
-            {formatCurrency(kpis.profit, currency)}
-          </p>
-        </Link>
-        <Link
-          to={betsPath({ from: dateFrom, to: dateTo })}
-          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-1`}
-          data-testid="calendar-bets-card"
-        >
-          <p className="text-sm text-text-secondary mb-1">Spill</p>
-          <p className="text-2xl font-bold font-mono">{kpis.bets}</p>
-        </Link>
-        <div
-          className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-2`}
-          data-testid="calendar-winrate-card"
-        >
-          <p className="text-sm text-text-secondary mb-1">Treff</p>
-          <p className="text-2xl font-bold font-mono">{kpis.winRate.toFixed(1)}%</p>
-        </div>
-        <div className={`${cardClass} hover-lift animate-fade-in-up animate-stagger-3`} data-testid="calendar-roi-card">
-          <p className="text-sm text-text-secondary mb-1">ROI</p>
-          <p className={`text-2xl font-bold font-mono ${signedClass(kpis.roi)}`}>{kpis.roi.toFixed(1)}%</p>
-        </div>
-        <div
-          className={`${cardClass} col-span-2 lg:col-span-1 hover-lift animate-fade-in-up animate-stagger-4`}
-          data-testid="calendar-highlights-card"
-        >
-          <p className="text-sm text-text-secondary mb-1">Beste / verste dag</p>
-          <p className="text-sm font-mono font-bold text-primary truncate">
-            {kpis.bestDay
-              ? `${formatKpiDate(kpis.bestDay.date)} +${formatCurrency(kpis.bestDay.profit, currency, 0)}`
-              : '—'}
-          </p>
-          <p
-            className={`text-sm font-mono font-bold truncate ${
-              kpis.worstDay ? signedClass(kpis.worstDay.profit) : 'text-text-muted'
-            }`}
-          >
-            {kpis.worstDay
-              ? `${formatKpiDate(kpis.worstDay.date)} ${kpis.worstDay.profit > 0 ? '+' : ''}${formatCurrency(
-                  kpis.worstDay.profit,
-                  currency,
-                  0
-                )}`
-              : '—'}
-          </p>
-        </div>
-      </div>
+      <MetricRail>
+        <Metric
+          label="Resultat"
+          to={monthPath}
+          testId="calendar-profit-card"
+          value={<Money value={kpis.profit} currency={currency} signed />}
+          hint={`${MONTHS[monthIndex]} ${safeYear}`}
+        />
+        <Metric label="Spill" to={monthPath} testId="calendar-bets-card" value={kpis.bets} hint="denne måneden" />
+        <Metric label="Treff" testId="calendar-winrate-card" value={formatPercent(kpis.winRate)} />
+        <Metric
+          label="ROI"
+          testId="calendar-roi-card"
+          value={<span className={signedClass(kpis.roi)}>{formatPercent(kpis.roi, 1, { signed: true })}</span>}
+        />
+        <Metric
+          label="Beste / verste dag"
+          testId="calendar-highlights-card"
+          value={
+            <span className="block space-y-1 text-[13px] font-medium">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="text-text-muted">{formatKpiDate(kpis.bestDay?.date)}</span>
+                {kpis.bestDay ? (
+                  <Money value={kpis.bestDay.profit} currency={currency} digits={0} signed />
+                ) : (
+                  <span className="text-text-muted">—</span>
+                )}
+              </span>
+              <span className="flex items-baseline justify-between gap-2">
+                <span className="text-text-muted">{formatKpiDate(kpis.worstDay?.date)}</span>
+                {kpis.worstDay ? (
+                  <Money value={kpis.worstDay.profit} currency={currency} digits={0} signed />
+                ) : (
+                  <span className="text-text-muted">—</span>
+                )}
+              </span>
+            </span>
+          }
+        />
+      </MetricRail>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className={`lg:col-span-8 ${cardClass} p-4 sm:p-6`}>
-          <div className="flex items-center justify-between mb-4">
-            <Button
-              data-testid="prev-month-btn"
-              variant="secondary"
-              size="sm"
-              onClick={() => goMonth(-1)}
-              className="bg-white/5 hover:bg-white/10"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <h2 className="text-lg sm:text-xl font-bold capitalize">
-              {MONTHS[monthIndex]} {safeYear}
-            </h2>
-            <Button
-              data-testid="next-month-btn"
-              variant="secondary"
-              size="sm"
-              onClick={() => goMonth(1)}
-              className="bg-white/5 hover:bg-white/10"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <Panel aria-labelledby="calendar-month-title" className="p-3 sm:p-5 lg:col-span-8">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1">
+              <Button
+                data-testid="prev-month-btn"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => goMonth(-1)}
+                aria-label="Forrige måned"
+              >
+                <ChevronLeft />
+              </Button>
+              <h2
+                id="calendar-month-title"
+                className="min-w-[150px] text-center text-[17px] font-semibold capitalize tracking-tight"
+                aria-live="polite"
+              >
+                {MONTHS[monthIndex]} {safeYear}
+              </h2>
+              <Button
+                data-testid="next-month-btn"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => goMonth(1)}
+                aria-label="Neste måned"
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+            <HeatLegend />
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2 mb-2">
+          <div className="grid grid-cols-7 gap-1 pb-2 sm:gap-1.5 md:grid-cols-[repeat(7,minmax(0,1fr))_92px]">
             {DAYS.map((day) => (
-              <div key={day} className="text-center text-[11px] sm:text-xs font-medium text-text-secondary py-1">
+              <div key={day} className="eyebrow text-center">
                 {day}
               </div>
             ))}
+            <div className="eyebrow hidden text-center md:block">Uke</div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
-            {model.cells.map((cell, index) => {
-              if (cell.empty) {
-                return <div key={`pad-${safeYear}-${monthIndex}-${index}`} className="min-h-[64px] sm:min-h-[76px]" />;
-              }
-
-              const isToday = cell.date === todayKey;
-              const isSelected = cell.date === selectedDate;
-              const hasData = cell.bets > 0;
-              let tone = 'border-[#27272A] bg-[#121214]';
-              if (hasData && cell.hasSettled && cell.profit > 0) {
-                tone = 'border-primary/40 bg-primary/10';
-              } else if (hasData && cell.hasSettled && cell.profit < 0) {
-                tone = 'border-destructive/40 bg-destructive/10';
-              } else if (hasData && cell.pending > 0) {
-                tone = 'border-accent/40 bg-accent/5';
-              }
-
-              return (
-                <button
-                  key={cell.date}
-                  type="button"
-                  data-testid={`calendar-day-${cell.day}`}
-                  onClick={() => writeCalendar({ date: cell.date, month: cell.date.slice(0, 7) })}
-                  onKeyDown={(event) => handleCellKeyDown(event, cell.date)}
-                  className={`min-h-[64px] sm:min-h-[76px] text-left border rounded-lg p-1.5 sm:p-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${tone} ${
-                    isSelected ? 'ring-2 ring-primary' : ''
-                  } ${isToday && !isSelected ? 'ring-1 ring-white/30' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-1">
-                    <span className="text-[11px] text-text-secondary">{cell.day}</span>
-                    {isToday ? <span className="text-[9px] text-text-muted">i dag</span> : null}
-                  </div>
-                  {hasData ? (
-                    <>
-                      <div className={`text-sm sm:text-base font-mono font-bold mt-1 ${signedClass(cell.profit)}`}>
-                        {cell.hasSettled
-                          ? `${cell.profit > 0 ? '+' : ''}${formatCurrency(cell.profit, currency, 0)}`
-                          : 'Åpen'}
-                      </div>
-                      <div className="text-[11px] text-text-muted">
-                        {cell.bets} spill{cell.pending > 0 ? ` · ${cell.pending} åpne` : ''}
-                      </div>
-                    </>
-                  ) : null}
-                </button>
-              );
-            })}
+          <div ref={gridRef} className="space-y-1 sm:space-y-1.5" role="group" aria-label="Dager i måneden">
+            {weekRows.map((row, rowIndex) => (
+              <div
+                // eslint-disable-next-line react/no-array-index-key
+                key={`week-${rowIndex}`}
+                className="grid grid-cols-7 gap-1 sm:gap-1.5 md:grid-cols-[repeat(7,minmax(0,1fr))_92px]"
+              >
+                {row.cells.map((cell, index) =>
+                  cell.empty ? (
+                    // eslint-disable-next-line react/no-array-index-key
+                    <div key={`pad-${rowIndex}-${index}`} aria-hidden="true" />
+                  ) : (
+                    <DayCell
+                      key={cell.date}
+                      cell={cell}
+                      max={dayMax}
+                      currency={currency}
+                      isToday={cell.date === todayKey}
+                      isSelected={cell.date === selectedDate}
+                      isFuture={cell.date > todayKey}
+                      onSelect={selectDate}
+                      onKeyDown={handleCellKeyDown}
+                    />
+                  )
+                )}
+                <WeekCell week={row.week} weekNumber={row.weekNumber} max={weekMax} currency={currency} />
+              </div>
+            ))}
           </div>
-        </div>
+          <p className="mt-3 hidden text-[11px] text-text-muted sm:block">
+            Bruk piltastene for å flytte mellom dagene. Fargestyrken viser hvor stort resultatet er.
+          </p>
+        </Panel>
 
-        <div className="lg:col-span-4 relative min-h-0 max-h-[32rem] lg:max-h-none">
-          <div
-            className={`${cardClass} p-6 flex flex-col overflow-hidden h-full max-h-[32rem] lg:max-h-none lg:absolute lg:inset-0`}
+        <aside className="lg:col-span-4" aria-labelledby="calendar-day-heading">
+          <Panel
+            as="div"
+            className="flex max-h-[34rem] flex-col overflow-hidden lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]"
             data-testid="calendar-day-panel"
           >
-            <div className="shrink-0">
+            <div className="shrink-0 border-b border-hairline p-5">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-text-muted mb-1">Valgt dag</p>
-                  <h2 className="text-base font-bold capitalize">{formatDayHeading(selectedDate)}</h2>
+                <div className="min-w-0">
+                  <p className="eyebrow mb-1.5">Valgt dag</p>
+                  <h2 id="calendar-day-heading" className="text-[15px] font-semibold capitalize">
+                    {formatDayHeading(selectedDate)}
+                  </h2>
                 </div>
-                <Link
-                  to={betsPath({ from: selectedDate, to: selectedDate })}
-                  className="text-sm text-primary hover:underline shrink-0"
-                  data-testid="calendar-view-bets"
-                >
-                  Vis spill →
-                </Link>
+                <TextLink to={betsPath({ from: selectedDate, to: selectedDate })} data-testid="calendar-view-bets">
+                  Vis spill
+                </TextLink>
               </div>
-              <p className={`text-sm font-mono font-bold mt-1 ${signedClass(selectedDay.profit)}`}>
-                {selectedDay.profit > 0 ? '+' : ''}
-                {formatCurrency(selectedDay.profit, currency)}
-                <span className="text-text-muted font-sans font-normal">
-                  {' '}
-                  · {selectedDay.count || selectedDay.bets.length} spill
-                  {selectedDay.won || selectedDay.lost ? ` · ${selectedDay.won}W–${selectedDay.lost}L` : ''}
-                  {selectedDay.pending ? ` · ${selectedDay.pending} åpne` : ''}
-                </span>
+              <Money
+                value={selectedDay.profit}
+                currency={currency}
+                signed
+                className="mt-4 block font-heading text-[30px] font-semibold leading-none tracking-[-0.03em]"
+                unitClassName="text-[0.45em] tracking-normal"
+                fractionClassName="text-[0.6em]"
+              />
+              <p className="mt-2.5 text-xs text-text-muted figure">
+                {selectedDay.count || selectedDay.bets.length} spill
+                {selectedDay.won || selectedDay.lost ? (
+                  <>
+                    {' · '}
+                    <span className="text-primary">{selectedDay.won} V</span> –{' '}
+                    <span className="text-destructive">{selectedDay.lost} T</span>
+                  </>
+                ) : null}
+                {selectedDay.pending ? <span className="text-accent"> · {selectedDay.pending} åpne</span> : null}
               </p>
+              {selectedDay.won || selectedDay.lost ? (
+                <SplitBar
+                  left={selectedDay.won}
+                  right={selectedDay.lost}
+                  label={`${selectedDay.won} vunnet og ${selectedDay.lost} tapt`}
+                />
+              ) : null}
             </div>
 
             {selectedDay.bets.length === 0 ? (
-              <p className="text-sm text-text-muted py-10 text-center">Ingen spill denne dagen.</p>
+              <EmptyState icon={CalendarX2} title="Ingen spill denne dagen" className="py-12" />
             ) : (
-              <div className="mt-4 divide-y divide-[#27272A] min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+              <ul className="min-h-0 flex-1 divide-y divide-hairline overflow-y-auto overscroll-contain">
                 {selectedDay.bets.map((bet) => (
-                  <button
-                    key={bet.bet_id}
-                    type="button"
-                    data-testid={`calendar-bet-${bet.bet_id}`}
-                    tabIndex={0}
-                    aria-label={`Vis detaljer for ${bet.game}`}
-                    onClick={() => openBetDetails(bet)}
-                    onKeyDown={(event) => handleRowKeyDown(event, bet)}
-                    className="w-full text-left py-3 flex items-start justify-between gap-3 hover:bg-white/5 rounded-md px-1 -mx-1 transition-colors focus-visible:outline-none focus-visible:bg-white/10"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm truncate">{bet.game}</p>
-                      <p className="text-[11px] text-text-muted truncate">
-                        {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
-                      </p>
-                      <span
-                        className={`inline-block mt-1 px-2 py-1 rounded text-xs font-medium ${statusClass(bet.status)}`}
-                      >
-                        {STATUS_LABELS[bet.status] || bet.status}
+                  <li key={bet.bet_id}>
+                    <button
+                      type="button"
+                      data-testid={`calendar-bet-${bet.bet_id}`}
+                      aria-label={`Vis detaljer for ${bet.game}`}
+                      onClick={() => openBetDetails(bet)}
+                      className="interactive-row grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-5 py-3 text-left"
+                    >
+                      <span className="min-w-0">
+                        <BetSummary bet={bet} />
+                        <span className="mt-1.5 flex items-center gap-2">
+                          <StatusBadge status={bet.status} size="sm" />
+                          <span className="truncate text-[11px] text-text-muted figure">
+                            {[bet.sport, bet.odds ? Number(bet.odds).toFixed(2) : null].filter(Boolean).join(' · ')}
+                          </span>
+                        </span>
                       </span>
-                    </div>
-                    <span className={`shrink-0 text-sm font-mono font-bold ${signedClass(bet.result)}`}>
-                      {bet.status === 'pending'
-                        ? '—'
-                        : `${bet.result > 0 ? '+' : ''}${formatCurrency(bet.result, currency, 0)}`}
-                    </span>
-                  </button>
+                      <span className="text-[13px] font-semibold">
+                        {bet.status === 'pending' ? (
+                          <span className="text-text-muted">—</span>
+                        ) : (
+                          <Money value={bet.result} currency={currency} digits={0} signed />
+                        )}
+                      </span>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
-        </div>
+          </Panel>
+        </aside>
       </div>
 
-      <div className={`${cardClass} p-6`}>
-        <h2 className="text-base font-bold mb-4">Ukesoppsummering</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-          {model.weeks.map((week, index) => (
-            <div
-              key={`uke-${index + 1}`}
-              className={`border rounded-lg p-3 ${
-                week.bets === 0
-                  ? 'border-[#27272A] bg-[#121214]'
-                  : week.profit >= 0
-                    ? 'border-primary/40 bg-primary/10'
-                    : 'border-destructive/40 bg-destructive/10'
-              }`}
+      <Panel className="p-5 md:hidden" aria-labelledby="week-summary-title">
+        <h2 id="week-summary-title" className="text-[15px] font-semibold">
+          Ukesoppsummering
+        </h2>
+        <ul className="mt-3 divide-y divide-hairline">
+          {weekRows.map((row, index) => (
+            <li
+              // eslint-disable-next-line react/no-array-index-key
+              key={`uke-${index}`}
+              className="flex items-center justify-between gap-3 py-2.5"
             >
-              <div className="text-xs text-text-muted mb-1">Uke {index + 1}</div>
-              {week.bets === 0 ? (
-                <div className="text-sm text-text-muted">—</div>
-              ) : (
-                <>
-                  <div className={`text-base font-mono font-bold ${signedClass(week.profit)}`}>
-                    {week.profit > 0 ? '+' : ''}
-                    {formatCurrency(week.profit, currency)}
-                  </div>
-                  <div className="text-[11px] text-text-muted">{week.bets} spill</div>
-                </>
-              )}
-            </div>
+              <span className="eyebrow">Uke {row.weekNumber ?? index + 1}</span>
+              <span className="flex items-baseline gap-3">
+                <span className="text-[11px] text-text-muted figure">{row.week.bets} spill</span>
+                {row.week.bets ? (
+                  <Money
+                    value={row.week.profit}
+                    currency={currency}
+                    digits={0}
+                    signed
+                    className="text-[13px] font-semibold"
+                  />
+                ) : (
+                  <span className="text-xs text-text-muted">—</span>
+                )}
+              </span>
+            </li>
           ))}
-        </div>
-      </div>
+        </ul>
+      </Panel>
 
       <BetTicketDialog
         bet={dialogBet}

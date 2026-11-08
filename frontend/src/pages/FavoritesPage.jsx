@@ -168,7 +168,12 @@ export default function FavoritesPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <PageHeader title="Favoritter" subtitle="Følg dine favorittlag og kommende kamper" testId="favorites-title" />
+      <PageHeader
+        eyebrow="Følger"
+        title="Favoritter"
+        subtitle="Følg dine favorittlag og kommende kamper"
+        testId="favorites-title"
+      />
 
       {error ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -177,9 +182,9 @@ export default function FavoritesPage() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
-        <aside className="bg-[#18181B] border border-[#27272A] rounded-xl p-4 space-y-4 h-fit">
+        <aside className="panel h-fit space-y-4 p-4">
           <section>
-            <h2 className="text-xs uppercase tracking-wide text-text-muted mb-2">Mine lag</h2>
+            <h2 className="eyebrow mb-2.5">Mine lag</h2>
             {noTeams ? (
               <p className="text-xs text-text-secondary">Ingen lag favorisert</p>
             ) : (
@@ -197,7 +202,7 @@ export default function FavoritesPage() {
                       type="button"
                       aria-label={`Fjern ${team.name}`}
                       onClick={() => removeTeam(team)}
-                      className="text-text-muted hover:text-white"
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-elevated hover:text-text-primary"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -216,17 +221,17 @@ export default function FavoritesPage() {
         <section className="min-w-0 space-y-4">
           <FixtureBoard />
           {showToday ? (
-            <div className="bg-[#18181B] border border-[#27272A] rounded-xl overflow-hidden">
-              <div className="border-b border-[#27272A] px-3 py-2">
-                <h2 className="text-sm font-medium">I dag</h2>
+            <div className="panel overflow-hidden">
+              <div className="border-b border-hairline px-4 py-3">
+                <h2 className="text-[15px] font-semibold">I dag</h2>
               </div>
               {matchesFetching && matches.length === 0 ? (
                 <p className="p-4 text-sm text-text-secondary">Henter kamper…</p>
               ) : null}
               {groups.map((group) => (
                 <div key={group.sport}>
-                  <div className="bg-white/5 px-3 py-2">
-                    <h3 className="text-sm font-medium">{group.label}</h3>
+                  <div className="border-b border-hairline bg-sunken/60 px-4 py-2">
+                    <h3 className="eyebrow">{group.label}</h3>
                   </div>
                   <ul>
                     {group.matches.map((match) => {
@@ -234,7 +239,7 @@ export default function FavoritesPage() {
                       return (
                         <li
                           key={match.id}
-                          className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/5 px-3 py-2"
+                          className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-hairline px-4 py-2.5 last:border-b-0"
                         >
                           <span className="text-[11px] text-text-muted tabular-nums">
                             {isLive(match) ? 'LIVE' : formatKickoff(match.start)}
@@ -259,7 +264,7 @@ export default function FavoritesPage() {
       </div>
 
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="bg-[#18181B] border-[#27272A] text-white max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Legg til lag</DialogTitle>
             <DialogDescription>Søk etter fotballag eller tennisspiller.</DialogDescription>
@@ -269,7 +274,6 @@ export default function FavoritesPage() {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Søk Brann eller Sinner"
-              className="bg-transparent"
             />
             <Button type="button" size="icon" variant="secondary" aria-label="Søk">
               <Search className="h-4 w-4" />
@@ -286,7 +290,7 @@ export default function FavoritesPage() {
                 key={`${team.kind}-${team.sofascore_id}`}
                 type="button"
                 onClick={() => addTeam(team)}
-                className="w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-white/5"
+                className="w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-elevated"
               >
                 {team.name}
                 <span className="block text-[11px] text-text-muted">{sportLabel(team.sport)}</span>

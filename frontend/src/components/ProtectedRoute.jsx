@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import BrandMark from './BrandMark';
 
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -14,10 +15,10 @@ export default function ProtectedRoute({ children }) {
   // innloggingsskjemaet. Uten økt blir loading false etter en kort grace.
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-text-secondary">Laster...</p>
+      <div className="flex min-h-screen items-center justify-center" aria-busy="true">
+        <div className="flex flex-col items-center gap-4">
+          <BrandMark className="h-10 w-10 animate-pulse rounded-xl" />
+          <p className="eyebrow">Laster</p>
         </div>
       </div>
     );

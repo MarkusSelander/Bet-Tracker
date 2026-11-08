@@ -103,6 +103,17 @@ function periodToRange(period, now = new Date(), custom = {}) {
   return { from: localDateKey(start), to: localDateKey(end) };
 }
 
+// The window right before periodToRange(period): same length, ending the day before it starts.
+function previousPeriodRange(period, now = new Date()) {
+  const days = Number(period);
+  if (!days) return null;
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  end.setDate(end.getDate() - days - 1);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days);
+  return { from: localDateKey(start), to: localDateKey(end) };
+}
+
 function resolvedRange(filters = {}, now = new Date()) {
   const period = filters.period || '';
   if (period === 'custom' || (!period && (filters.from || filters.to))) {
@@ -232,6 +243,7 @@ export {
   parseFilters,
   toSearch,
   periodToRange,
+  previousPeriodRange,
   resolvedRange,
   oddsRangeToBounds,
   betsPath,

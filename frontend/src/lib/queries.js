@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { toAnalyticsApiSearch } from './filters';
+import { previousPeriodRange, toAnalyticsApiSearch } from './filters';
 import { fetchJson, queryClient, queryKeys, STALE_LIST_MS, STALE_REFERENCE_MS, STALE_STATS_MS } from './queryClient';
 
 function asArray(value) {
@@ -57,6 +57,18 @@ export function useAnalyticsSummary(search) {
     queryFn: () => fetchJson(`/api/analytics/summary${qs}`),
     staleTime: STALE_STATS_MS,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Summary for the window right before the dashboard's last-30-days, for period-over-period deltas. */
+export function usePreviousDashboardSummary(now = new Date()) {
+  const range = previousPeriodRange('30', now);
+  const search = toAnalyticsApiSearch({ period: 'custom', from: range.from, to: range.to }, now);
+  const qs = `?${search}`;
+  return useQuery({
+    queryKey: queryKeys.analyticsSummary(search),
+    queryFn: () => fetchJson(`/api/analytics/summary${qs}`),
+    staleTime: STALE_STATS_MS,
   });
 }
 

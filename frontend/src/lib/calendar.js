@@ -33,6 +33,18 @@ function emptyDay() {
   return { ...emptyStats(), bets: [] };
 }
 
+function eachDay(from, to) {
+  if (!from || !to || from > to) return [];
+  const days = [];
+  const cursor = new Date(`${from}T12:00:00`);
+  const end = new Date(`${to}T12:00:00`);
+  while (cursor <= end && days.length < 400) {
+    days.push(localDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
 function yearRange(year) {
   return { dateFrom: `${year}-01-01`, dateTo: `${year}-12-31` };
 }
@@ -223,6 +235,7 @@ export {
   localDateKey,
   monthRange,
   yearRange,
+  eachDay,
   buildCalendarModel,
   buildYearModel,
   readCalendarView,

@@ -16,8 +16,10 @@ import {
   valuesFromBet,
   visibleFooterActions,
 } from '../lib/betTicket';
-import { PRODUCT_LABELS, STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency, statusClass } from '../lib/format';
+import { PRODUCT_LABELS, STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency } from '../lib/format';
 import BookmakerLogo from './BookmakerLogo';
+import Money from './ds/Money';
+import StatusBadge from './ds/StatusBadge';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Input } from './ui/input';
@@ -25,7 +27,7 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Textarea } from './ui/textarea';
 
-const FIELD = 'bg-black/20 border-white/10';
+const FIELD = '';
 
 const STATUS_ORDER = ['pending', 'won', 'lost', 'push', 'cashed'];
 
@@ -70,22 +72,25 @@ function TicketLegRow({ leg, index }) {
   const meta = [formatLegKickoff(leg.start_time), leg.league, leg.sport].filter(Boolean).join(' · ');
   const odds = formatOdds(leg.odds);
   return (
-    <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-3">
-      {meta ? <p className="text-[11px] text-text-muted">{meta}</p> : null}
-      <p className="text-sm font-semibold leading-snug mt-1">{leg.match || `Bein ${index + 1}`}</p>
-      {leg.market ? <p className="text-xs text-text-secondary mt-0.5">{leg.market}</p> : null}
-      <div className="flex items-center justify-between gap-3 mt-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {odds ? (
-            <span className="shrink-0 rounded-md bg-white/10 px-2 py-0.5 text-sm font-medium tabular-nums">{odds}</span>
-          ) : null}
-          {leg.outcome ? <span className="text-sm truncate">{leg.outcome}</span> : null}
+    <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2 rounded-lg border border-hairline bg-sunken/60 px-3 py-3">
+      <span className="pt-0.5 font-mono text-[10.5px] text-text-muted figure">
+        {String(index + 1).padStart(2, '0')}
+      </span>
+      <div className="min-w-0">
+        {meta ? <p className="text-[11px] text-text-muted">{meta}</p> : null}
+        <p className="mt-0.5 text-sm font-semibold leading-snug">{leg.match || `Bein ${index + 1}`}</p>
+        {leg.market ? <p className="mt-0.5 text-xs text-text-secondary">{leg.market}</p> : null}
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            {odds ? (
+              <span className="shrink-0 rounded-md border border-border bg-elevated px-2 py-0.5 text-[13px] font-medium figure">
+                {odds}
+              </span>
+            ) : null}
+            {leg.outcome ? <span className="truncate text-[13px]">{leg.outcome}</span> : null}
+          </div>
+          {leg.status ? <StatusBadge status={leg.status} size="sm" /> : null}
         </div>
-        {leg.status ? (
-          <span className={`shrink-0 px-1.5 py-0.5 rounded text-[11px] ${statusClass(leg.status)}`}>
-            {STATUS_LABELS[leg.status] || leg.status}
-          </span>
-        ) : null}
       </div>
     </div>
   );
@@ -99,54 +104,62 @@ function TicketView({ bet, currency }) {
   const legs = ticketViewLegs(bet);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="rounded-full border border-white/20 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide">
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-3 pr-8">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-border bg-sunken px-2 py-0.5 font-mono text-[10.5px] font-medium tracking-[0.1em] text-text-secondary">
             {ticketTypeLabel(type)}
           </span>
           {count > 1 ? (
-            <span className="rounded-md bg-white/10 px-1.5 py-0.5 text-[11px] tabular-nums font-medium">[{count}]</span>
+            <span className="rounded-md bg-elevated px-1.5 py-0.5 text-[11px] font-medium text-text-secondary figure">
+              {count} bein
+            </span>
           ) : null}
           <BookmakerLogo name={bet.bookie} />
+          {bet.display_id != null && bet.display_id !== '' ? (
+            <span className="text-[11px] text-text-muted figure">#{bet.display_id}</span>
+          ) : null}
         </div>
-        <span className={`shrink-0 px-2 py-0.5 rounded text-[11px] font-medium ${statusClass(bet.status)}`}>
-          {STATUS_LABELS[bet.status] || bet.status}
-        </span>
+        <StatusBadge status={bet.status} />
       </div>
 
-      {bet.display_id != null && bet.display_id !== '' ? (
-        <p className="text-[11px] text-text-muted">#{bet.display_id}</p>
-      ) : null}
-
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <div>
-          <p className="text-[11px] text-text-muted mb-1">Totalodds</p>
-          <p className="text-xl sm:text-3xl font-semibold tabular-nums leading-tight">{odds || '—'}</p>
+      <div className="grid grid-cols-3 divide-x divide-hairline rounded-lg border border-hairline bg-sunken/50">
+        <div className="px-3 py-3 sm:px-4">
+          <p className="eyebrow mb-1.5">Totalodds</p>
+          <p className="font-heading text-xl font-semibold leading-tight figure sm:text-[28px]">{odds || '—'}</p>
         </div>
-        <div>
-          <p className="text-[11px] text-text-muted mb-1">Innsats</p>
-          <p className="text-xl sm:text-3xl font-semibold tabular-nums leading-tight">
-            {formatCurrency(bet.stake, currency)}
-          </p>
+        <div className="px-3 py-3 sm:px-4">
+          <p className="eyebrow mb-1.5">Innsats</p>
+          <Money
+            value={bet.stake}
+            currency={currency}
+            className="block font-heading text-xl font-semibold leading-tight sm:text-[28px]"
+            unitClassName="text-[0.5em]"
+            fractionClassName="text-[0.6em]"
+          />
         </div>
-        <div className="text-right">
-          <p className="text-[11px] text-text-muted mb-1">Mulig gevinst</p>
-          <p className="text-xl sm:text-3xl font-semibold tabular-nums leading-tight text-primary">
-            {formatCurrency(payout, currency)}
-          </p>
+        <div className="px-3 py-3 text-right sm:px-4">
+          <p className="eyebrow mb-1.5">Mulig gevinst</p>
+          <Money
+            value={payout}
+            currency={currency}
+            tone="text-primary"
+            className="block font-heading text-xl font-semibold leading-tight sm:text-[28px]"
+            unitClassName="text-[0.5em]"
+            fractionClassName="text-[0.6em]"
+          />
         </div>
       </div>
 
       {bet.cashout_amount ? (
-        <div className="rounded-md bg-amber-400 text-black px-3 py-2 text-sm font-semibold flex items-center justify-between">
+        <div className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">
           <span>Cashout</span>
-          <span className="tabular-nums">{formatCurrency(bet.cashout_amount, currency)}</span>
+          <span className="figure">{formatCurrency(bet.cashout_amount, currency)}</span>
         </div>
       ) : null}
 
       {missingComboLegs(bet) ? (
-        <p className="text-xs text-text-muted bg-white/5 border border-white/10 rounded-md px-3 py-2">
+        <p className="rounded-md border border-hairline bg-sunken px-3 py-2 text-xs text-text-muted">
           Kun første utvalg er lagret. Synk på nytt fra Coolbet for å hente øvrige bein.
         </p>
       ) : null}
@@ -222,13 +235,7 @@ export default function BetTicketDialog({
   const footer = (
     <div className="flex flex-wrap justify-end gap-2 pt-2">
       {actions.includes('edit') ? (
-        <Button
-          type="button"
-          variant="secondary"
-          data-testid="bet-details-edit"
-          onClick={() => onRequestEdit?.(bet)}
-          className="bg-white/5 hover:bg-white/10 border border-white/10"
-        >
+        <Button type="button" variant="secondary" data-testid="bet-details-edit" onClick={() => onRequestEdit?.(bet)}>
           <Pencil className="w-4 h-4" />
           Rediger
         </Button>
@@ -236,27 +243,23 @@ export default function BetTicketDialog({
       {actions.includes('delete') ? (
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           data-testid="bet-details-delete"
           onClick={() => onDelete?.(bet)}
-          className="bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/20"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="w-4 h-4" />
           Slett
         </Button>
       ) : null}
-      {actions.includes('submit') ? (
-        <Button type="submit" className="bg-primary hover:bg-primary/90 text-black font-bold">
-          {submitLabel(mode)}
-        </Button>
-      ) : null}
+      {actions.includes('submit') ? <Button type="submit">{submitLabel(mode)}</Button> : null}
       {actions.includes('details') ? (
         <Button
           type="button"
           variant="secondary"
           data-testid="bet-ticket-details-toggle"
           onClick={() => setDetailsOpen((openDetails) => !openDetails)}
-          className="bg-white/5 hover:bg-white/10 border border-white/10"
+          aria-expanded={detailsOpen}
         >
           Detaljer
         </Button>
@@ -310,7 +313,7 @@ export default function BetTicketDialog({
 
       {extraDetailKeys.map(([key, label]) =>
         shouldShowDetailField(key, { mode, values: detailValues }) ? (
-          <div key={key} className="flex items-start justify-between gap-4 py-2 border-b border-white/5">
+          <div key={key} className="flex items-start justify-between gap-4 border-b border-hairline py-2">
             <dt className="text-xs text-text-secondary shrink-0 pt-0.5">{label}</dt>
             <dd
               className={`text-sm text-right break-words min-w-0 ${
@@ -328,7 +331,7 @@ export default function BetTicketDialog({
       )}
 
       {!ticketLayout && missingComboLegs(bet) ? (
-        <p className="text-xs text-text-muted bg-white/5 border border-white/10 rounded-md px-3 py-2">
+        <p className="rounded-md border border-hairline bg-sunken px-3 py-2 text-xs text-text-muted">
           Kun første utvalg er lagret. Synk på nytt fra Coolbet for å hente øvrige bein.
         </p>
       ) : null}
@@ -349,7 +352,7 @@ export default function BetTicketDialog({
       {show ? (
         <DialogContent
           data-testid="bet-details-dialog"
-          className="bg-[#18181B] border-[#27272A] text-white w-[calc(100%-2rem)] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          className="w-[calc(100%-2rem)] max-w-2xl max-h-[90vh] overflow-y-auto sm:w-full"
         >
           <DialogHeader>
             <DialogTitle className="sr-only">{title}</DialogTitle>

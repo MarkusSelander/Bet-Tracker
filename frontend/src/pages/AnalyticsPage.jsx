@@ -1,33 +1,27 @@
-import { FileDown } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowUpRight, FileDown, Landmark, Target, TrendingDown, Trophy } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { toast } from 'sonner';
-import { ChartExtremeDot, latestExtremeDates } from '../components/ChartExtremeDot';
 import DailyResultChart from '../components/DailyResultChart';
 import DailyTurnoverChart from '../components/DailyTurnoverChart';
+import { SplitBar, ZeroMeter } from '../components/ds/Metric';
+import Money from '../components/ds/Money';
+import OutcomeBar from '../components/ds/OutcomeBar';
+import { Panel, SectionHeader, TextLink } from '../components/ds/Section';
+import Segmented from '../components/ds/Segmented';
 import PageHeader from '../components/PageHeader';
+import PerformanceChart, { PerformanceLegend } from '../components/PerformanceChart';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { betsPath, calendarPath, chartQuery, parseFilters, pickInsight, pieStatus, toSearch } from '../lib/filters';
-import { formatAxisAmount, formatCurrency } from '../lib/format';
+import { betsPath, calendarPath, chartQuery, parseFilters, pickInsight, toSearch } from '../lib/filters';
+import { formatCurrency, formatPercent } from '../lib/format';
 import { useAnalyticsSummary } from '../lib/queries';
-const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl p-4';
+import { STATUS_COLORS } from '../lib/theme';
+import { curveSummary, maxAbs } from '../lib/tone';
+import { cn } from '../lib/utils';
+
 const PERIODS = [
   { value: '7', label: '7 d' },
   { value: '30', label: '30 d' },
@@ -44,12 +38,18 @@ const PERIOD_TITLES = {
   all: 'hele perioden',
   custom: 'valgt periode',
 };
-const tooltipStyle = {
-  backgroundColor: '#18181B',
-  border: '1px solid #27272A',
-  borderRadius: '8px',
-  fontSize: '12px',
-};
+const CHART_TYPES = [
+  { value: 'line', label: 'Linje' },
+  { value: 'bar', label: 'Søyle' },
+];
+const BREAKDOWNS = [
+  { value: 'sport', label: 'Sport', key: 'sports', empty: 'Ingen sportdata', filter: 'sport' },
+  { value: 'league', label: 'Liga', key: 'leagues', empty: 'Ingen ligadata', filter: 'league' },
+  { value: 'odds', label: 'Odds', key: 'odds_range', empty: 'Ingen oddsdata', filter: 'oddsRange' },
+  { value: 'bookie', label: 'Bookie', key: 'bookmakers', empty: 'Ingen bookiedata', filter: 'bookie' },
+  { value: 'tipster', label: 'Tipster', key: 'tipsters', empty: 'Ingen tipsterdata', filter: 'tipster' },
+  { value: 'type', label: 'Type', key: 'ticket_types', empty: 'Ingen typedata', filter: 'ticketType' },
+];
 
 function signedClass(value) {
   if (value > 0) return 'text-primary';
@@ -74,60 +74,161 @@ function uniqueNames(rows, extra) {
   return [...names].sort();
 }
 
-function BreakdownTable({ title, nameHeader, rows, empty, currency, rowTo }) {
+function asRows(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function KpiRow({ label, to, testId, value, hint, children }) {
+  return (
+    <Link
+      to={to}
+      data-testid={testId}
+      className="group block px-5 py-4 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+    >
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="eyebrow">{label}</span>
+        <span className="font-heading text-[19px] font-semibold leading-none tracking-tight figure">{value}</span>
+      </span>
+      {hint ? (
+        <span className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-text-muted">
+          {hint}
+          <ArrowUpRight
+            className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            aria-hidden="true"
+          />
+        </span>
+      ) : null}
+      {children}
+    </Link>
+  );
+}
+
+function Insight({ to, icon: Icon, label, name, value, tone, testId }) {
+  return (
+    <Link
+      to={to}
+      data-testid={testId}
+      className="group flex min-w-0 items-center gap-3 rounded-lg border border-hairline bg-surface px-3.5 py-2.5 transition-colors hover:border-border hover:bg-surface-2"
+    >
+      <span
+        className={cn(
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-md',
+          tone === 'neg' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+        )}
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="eyebrow block">{label}</span>
+        <span className="mt-0.5 flex items-baseline gap-2 text-[13px]">
+          <span className="truncate font-medium text-text-primary">{name}</span>
+          {value}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+function BreakdownTable({ nameHeader, rows, empty, currency, rowTo }) {
   const sorted = [...rows].sort((a, b) => (b.profit_loss || 0) - (a.profit_loss || 0));
+  const roiMax = Math.max(10, maxAbs(sorted.map((row) => row.roi)));
 
   return (
-    <div className={`${cardClass} p-6`}>
-      {title ? <h2 className="text-base font-bold mb-4">{title}</h2> : null}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-[#27272A] text-left text-xs text-text-secondary">
-              <th className="py-2 pr-3 font-medium">{nameHeader}</th>
-              <th className="py-2 pr-3 font-medium text-right">Spill</th>
-              <th className="py-2 pr-3 font-medium text-right">Treff %</th>
-              <th className="py-2 pr-3 font-medium text-right">Innsats</th>
-              <th className="py-2 pr-3 font-medium text-right">Resultat</th>
-              <th className="py-2 font-medium text-right">ROI</th>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px]">
+        <thead>
+          <tr className="border-b border-hairline bg-sunken/60 text-left">
+            <th scope="col" className="eyebrow px-5 py-2.5 font-medium">
+              {nameHeader}
+            </th>
+            <th scope="col" className="eyebrow px-3 py-2.5 text-right font-medium">
+              Spill
+            </th>
+            <th scope="col" className="eyebrow px-3 py-2.5 text-right font-medium">
+              Treff %
+            </th>
+            <th scope="col" className="eyebrow px-3 py-2.5 text-right font-medium">
+              Innsats
+            </th>
+            <th scope="col" className="eyebrow px-3 py-2.5 text-right font-medium">
+              Resultat
+            </th>
+            <th scope="col" className="eyebrow w-[30%] px-5 py-2.5 font-medium">
+              ROI
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-hairline">
+          {sorted.length === 0 ? (
+            <tr>
+              <td colSpan="6" className="py-12 text-center text-[13px] text-text-muted">
+                {empty}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan="6" className="text-center py-8 text-sm text-text-muted">
-                  {empty}
-                </td>
-              </tr>
-            ) : (
-              sorted.map((row) => (
-                <tr key={row.name} className="border-b border-[#27272A]/50">
-                  <td className="py-2.5 pr-3 text-sm font-medium">
+          ) : (
+            sorted.map((row) => {
+              const roi = row.roi || 0;
+              const width = Math.min(1, Math.abs(roi) / roiMax) * 50;
+              return (
+                <tr key={row.name} className="transition-colors hover:bg-elevated/40">
+                  <td className="px-5 py-2.5 text-[13px] font-medium">
                     {rowTo ? (
-                      <Link to={rowTo(row)} className="text-white hover:text-primary">
+                      <Link
+                        to={rowTo(row)}
+                        className="rounded-sm text-text-primary underline-offset-4 hover:text-primary hover:underline"
+                      >
                         {row.name}
                       </Link>
                     ) : (
                       row.name
                     )}
                   </td>
-                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{row.bets}</td>
-                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{(row.win_rate || 0).toFixed(1)}%</td>
-                  <td className="py-2.5 pr-3 text-sm font-mono text-right">{formatCurrency(row.stake, currency)}</td>
-                  <td className={`py-2.5 pr-3 text-sm font-mono text-right ${signedClass(row.profit_loss)}`}>
-                    {row.profit_loss >= 0 ? '+' : ''}
-                    {formatCurrency(row.profit_loss, currency)}
+                  <td className="px-3 py-2.5 text-right text-[13px] text-text-secondary figure">{row.bets}</td>
+                  <td className="px-3 py-2.5 text-right text-[13px] text-text-secondary figure">
+                    {formatPercent(row.win_rate || 0)}
                   </td>
-                  <td className={`py-2.5 text-sm font-mono text-right ${signedClass(row.roi)}`}>
-                    {row.roi >= 0 ? '+' : ''}
-                    {(row.roi || 0).toFixed(1)}%
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right text-[13px]">
+                    <Money value={row.stake} currency={currency} digits={0} />
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right text-[13px] font-medium">
+                    <Money value={row.profit_loss} currency={currency} signed />
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <span className="flex items-center gap-3">
+                      <span className="relative h-1.5 flex-1 rounded-full bg-elevated" aria-hidden="true">
+                        <span className="absolute left-1/2 top-[-2px] h-[10px] w-px bg-text-muted/50" />
+                        <span
+                          className={cn(
+                            'absolute top-0 h-full rounded-full',
+                            roi >= 0 ? 'left-1/2 bg-primary' : 'right-1/2 bg-destructive'
+                          )}
+                          style={{ width: `${width}%` }}
+                        />
+                      </span>
+                      <span className={cn('w-16 text-right text-[13px] font-medium figure', signedClass(roi))}>
+                        {formatPercent(roi, 1, { signed: true })}
+                      </span>
+                    </span>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AnalyticsSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Laster analyse">
+      <div className="space-y-2">
+        <div className="skeleton h-3 w-32" />
+        <div className="skeleton h-7 w-32" />
       </div>
+      <div className="skeleton h-12 w-full rounded-xl" />
+      <div className="skeleton h-[460px] w-full rounded-xl" />
     </div>
   );
 }
@@ -141,16 +242,16 @@ export default function AnalyticsPage() {
   const currency = user?.currency || 'NOK';
   const period = filters.period || 'all';
   const summarySearch = chartQuery(filters);
-  const { data: summary, isPending, isError } = useAnalyticsSummary(summarySearch);
+  const { data: summary, isPending, isError, isFetching } = useAnalyticsSummary(summarySearch);
   const stats = summary?.stats && !Array.isArray(summary.stats) ? summary.stats : null;
-  const chartData = Array.isArray(summary?.chart) ? summary.chart : [];
-  const chartExtremes = latestExtremeDates(chartData, 'cumulative_pl');
-  const sportStats = Array.isArray(summary?.sports) ? summary.sports : [];
-  const leagueStats = Array.isArray(summary?.leagues) ? summary.leagues : [];
-  const oddsRangeStats = Array.isArray(summary?.odds_range) ? summary.odds_range : [];
-  const bookieStats = Array.isArray(summary?.bookmakers) ? summary.bookmakers : [];
-  const tipsterStats = Array.isArray(summary?.tipsters) ? summary.tipsters : [];
-  const ticketTypeStats = Array.isArray(summary?.ticket_types) ? summary.ticket_types : [];
+  const chartData = useMemo(() => asRows(summary?.chart), [summary]);
+  const curve = useMemo(() => curveSummary(chartData), [chartData]);
+  const sportStats = asRows(summary?.sports);
+  const leagueStats = asRows(summary?.leagues);
+  const oddsRangeStats = asRows(summary?.odds_range);
+  const bookieStats = asRows(summary?.bookmakers);
+  const tipsterStats = asRows(summary?.tipsters);
+  const ticketTypeStats = asRows(summary?.ticket_types);
   const sportOptions = uniqueNames(summary?.sport_options, filters.sport);
   const bookieOptions = uniqueNames(summary?.bookie_options, filters.bookie);
   const tipsterOptions = uniqueNames(summary?.tipster_options, filters.tipster);
@@ -171,140 +272,95 @@ export default function AnalyticsPage() {
     setSearchParams(toSearch(next), { replace: true });
   };
 
-  const goToChartDate = (state) => {
-    const date = state?.activeLabel || state?.activePayload?.[0]?.payload?.date;
+  const goToDate = (date) => {
     if (!date) return;
     navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
   };
 
-  if (isPending && !summary) {
-    return (
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="bg-[#18181B] border border-[#27272A] rounded-xl h-20 shimmer" />
-        ))}
-      </div>
-    );
-  }
+  if (isPending && !summary) return <AnalyticsSkeleton />;
 
-  const pieData = [
-    { name: 'Vunnet', value: stats?.won_count || 0, color: '#10B981' },
-    { name: 'Tapt', value: stats?.lost_count || 0, color: '#EF4444' },
-    { name: 'Push', value: stats?.push_count || 0, color: '#A1A1AA' },
-    { name: 'Cashout', value: stats?.cashed_count || 0, color: '#F59E0B' },
-    { name: 'Åpne', value: stats?.pending_count || 0, color: '#3B82F6' },
-  ].filter((item) => item.value > 0);
+  const outcomes = [
+    { key: 'won', name: 'Vunnet', value: stats?.won_count || 0, color: STATUS_COLORS.won },
+    { key: 'lost', name: 'Tapt', value: stats?.lost_count || 0, color: STATUS_COLORS.lost },
+    { key: 'push', name: 'Push', value: stats?.push_count || 0, color: STATUS_COLORS.push },
+    { key: 'cashed', name: 'Cashout', value: stats?.cashed_count || 0, color: STATUS_COLORS.cashed },
+    { key: 'pending', name: 'Åpne', value: stats?.pending_count || 0, color: STATUS_COLORS.pending },
+  ];
   const pl = stats?.total_profit_loss || 0;
+  const roi = stats?.roi || 0;
   const avgStake = (stats?.total_stake || 0) / (stats?.total_bets || 1);
   const dailyData = chartData.length > 40 ? chartData.slice(-40) : chartData;
   const bestSport = pickInsight(sportStats, 'best');
   const worstOdds = pickInsight(oddsRangeStats, 'worst');
   const bestBookie = pickInsight(bookieStats, 'best');
+  const streakType = stats?.current_streak_type;
+  const breakdownRows = {
+    sports: sportStats,
+    leagues: leagueStats,
+    odds_range: oddsRangeStats,
+    bookmakers: bookieStats,
+    tipsters: tipsterStats,
+    ticket_types: ticketTypeStats,
+  };
+
+  const exportPdf = async () => {
+    try {
+      const { exportAnalyticsToPDF } = await import('../utils/pdfExport');
+      await exportAnalyticsToPDF(stats, currency, {
+        chartData,
+        sportStats,
+        leagueStats,
+        oddsRangeStats,
+        bookieStats,
+        tipsterStats,
+        ticketTypeStats,
+        periodLabel: periodLabel(filters),
+        sportLabel: filters.sport || 'Alle sporter',
+        userName: user?.name,
+      });
+      toast.success('PDF eksportert');
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast.error('Kunne ikke eksportere PDF');
+    }
+  };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
+        eyebrow={`Analyse · ${periodLabel(filters)}`}
         title="Analyse"
         subtitle="Resultat fordelt på tid, sport og odds"
         testId="analytics-title"
         action={
-          <Button
-            variant="secondary"
-            onClick={async () => {
-              try {
-                const { exportAnalyticsToPDF } = await import('../utils/pdfExport');
-                await exportAnalyticsToPDF(stats, currency, {
-                  chartData,
-                  sportStats,
-                  leagueStats,
-                  oddsRangeStats,
-                  bookieStats,
-                  tipsterStats,
-                  ticketTypeStats,
-                  periodLabel: periodLabel(filters),
-                  sportLabel: filters.sport || 'Alle sporter',
-                  userName: user?.name,
-                });
-                toast.success('PDF eksportert');
-              } catch (error) {
-                console.error('PDF export error:', error);
-                toast.error('Kunne ikke eksportere PDF');
-              }
-            }}
-            className="bg-white/5 hover:bg-white/10 border border-white/10"
-            data-testid="export-analytics-pdf-btn"
-          >
-            <FileDown className="w-4 h-4 mr-2" />
-            PDF
+          <Button variant="secondary" size="sm" onClick={exportPdf} data-testid="export-analytics-pdf-btn">
+            <FileDown />
+            Eksporter PDF
           </Button>
         }
       />
 
-      <div className={`${cardClass} flex flex-col gap-3`}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            {PERIODS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                data-testid={`analytics-period-${item.value}`}
-                onClick={() => patchFilters({ period: item.value === 'all' ? '' : item.value })}
-                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                  period === item.value
-                    ? 'bg-primary text-black font-medium'
-                    : 'bg-white/5 text-text-secondary hover:bg-white/10'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-text-secondary whitespace-nowrap">
-              <Link
-                to={spillPath}
-                className="font-mono font-medium text-white hover:text-primary"
-                data-testid="analytics-bets-count"
-              >
-                {stats?.total_bets || 0}
-              </Link>{' '}
-              spill
-            </p>
-            <Link
-              to={spillPath}
-              className="text-sm text-primary hover:underline whitespace-nowrap"
-              data-testid="analytics-view-bets"
-            >
-              Vis spill →
-            </Link>
-          </div>
-        </div>
-
-        {period === 'custom' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input
-              type="date"
-              value={filters.from}
-              onChange={(event) => patchFilters({ period: 'custom', from: event.target.value })}
-              className="bg-black/20 border-white/10 h-9"
-              aria-label="Fra dato"
-            />
-            <Input
-              type="date"
-              value={filters.to}
-              onChange={(event) => patchFilters({ period: 'custom', to: event.target.value })}
-              className="bg-black/20 border-white/10 h-9"
-              aria-label="Til dato"
-            />
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <section
+        aria-label="Filtre"
+        className="z-20 -mx-4 space-y-3 border-y border-hairline bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:sticky lg:top-0 lg:-mx-10 lg:px-10"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Segmented
+            label="Periode"
+            options={PERIODS.map((item) => ({ ...item, testId: `analytics-period-${item.value}` }))}
+            value={period}
+            onChange={(value) => patchFilters({ period: value === 'all' ? '' : value })}
+          />
+          <span className="mx-1 hidden h-5 w-px bg-hairline md:block" aria-hidden="true" />
           <Select
             value={filters.sport || 'all'}
             onValueChange={(value) => patchFilters({ sport: value === 'all' ? '' : value })}
           >
-            <SelectTrigger className="bg-black/20 border-white/10 h-9" data-testid="analytics-sport-filter">
+            <SelectTrigger
+              className="h-9 w-auto min-w-[136px] data-[active=true]:border-primary/40 data-[active=true]:bg-primary/[0.06]"
+              data-active={Boolean(filters.sport)}
+              data-testid="analytics-sport-filter"
+            >
               <SelectValue placeholder="Sport" />
             </SelectTrigger>
             <SelectContent>
@@ -320,7 +376,11 @@ export default function AnalyticsPage() {
             value={filters.bookie || 'all'}
             onValueChange={(value) => patchFilters({ bookie: value === 'all' ? '' : value })}
           >
-            <SelectTrigger className="bg-black/20 border-white/10 h-9" data-testid="analytics-bookie-filter">
+            <SelectTrigger
+              className="h-9 w-auto min-w-[136px] data-[active=true]:border-primary/40 data-[active=true]:bg-primary/[0.06]"
+              data-active={Boolean(filters.bookie)}
+              data-testid="analytics-bookie-filter"
+            >
               <SelectValue placeholder="Bookie" />
             </SelectTrigger>
             <SelectContent>
@@ -336,7 +396,11 @@ export default function AnalyticsPage() {
             value={filters.tipster || 'all'}
             onValueChange={(value) => patchFilters({ tipster: value === 'all' ? '' : value })}
           >
-            <SelectTrigger className="bg-black/20 border-white/10 h-9" data-testid="analytics-tipster-filter">
+            <SelectTrigger
+              className="h-9 w-auto min-w-[136px] data-[active=true]:border-primary/40 data-[active=true]:bg-primary/[0.06]"
+              data-active={Boolean(filters.tipster)}
+              data-testid="analytics-tipster-filter"
+            >
               <SelectValue placeholder="Tipster" />
             </SelectTrigger>
             <SelectContent>
@@ -348,323 +412,256 @@ export default function AnalyticsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <div className="ml-auto flex items-center gap-4">
+            <p className="text-[13px] text-text-secondary" aria-live="polite">
+              {isFetching ? (
+                <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent align-middle" />
+              ) : null}
+              <Link
+                to={spillPath}
+                className="font-medium text-text-primary figure hover:text-primary"
+                data-testid="analytics-bets-count"
+              >
+                {stats?.total_bets || 0}
+              </Link>{' '}
+              spill
+            </p>
+            <TextLink to={spillPath} data-testid="analytics-view-bets">
+              Vis spill
+            </TextLink>
+          </div>
         </div>
-      </div>
+
+        {period === 'custom' ? (
+          <div className="grid max-w-xl animate-fade-in grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              type="date"
+              value={filters.from}
+              onChange={(event) => patchFilters({ period: 'custom', from: event.target.value })}
+              aria-label="Fra dato"
+            />
+            <Input
+              type="date"
+              value={filters.to}
+              onChange={(event) => patchFilters({ period: 'custom', to: event.target.value })}
+              aria-label="Til dato"
+            />
+          </div>
+        ) : null}
+      </section>
 
       {bestSport || worstOdds || bestBookie ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           {bestSport ? (
-            <Link
+            <Insight
               to={betsPath({ ...filters, sport: bestSport.name })}
-              className="px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm hover:bg-primary/20"
-              data-testid="insight-best-sport"
-            >
-              Beste sport: {bestSport.name}
-            </Link>
+              testId="insight-best-sport"
+              icon={Trophy}
+              label="Beste sport"
+              name={bestSport.name}
+              value={<Money value={bestSport.profit_loss} currency={currency} digits={0} signed className="text-xs" />}
+            />
           ) : null}
           {worstOdds ? (
-            <Link
+            <Insight
               to={betsPath({ ...filters, oddsRange: worstOdds.name })}
-              className="px-3 py-1.5 rounded-full bg-destructive/10 text-destructive text-sm hover:bg-destructive/20"
-              data-testid="insight-worst-odds"
-            >
-              Svakeste odds: {worstOdds.name}
-            </Link>
+              testId="insight-worst-odds"
+              icon={TrendingDown}
+              tone="neg"
+              label="Svakeste odds"
+              name={worstOdds.name}
+              value={<Money value={worstOdds.profit_loss} currency={currency} digits={0} signed className="text-xs" />}
+            />
           ) : null}
           {bestBookie ? (
-            <Link
+            <Insight
               to={betsPath({ ...filters, bookie: bestBookie.name })}
-              className="px-3 py-1.5 rounded-full bg-white/5 text-sm hover:bg-white/10"
-              data-testid="insight-best-bookie"
-            >
-              Beste bookie: {bestBookie.name}
-            </Link>
+              testId="insight-best-bookie"
+              icon={Landmark}
+              label="Beste bookie"
+              name={bestBookie.name}
+              value={<Money value={bestBookie.profit_loss} currency={currency} digits={0} signed className="text-xs" />}
+            />
           ) : null}
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Link
-          to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up`}
-          data-testid="analytics-kpi-result"
-        >
-          <p className="text-sm text-text-secondary mb-1">Resultat</p>
-          <p className={`text-2xl font-bold font-mono ${signedClass(pl)}`}>
-            {pl >= 0 ? '+' : ''}
-            {formatCurrency(pl, currency)}
-          </p>
-        </Link>
-        <Link
-          to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-1`}
-          data-testid="analytics-kpi-roi"
-        >
-          <p className="text-sm text-text-secondary mb-1">ROI</p>
-          <p className={`text-2xl font-bold font-mono ${signedClass(stats?.roi || 0)}`}>
-            {(stats?.roi || 0).toFixed(1)}%
-          </p>
-        </Link>
-        <Link
-          to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-2`}
-          data-testid="analytics-kpi-winrate"
-        >
-          <p className="text-sm text-text-secondary mb-1">Treffprosent</p>
-          <p className="text-2xl font-bold font-mono">{(stats?.win_rate || 0).toFixed(1)}%</p>
-        </Link>
-        <Link
-          to={settledPath}
-          className={`${cardClass} hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-3`}
-          data-testid="analytics-kpi-avg-stake"
-        >
-          <p className="text-sm text-text-secondary mb-1">Snittinnsats</p>
-          <p className="text-2xl font-bold font-mono">{formatCurrency(avgStake, currency)}</p>
-        </Link>
-        <Link
-          to={streakPath}
-          className={`${cardClass} col-span-2 lg:col-span-1 hover:border-white/20 transition-all hover-lift animate-fade-in-up animate-stagger-4`}
-          data-testid="analytics-kpi-streak"
-        >
-          <p className="text-sm text-text-secondary mb-1">Streak</p>
-          <p
-            className={`text-2xl font-bold font-mono ${
-              stats?.current_streak_type === 'won'
-                ? 'text-primary'
-                : stats?.current_streak_type === 'lost'
-                  ? 'text-destructive'
-                  : ''
-            }`}
-          >
-            {stats?.current_streak || 0}
-            {stats?.current_streak_type === 'won' ? ' V' : stats?.current_streak_type === 'lost' ? ' T' : ''}
-          </p>
-          <p className="text-xs text-text-muted mt-1">
-            Beste {stats?.best_win_streak || 0}V · Verst {stats?.worst_loss_streak || 0}T
-          </p>
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className={`lg:col-span-8 ${cardClass} p-6`}>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-base font-bold">Akkumulert resultat · {periodLabel(filters)}</h2>
-            <div className="flex rounded-lg border border-[#27272A] overflow-hidden shrink-0">
-              <button
-                type="button"
-                onClick={() => setChartType('line')}
-                className={`px-3 py-1 text-xs ${chartType === 'line' ? 'bg-white/10 text-white' : 'text-text-secondary'}`}
+      <Panel aria-labelledby="curve-title" className="grid overflow-hidden lg:grid-cols-12">
+        <div className="min-w-0 lg:col-span-8">
+          <div className="flex flex-wrap items-start justify-between gap-4 p-5 sm:p-6">
+            <div className="min-w-0">
+              <p id="curve-title" className="eyebrow">
+                Akkumulert resultat · {periodLabel(filters)}
+              </p>
+              <Link
+                to={settledPath}
+                data-testid="analytics-kpi-result"
+                className="mt-3 inline-block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               >
-                Linje
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartType('bar')}
-                className={`px-3 py-1 text-xs ${chartType === 'bar' ? 'bg-white/10 text-white' : 'text-text-secondary'}`}
-              >
-                Søyle
-              </button>
+                <Money
+                  value={pl}
+                  currency={currency}
+                  signed
+                  className="font-heading text-[40px] font-semibold leading-none tracking-[-0.04em] sm:text-[48px]"
+                  unitClassName="ml-2 text-[0.36em] tracking-normal"
+                  fractionClassName="text-[0.55em] tracking-normal"
+                />
+              </Link>
+              <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-text-muted">Topp</dt>
+                  <dd className="font-medium">
+                    <Money value={curve.peak} currency={currency} digits={0} signed />
+                  </dd>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-text-muted">Bunn</dt>
+                  <dd className="font-medium">
+                    <Money value={curve.trough} currency={currency} digits={0} signed />
+                  </dd>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <dt className="text-text-muted">Største fall fra topp</dt>
+                  <dd className="font-medium">
+                    <Money value={curve.maxDrawdown} currency={currency} digits={0} signed />
+                  </dd>
+                </div>
+              </dl>
             </div>
+            <Segmented label="Graftype" size="sm" options={CHART_TYPES} value={chartType} onChange={setChartType} />
           </div>
-          <ResponsiveContainer width="100%" height={280}>
+
+          <div className="px-2 sm:px-3">
+            <PerformanceChart
+              data={chartData}
+              currency={currency}
+              mode={chartType}
+              height={320}
+              onDateSelect={goToDate}
+              testId="analytics-performance-chart"
+              emptyText="Ingen spill i utvalget"
+            />
+          </div>
+          <div className="px-5 pb-5 pt-3 sm:px-6">
             {chartType === 'line' ? (
-              <AreaChart
-                data={chartData}
-                margin={{ top: 14, right: 14, left: 0, bottom: 0 }}
-                onClick={goToChartDate}
-                style={{ cursor: 'pointer' }}
-              >
-                <defs>
-                  <linearGradient id="analyticsPlFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10B981" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-                <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-                <YAxis
-                  stroke="#71717A"
-                  style={{ fontSize: '11px' }}
-                  tickFormatter={(value) => formatAxisAmount(value, currency)}
-                />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
-                <Area
-                  type="monotone"
-                  dataKey="cumulative_pl"
-                  stroke="#34D399"
-                  strokeWidth={2.5}
-                  fill="url(#analyticsPlFill)"
-                  name="P/L"
-                  dot={(dotProps) => (
-                    <ChartExtremeDot {...dotProps} highDate={chartExtremes.highDate} lowDate={chartExtremes.lowDate} />
-                  )}
-                  activeDot={{ r: 5, fill: '#fff', stroke: '#34D399', strokeWidth: 2 }}
-                />
-              </AreaChart>
+              <PerformanceLegend showDrawdown={curve.maxDrawdown < 0} />
             ) : (
-              <BarChart data={chartData} onClick={goToChartDate} style={{ cursor: 'pointer' }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272A" />
-                <XAxis dataKey="date" stroke="#71717A" style={{ fontSize: '11px' }} />
-                <YAxis
-                  stroke="#71717A"
-                  style={{ fontSize: '11px' }}
-                  tickFormatter={(value) => formatAxisAmount(value, currency)}
-                />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => formatCurrency(value, currency)} />
-                <Bar dataKey="cumulative_pl" name="P/L" radius={[2, 2, 0, 0]}>
-                  {chartData.map((entry) => (
-                    <Cell key={entry.date} fill={entry.cumulative_pl >= 0 ? '#10B981' : '#EF4444'} />
-                  ))}
-                </Bar>
-              </BarChart>
+              <p className="text-[11px] text-text-muted">Akkumulert resultat per dag med spill</p>
             )}
-          </ResponsiveContainer>
+          </div>
         </div>
 
-        <div className={`lg:col-span-4 ${cardClass} p-6`}>
-          <h2 className="text-base font-bold mb-4">Fordeling</h2>
-          {pieData.length === 0 ? (
-            <p className="text-sm text-text-muted py-12 text-center">Ingen oppgjorte spill i utvalget</p>
-          ) : (
-            <>
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={45}
-                    outerRadius={60}
-                    paddingAngle={4}
-                    dataKey="value"
-                    style={{ cursor: 'pointer' }}
-                    onClick={(entry) => {
-                      const status = pieStatus(entry?.name);
-                      if (status) navigate(betsPath({ ...filters, status }));
-                    }}
-                  >
-                    {pieData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-2 mt-2">
-                {pieData.map((item) => (
-                  <Link
-                    key={item.name}
-                    to={betsPath({ ...filters, status: pieStatus(item.name) })}
-                    className="flex items-center justify-between hover:bg-white/5 rounded-md px-1 -mx-1"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-sm text-text-secondary">{item.name}</span>
-                    </div>
-                    <span className="text-sm font-mono">{item.value}</span>
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
+        <div className="flex flex-col border-t border-hairline lg:col-span-4 lg:border-l lg:border-t-0">
+          <div className="divide-y divide-hairline">
+            <KpiRow
+              label="ROI"
+              to={settledPath}
+              testId="analytics-kpi-roi"
+              value={<span className={signedClass(roi)}>{formatPercent(roi, 1, { signed: true })}</span>}
+              hint={`på ${formatCurrency(stats?.total_stake || 0, currency, 0)} oppgjort`}
+            >
+              <ZeroMeter value={roi} label={`ROI ${formatPercent(roi)}`} />
+            </KpiRow>
+            <KpiRow
+              label="Treffprosent"
+              to={settledPath}
+              testId="analytics-kpi-winrate"
+              value={formatPercent(stats?.win_rate || 0)}
+              hint={
+                <span className="figure">
+                  <span className="text-primary">{stats?.won_count || 0} V</span> ·{' '}
+                  <span className="text-destructive">{stats?.lost_count || 0} T</span>
+                </span>
+              }
+            >
+              <SplitBar
+                left={stats?.won_count || 0}
+                right={stats?.lost_count || 0}
+                label={`${stats?.won_count || 0} vunnet og ${stats?.lost_count || 0} tapt`}
+              />
+            </KpiRow>
+            <KpiRow
+              label="Snittinnsats"
+              to={settledPath}
+              testId="analytics-kpi-avg-stake"
+              value={<Money value={avgStake} currency={currency} />}
+              hint={`${stats?.total_bets || 0} spill i utvalget`}
+            />
+            <KpiRow
+              label="Streak"
+              to={streakPath}
+              testId="analytics-kpi-streak"
+              value={
+                <span
+                  className={streakType === 'won' ? 'text-primary' : streakType === 'lost' ? 'text-destructive' : ''}
+                >
+                  {stats?.current_streak || 0}
+                  <span className="ml-1 text-[0.65em] font-medium text-text-secondary">
+                    {streakType === 'won' ? 'V' : streakType === 'lost' ? 'T' : ''}
+                  </span>
+                </span>
+              }
+              hint={`Beste ${stats?.best_win_streak || 0} V · verst ${stats?.worst_loss_streak || 0} T`}
+            />
+          </div>
+          <div className="mt-auto border-t border-hairline p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Target className="h-3.5 w-3.5 text-text-muted" aria-hidden="true" />
+              <span className="eyebrow">Utfall</span>
+            </div>
+            <OutcomeBar items={outcomes} linkFor={(item) => betsPath({ ...filters, status: item.key })} />
+          </div>
         </div>
+      </Panel>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <DailyResultChart
+          data={dailyData}
+          currency={currency}
+          truncated={chartData.length > 40}
+          onDateSelect={goToDate}
+        />
+        <DailyTurnoverChart
+          data={dailyData}
+          currency={currency}
+          truncated={chartData.length > 40}
+          onDateSelect={goToDate}
+        />
       </div>
 
-      <DailyResultChart
-        data={dailyData}
-        currency={currency}
-        truncated={chartData.length > 40}
-        onDateSelect={(date) => {
-          if (!date) return;
-          navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
-        }}
-      />
-
-      <DailyTurnoverChart
-        data={dailyData}
-        currency={currency}
-        truncated={chartData.length > 40}
-        onDateSelect={(date) => {
-          if (!date) return;
-          navigate(calendarPath({ date, month: String(date).slice(0, 7) }));
-        }}
-      />
-
-      <Tabs defaultValue="sport">
-        <TabsList className="bg-white/5 h-auto flex-wrap justify-start gap-1 p-1">
-          <TabsTrigger value="sport" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Sport
-          </TabsTrigger>
-          <TabsTrigger value="league" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Liga
-          </TabsTrigger>
-          <TabsTrigger value="odds" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Odds
-          </TabsTrigger>
-          <TabsTrigger value="bookie" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Bookie
-          </TabsTrigger>
-          <TabsTrigger value="tipster" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Tipster
-          </TabsTrigger>
-          <TabsTrigger value="type" className="data-[state=active]:bg-white/10 data-[state=active]:text-white">
-            Type
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="sport">
-          <BreakdownTable
-            nameHeader="Sport"
-            rows={sportStats}
-            empty="Ingen sportdata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, sport: row.name })}
-          />
-        </TabsContent>
-        <TabsContent value="league">
-          <BreakdownTable
-            nameHeader="Liga"
-            rows={leagueStats}
-            empty="Ingen ligadata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, league: row.name })}
-          />
-        </TabsContent>
-        <TabsContent value="odds">
-          <BreakdownTable
-            nameHeader="Odds"
-            rows={oddsRangeStats}
-            empty="Ingen oddsdata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, oddsRange: row.name })}
-          />
-        </TabsContent>
-        <TabsContent value="bookie">
-          <BreakdownTable
-            nameHeader="Bookie"
-            rows={bookieStats}
-            empty="Ingen bookiedata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, bookie: row.name })}
-          />
-        </TabsContent>
-        <TabsContent value="tipster">
-          <BreakdownTable
-            nameHeader="Tipster"
-            rows={tipsterStats}
-            empty="Ingen tipsterdata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, tipster: row.name })}
-          />
-        </TabsContent>
-        <TabsContent value="type">
-          <BreakdownTable
-            nameHeader="Type"
-            rows={ticketTypeStats}
-            empty="Ingen typedata"
-            currency={currency}
-            rowTo={(row) => betsPath({ ...filters, ticketType: row.name })}
-          />
-        </TabsContent>
-      </Tabs>
+      <section aria-labelledby="breakdown-title" className="space-y-3">
+        <Tabs defaultValue="sport">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <SectionHeader
+              id="breakdown-title"
+              eyebrow="Fordeling"
+              title="Hvor kommer resultatet fra?"
+              description="Sortert etter resultat. Klikk et navn for å se spillene."
+            />
+            <TabsList className="h-auto flex-wrap justify-start">
+              {BREAKDOWNS.map((item) => (
+                <TabsTrigger key={item.value} value={item.value}>
+                  {item.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          {BREAKDOWNS.map((item) => (
+            <TabsContent key={item.value} value={item.value}>
+              <Panel as="div" className="overflow-hidden">
+                <BreakdownTable
+                  nameHeader={item.label}
+                  rows={breakdownRows[item.key]}
+                  empty={item.empty}
+                  currency={currency}
+                  rowTo={(row) => betsPath({ ...filters, [item.filter]: row.name })}
+                />
+              </Panel>
+            </TabsContent>
+          ))}
+        </Tabs>
+      </section>
     </div>
   );
 }

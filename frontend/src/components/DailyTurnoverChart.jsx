@@ -1,52 +1,31 @@
+import { Coins } from 'lucide-react';
 import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, Rectangle, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useReducedMotion } from '../hooks/use-reduced-motion';
 import { formatAxisAmount, formatCurrency } from '../lib/format';
-
-function parseDate(isoDate) {
-  if (!isoDate) return null;
-  const date = new Date(`${isoDate}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatShortDate(isoDate) {
-  const date = parseDate(isoDate);
-  if (!date) return isoDate || '';
-  return date.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }).replace(/\.$/, '');
-}
-
-function formatLongDate(isoDate) {
-  const date = parseDate(isoDate);
-  if (!date) return isoDate || '';
-  return date.toLocaleDateString('nb-NO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
+import { AXIS_TICK, CHART } from '../lib/theme';
+import { ChartTooltipFrame, formatLongDate, formatShortDate } from './ds/ChartTooltip';
+import Money from './ds/Money';
+import { EmptyState, Panel, SectionHeader } from './ds/Section';
+import { Stat, StatLine } from './ds/StatLine';
 
 function TurnoverTooltip({ active, payload, currency }) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
   if (!row) return null;
-
   return (
-    <div className="rounded-lg border border-[#27272A] bg-[#121214]/95 px-3 py-2.5 shadow-xl backdrop-blur-sm min-w-[180px]">
-      <p className="text-[11px] font-medium text-text-secondary mb-1.5 capitalize">{formatLongDate(row.date)}</p>
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-6">
-          <span className="text-xs text-text-secondary">Omsetning</span>
-          <span className="text-xs font-mono font-medium">{formatCurrency(row.daily_stake, currency)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span className="text-xs text-text-secondary">Spill</span>
-          <span className="text-xs font-mono">{row.bets || 0}</span>
-        </div>
-        <div className="flex items-center justify-between gap-6 pt-1 border-t border-white/5">
-          <span className="text-xs text-text-secondary">Akkumulert</span>
-          <span className="text-xs font-mono">{formatCurrency(row.cumulative_stake, currency)}</span>
-        </div>
-      </div>
-    </div>
+    <ChartTooltipFrame
+      title={formatLongDate(row.date)}
+      rows={[
+        {
+          label: 'Omsetning',
+          value: formatCurrency(row.daily_stake, currency),
+          className: 'text-[13px] font-semibold',
+        },
+        { label: 'Spill', value: row.bets || 0 },
+        { label: 'Akkumulert', value: formatCurrency(row.cumulative_stake, currency), divider: true },
+      ]}
+    />
   );
 }
 
@@ -58,15 +37,22 @@ function TurnoverBar(props) {
   const marked =
     (payload?.date && payload.date === peakDate) || (payload?.date && payload.date === lowDate && peakDate !== lowDate);
   const cx = x + width / 2;
-  const cy = barY;
 
   return (
     <g>
-      <Rectangle x={x} y={barY} width={width} height={barH} radius={[4, 4, 0, 0]} fill="url(#turnoverFill)" />
+      <Rectangle
+        x={x}
+        y={barY}
+        width={width}
+        height={barH}
+        radius={[3, 3, 0, 0]}
+        fill={CHART.info}
+        fillOpacity={marked ? 1 : 0.7}
+      />
       {marked ? (
         <g>
-          <circle cx={cx} cy={cy} r={8} fill="#38BDF8" fillOpacity={0.28} />
-          <circle cx={cx} cy={cy} r={3.5} fill="#38BDF8" stroke="#09090B" strokeWidth={1.5} />
+          <circle cx={cx} cy={barY} r={7} fill={CHART.info} fillOpacity={0.2} />
+          <circle cx={cx} cy={barY} r={3} fill={CHART.info} stroke={CHART.background} strokeWidth={1.5} />
         </g>
       ) : null}
     </g>
@@ -88,6 +74,7 @@ function withStake(rows) {
 
 export default function DailyTurnoverChart({ data, currency, truncated, onDateSelect }) {
   const rows = useMemo(() => withStake(data), [data]);
+  const reducedMotion = useReducedMotion();
 
   const summary = useMemo(() => {
     if (!rows.length) {
@@ -106,7 +93,6 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
   }, [rows]);
 
   const average = rows.length ? summary.total / rows.length : 0;
-  const xInterval = rows.length > 12 ? Math.ceil(rows.length / 7) - 1 : 0;
   const hasTurnover = summary.total > 0;
 
   const openDate = (date) => {
@@ -114,89 +100,86 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
   };
 
   return (
-    <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6" data-testid="analytics-turnover-chart">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
-        <div>
-          <h2 className="text-base font-bold">Omsetning</h2>
-          <p className="text-xs text-text-muted mt-1">
-            {truncated ? 'Siste 40 dager med aktivitet' : 'Innsats per dag i utvalget'}
-            {rows.length ? ` · ${rows.length} dager` : ''}
-          </p>
-        </div>
+    <Panel
+      className="flex flex-col overflow-hidden"
+      data-testid="analytics-turnover-chart"
+      aria-labelledby="turnover-title"
+    >
+      <div className="p-5">
+        <SectionHeader
+          id="turnover-title"
+          eyebrow="Volum"
+          title="Omsetning"
+          description={`${truncated ? 'Siste 40 dager med aktivitet' : 'Innsats per dag i utvalget'}${
+            rows.length ? ` · ${rows.length} dager` : ''
+          }`}
+        />
       </div>
 
       {hasTurnover ? (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-            <div className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5">
-              <p className="text-[11px] text-text-muted mb-0.5">Totalt</p>
-              <p className="text-sm font-mono font-medium">{formatCurrency(summary.total, currency)}</p>
-              <p className="text-[11px] text-text-muted mt-0.5">oppgjort innsats</p>
-            </div>
-            <div className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5">
-              <p className="text-[11px] text-text-muted mb-0.5">Snitt per dag</p>
-              <p className="text-sm font-mono font-medium">{formatCurrency(average, currency)}</p>
-              <p className="text-[11px] text-text-muted mt-0.5">{summary.bets} spill</p>
-            </div>
-            <button
-              type="button"
+          <StatLine>
+            <Stat
+              label="Totalt"
+              value={<Money value={summary.total} currency={currency} digits={0} />}
+              sub="oppgjort innsats"
+            />
+            <Stat
+              label="Snitt per dag"
+              value={<Money value={average} currency={currency} digits={0} />}
+              sub={`${summary.bets} spill`}
+            />
+            <Stat
+              label="Høyeste dag"
+              value={<Money value={summary.peak?.daily_stake} currency={currency} digits={0} />}
+              sub={formatShortDate(summary.peak?.date)}
               onClick={() => openDate(summary.peak?.date)}
-              className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5 text-left hover:border-white/15 transition-colors"
-            >
-              <p className="text-[11px] text-text-muted mb-0.5">Høyeste dag</p>
-              <p className="text-sm font-mono font-medium">{formatCurrency(summary.peak?.daily_stake, currency)}</p>
-              <p className="text-[11px] text-text-muted mt-0.5">{formatShortDate(summary.peak?.date)}</p>
-            </button>
-            <div className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5">
-              <p className="text-[11px] text-text-muted mb-0.5">Akkumulert</p>
-              <p className="text-sm font-mono font-medium">
-                {formatCurrency(rows[rows.length - 1]?.cumulative_stake, currency)}
-              </p>
-              <p className="text-[11px] text-text-muted mt-0.5">ved siste dag</p>
-            </div>
-          </div>
+            />
+            <Stat
+              label="Akkumulert"
+              value={<Money value={rows[rows.length - 1]?.cumulative_stake} currency={currency} digits={0} />}
+              sub="ved siste dag"
+            />
+          </StatLine>
 
-          <div className="h-[240px] sm:h-[280px]">
+          <div className="h-[240px] px-2 pb-3 pt-4 sm:h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={rows}
-                barCategoryGap="28%"
+                barCategoryGap="26%"
                 margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
                 onClick={(state) => openDate(state?.activeLabel || state?.activePayload?.[0]?.payload?.date)}
                 style={{ cursor: 'pointer' }}
+                accessibilityLayer
               >
-                <defs>
-                  <linearGradient id="turnoverFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#38BDF8" />
-                    <stop offset="100%" stopColor="#0284C7" stopOpacity={0.85} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="#27272A" strokeOpacity={0.8} />
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
                 <XAxis
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
-                  interval={xInterval}
-                  minTickGap={18}
+                  minTickGap={28}
+                  interval="preserveStartEnd"
                   tickFormatter={formatShortDate}
-                  tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
-                  dy={8}
+                  tick={AXIS_TICK}
+                  dy={6}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  width={42}
+                  width={48}
                   tickFormatter={(value) => formatAxisAmount(value, currency)}
-                  tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
+                  tick={AXIS_TICK}
                 />
                 <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.035)' }}
+                  cursor={{ fill: 'rgba(242,245,244,0.04)' }}
                   content={<TurnoverTooltip currency={currency} />}
+                  isAnimationActive={false}
                 />
                 <Bar
                   dataKey="daily_stake"
                   name="Omsetning"
-                  maxBarSize={36}
+                  maxBarSize={28}
+                  isAnimationActive={!reducedMotion}
                   shape={(barProps) => (
                     <TurnoverBar {...barProps} peakDate={summary.peak?.date} lowDate={summary.low?.date} />
                   )}
@@ -206,8 +189,8 @@ export default function DailyTurnoverChart({ data, currency, truncated, onDateSe
           </div>
         </>
       ) : (
-        <p className="text-sm text-text-muted py-16 text-center">Ingen omsetning i utvalget</p>
+        <EmptyState icon={Coins} title="Ingen omsetning i utvalget" />
       )}
-    </div>
+    </Panel>
   );
 }

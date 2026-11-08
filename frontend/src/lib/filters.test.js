@@ -4,6 +4,7 @@ const { before, test } = require('node:test');
 let parseFilters;
 let toSearch;
 let periodToRange;
+let previousPeriodRange;
 let oddsRangeToBounds;
 let betsPath;
 let analyticsPath;
@@ -20,6 +21,7 @@ before(async () => {
     parseFilters,
     toSearch,
     periodToRange,
+    previousPeriodRange,
     oddsRangeToBounds,
     betsPath,
     analyticsPath,
@@ -88,6 +90,12 @@ test('toSearch omits empty values and period=all', () => {
 test('parseFilters roundtrips through toSearch', () => {
   const original = parseFilters('period=90&sport=Tennis&bookie=Coolbet&q=Oslo');
   assert.deepEqual(parseFilters(toSearch(original)), original);
+});
+
+test('previousPeriodRange is the same-length window just before the period', () => {
+  assert.deepEqual(previousPeriodRange('30', NOW), { from: '2026-07-11', to: '2026-08-10' });
+  assert.deepEqual(previousPeriodRange('7', NOW), { from: '2026-08-26', to: '2026-09-02' });
+  assert.equal(previousPeriodRange('all', NOW), null);
 });
 
 test('periodToRange maps numbered periods to inclusive local dates', () => {

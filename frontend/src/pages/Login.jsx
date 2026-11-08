@@ -1,8 +1,9 @@
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect } from 'firebase/auth';
-import { AlertCircle, Loader2, TrendingUp } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import BrandMark from '../components/BrandMark';
 import { Button } from '../components/ui/button';
 import { useAuth } from '../contexts/AuthContext';
 import { googleAuthError } from '../lib/authForm';
@@ -111,21 +112,46 @@ export default function Login() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      <div className="absolute inset-0 bg-[#09090B]">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(16,185,129,0.12),_transparent_55%)]"></div>
+      <div className="absolute inset-0 bg-background" aria-hidden="true">
+        <svg
+          className="absolute inset-x-0 bottom-0 h-[45%] w-full opacity-60"
+          viewBox="0 0 1200 400"
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="login-curve-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgb(var(--primary))" stopOpacity="0.12" />
+              <stop offset="100%" stopColor="rgb(var(--primary))" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M0 330 C 120 320, 180 280, 260 290 S 420 230, 500 250 S 640 170, 720 190 S 880 120, 960 140 S 1100 70, 1200 60 L1200 400 L0 400 Z"
+            fill="url(#login-curve-fill)"
+          />
+          <path
+            d="M0 330 C 120 320, 180 280, 260 290 S 420 230, 500 250 S 640 170, 720 190 S 880 120, 960 140 S 1100 70, 1200 60"
+            fill="none"
+            stroke="rgb(var(--primary))"
+            strokeOpacity="0.5"
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
 
-      <main className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-xl p-8 shadow-2xl">
-            <div className="flex items-center justify-center mb-6">
-              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(16,185,129,0.35)]">
-                <TrendingUp className="w-6 h-6 text-black" />
+      <main className="relative z-10 flex min-h-screen items-center justify-center p-4">
+        <div className="w-full max-w-sm">
+          <div className="panel p-8 shadow-popover">
+            <div className="mb-6 flex items-center gap-3">
+              <BrandMark className="h-9 w-9 rounded-xl" />
+              <div>
+                <h1 className="text-[22px] font-semibold leading-none tracking-tight">Bet-Tracker</h1>
+                <p className="eyebrow mt-1.5">Ytelse · spill · resultat</p>
               </div>
             </div>
-
-            <h1 className="text-3xl font-bold text-center mb-2">Bet Tracker</h1>
-            <p className="text-text-secondary text-center mb-6">Hold oversikt over spill og resultat</p>
+            <p className="mb-6 text-[13px] text-text-secondary">
+              Hold oversikt over spill og resultat, med kurver, kalender og analyse.
+            </p>
 
             <form
               className="space-y-4"
@@ -140,7 +166,7 @@ export default function Login() {
                 type="submit"
                 disabled={submitting || !configured}
                 aria-busy={submitting}
-                className="h-11 w-full bg-white font-semibold text-black hover:bg-white/90"
+                className="h-11 w-full bg-text-primary font-semibold text-background shadow-none hover:bg-text-primary/90"
               >
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleMark />}
                 {submitting ? 'Logger inn...' : 'Fortsett med Google'}

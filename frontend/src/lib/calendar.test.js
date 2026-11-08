@@ -7,10 +7,17 @@ let monthRange;
 let yearRange;
 let readCalendarView;
 let saveCalendarView;
+let eachDay;
 
 before(async () => {
-  ({ buildCalendarModel, buildYearModel, monthRange, yearRange, readCalendarView, saveCalendarView } =
+  ({ buildCalendarModel, buildYearModel, monthRange, yearRange, readCalendarView, saveCalendarView, eachDay } =
     await import('./calendar.js'));
+});
+
+test('eachDay lists every date in an inclusive range across month ends', () => {
+  assert.deepEqual(eachDay('2026-02-27', '2026-03-02'), ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']);
+  assert.deepEqual(eachDay('2026-03-02', '2026-03-01'), []);
+  assert.deepEqual(eachDay('', '2026-03-01'), []);
 });
 
 function memoryStorage(initial = {}) {
