@@ -4,7 +4,7 @@ const CONTACT_EMAIL = 'markus.alexander.selander@gmail.com';
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-[#09090B] text-[#FAFAFA]">
+    <div className="min-h-screen bg-background text-text-primary">
       <main className="mx-auto max-w-2xl px-4 py-12">
         <p className="text-sm text-text-secondary">Bet Tracker</p>
         <h1 className="mt-2 text-3xl font-bold" data-testid="privacy-title">
@@ -14,7 +14,7 @@ export default function PrivacyPage() {
 
         <div className="mt-8 space-y-8 text-sm leading-6 text-text-secondary">
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Hvem som har ansvaret</h2>
+            <h2 className="text-base font-semibold text-text-primary">Hvem som har ansvaret</h2>
             <p className="mt-2">
               Bet Tracker er en personlig oversikt over spill. Spørsmål om opplysningene dine sendes til{' '}
               <a className="text-primary underline" href={`mailto:${CONTACT_EMAIL}`}>
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Innlogging med Google</h2>
+            <h2 className="text-base font-semibold text-text-primary">Innlogging med Google</h2>
             <p className="mt-2">
               Innlogging skjer med Google-kontoen din via Firebase Authentication. Vi tar vare på e-post, navn,
               profilbilde og Google-kontoens bruker-ID, slik at spillene dine kan knyttes til deg neste gang du logger
@@ -34,7 +34,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Det du selv legger inn</h2>
+            <h2 className="text-base font-semibold text-text-primary">Det du selv legger inn</h2>
             <p className="mt-2">
               Spill, innsats, odds, resultat, bookmaker, sport, notater, tipster og favoritter lagres for å vise
               oversikten din. Økten varer i sju dager. Nettstedet lagrer en session-token i en informasjonskapsel og i
@@ -43,7 +43,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Chrome-utvidelsen og Coolbet</h2>
+            <h2 className="text-base font-semibold text-text-primary">Chrome-utvidelsen og Coolbet</h2>
             <p className="mt-2">
               Utvidelsen leser spillhistorikken på Coolbet i fanen der du allerede er innlogget, og sender kupongene til
               Bet Tracker. Coolbet-passordet blir ikke lagret.
@@ -51,7 +51,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Hvem som behandler opplysningene</h2>
+            <h2 className="text-base font-semibold text-text-primary">Hvem som behandler opplysningene</h2>
             <p className="mt-2">
               Google behandler innloggingen. Nettstedet ligger på Vercel, API-et på Render, og kontoen og spillene i en
               database. Opplysningene brukes til å drive din egen oversikt og selges ikke videre.
@@ -59,7 +59,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-base font-semibold text-[#FAFAFA]">Sletting</h2>
+            <h2 className="text-base font-semibold text-text-primary">Sletting</h2>
             <p className="mt-2">
               Send en e-post til{' '}
               <a className="text-primary underline" href={`mailto:${CONTACT_EMAIL}`}>

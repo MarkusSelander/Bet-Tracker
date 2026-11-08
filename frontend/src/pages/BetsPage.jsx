@@ -5,19 +5,25 @@ import {
   ChevronRight,
   ChevronsUpDown,
   ChevronUp,
+  Inbox,
   LayoutGrid,
-  Layers,
   List,
-  ListChecks,
   Plus,
   Search,
-  TrendingUp,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import BetSummary from '../components/BetSummary';
 import BetTicketDialog from '../components/BetTicketDialog';
 import BookmakerLogo from '../components/BookmakerLogo';
+import { Metric, MetricRail } from '../components/ds/Metric';
+import Money from '../components/ds/Money';
+import { EmptyState, Kbd } from '../components/ds/Section';
+import Segmented from '../components/ds/Segmented';
+import StatusBadge from '../components/ds/StatusBadge';
 import PageHeader from '../components/PageHeader';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -27,22 +33,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../com
 import {
   computeActiveKpis,
   formatBetDate,
-  formatStatusLine,
   getBetSports,
-  getMatchSummary,
   getSelectionSummary,
   nextSortState,
   sortBets,
   sortTooltip,
   statusDotClass,
-  statusTextClass,
 } from '../lib/betsDisplay';
-import { toCreatePayload, toUpdatePayload } from '../lib/betTicket';
+import { formatLegKickoff, toCreatePayload, toUpdatePayload } from '../lib/betTicket';
 import { fetchWithTimeout } from '../lib/fetch';
 import { ODDS_RANGES, filterBets, parseFilters, toBetsApiSearch, toSearch } from '../lib/filters';
 import { STATUS_LABELS, TICKET_TYPE_LABELS, formatCurrency } from '../lib/format';
 import { useBets } from '../lib/queries';
 import { invalidateTrackerData } from '../lib/queryClient';
+import { cn } from '../lib/utils';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -66,8 +70,13 @@ const SORT_COLUMNS = [
   { key: 'status', label: 'Status', align: 'right' },
 ];
 
+const VIEW_OPTIONS = [
+  { value: 'list', label: '', icon: List, ariaLabel: 'Listevisning', testId: 'view-list' },
+  { value: 'grid', label: '', icon: LayoutGrid, ariaLabel: 'Rutenettvisning', testId: 'view-grid' },
+];
+
 const filterTriggerClass =
-  'h-10 w-auto min-w-[148px] max-w-[220px] shrink-0 rounded-xl border-white/10 bg-[#12151c] text-sm text-text-secondary hover:bg-white/5 hover:text-white';
+  'h-9 w-auto min-w-[124px] max-w-[220px] shrink-0 data-[active=true]:border-primary/40 data-[active=true]:bg-primary/[0.06] data-[active=true]:text-text-primary text-text-secondary';
 
 function uniqueValues(rows, key, extra) {
   const values = new Set(rows.map((row) => row[key]).filter(Boolean));
@@ -75,33 +84,47 @@ function uniqueValues(rows, key, extra) {
   return [...values].sort();
 }
 
+function statusAmount(bet) {
+  const raw = Number(bet.result);
+  if (bet.status === 'lost') return -Math.abs(Number.isFinite(raw) ? raw : Number(bet.stake) || 0);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+function betLegs(bet) {
+  return Array.isArray(bet?.legs) ? bet.legs.filter(Boolean) : [];
+}
+
 function SortHeader({ column, sortKey, sortDir, onSort }) {
   const active = sortKey === column.key;
   const tooltip = sortTooltip(sortKey, sortDir, column.key);
   return (
     <th
-      className={`py-3 px-3 text-[12px] font-medium text-text-secondary whitespace-nowrap ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+      scope="col"
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={cn('whitespace-nowrap px-3 py-2.5', column.align === 'right' ? 'text-right' : 'text-left')}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
             onClick={() => onSort(column.key)}
-            className={`inline-flex items-center gap-1.5 hover:text-white transition-colors ${
-              column.align === 'right' ? 'flex-row-reverse' : ''
-            } ${active ? 'text-white' : ''}`}
+            className={cn(
+              'eyebrow inline-flex items-center gap-1 rounded-sm transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70',
+              column.align === 'right' && 'flex-row-reverse',
+              active && 'text-text-primary'
+            )}
           >
             {column.label}
             {active && sortDir === 'asc' ? (
-              <ChevronUp className="w-3.5 h-3.5 opacity-70" />
+              <ChevronUp className="h-3 w-3 text-primary" />
             ) : active && sortDir === 'desc' ? (
-              <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+              <ChevronDown className="h-3 w-3 text-primary" />
             ) : (
-              <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />
+              <ChevronsUpDown className="h-3 w-3 opacity-40" />
             )}
           </button>
         </TooltipTrigger>
-        <TooltipContent className="bg-[#1c1f26] text-white border border-white/10 text-xs">{tooltip}</TooltipContent>
+        <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
     </th>
   );
@@ -111,10 +134,10 @@ function SportCell({ bet }) {
   const sports = getBetSports(bet);
   const extra = Math.max(0, sports.length - 1);
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <span className="text-[13px] text-white/90 truncate">{sports[0] || '—'}</span>
+    <div className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate text-[13px] text-text-secondary">{sports[0] || '—'}</span>
       {extra > 0 ? (
-        <span className="shrink-0 rounded-full bg-white/10 text-white/80 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+        <span className="shrink-0 rounded-full bg-elevated px-1.5 py-px text-[10px] font-semibold text-text-secondary figure">
           +{extra}
         </span>
       ) : null}
@@ -122,39 +145,72 @@ function SportCell({ bet }) {
   );
 }
 
-function MatchCell({ bet }) {
-  const summary = getMatchSummary(bet);
-  return (
-    <div className="min-w-0 max-w-[240px]" title={summary.primary}>
-      {summary.prefix ? <div className="text-[12px] text-white/90">{summary.prefix}:</div> : null}
-      <div className="text-[13px] text-white truncate">{summary.primary || '—'}</div>
-      {summary.extraCount > 0 ? <div className="text-[12px] text-white/60">og {summary.extraCount} mer</div> : null}
-    </div>
-  );
-}
-
 function SelectionCell({ bet }) {
   const summary = getSelectionSummary(bet);
   return (
-    <div className="min-w-0 max-w-[220px] text-[13px] text-white/80" title={summary.primary}>
-      <span className="truncate inline-block max-w-full align-bottom">{summary.primary || '—'}</span>
-      {summary.extraCount > 0 ? <span className="text-white/55"> og mer</span> : null}
+    <div className="min-w-0 max-w-[220px] text-[13px] text-text-secondary" title={summary.primary}>
+      <span className="inline-block max-w-full truncate align-bottom">{summary.primary || '—'}</span>
+      {summary.extraCount > 0 ? <span className="text-text-muted"> og mer</span> : null}
     </div>
   );
 }
 
 function StatusCell({ bet, currency }) {
+  const pending = bet.status === 'pending';
+  const push = bet.status === 'push';
   return (
-    <div className={`flex items-center justify-end gap-2 text-[13px] font-medium ${statusTextClass(bet.status)}`}>
-      <span className="whitespace-nowrap">{formatStatusLine(bet, currency)}</span>
-      <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(bet.status)}`} />
+    <div className="flex items-center justify-end gap-2.5">
+      {pending ? (
+        <span className="text-xs text-text-muted figure">
+          til {formatCurrency((Number(bet.stake) || 0) * (Number(bet.odds) || 0), currency, 0)}
+        </span>
+      ) : push ? null : (
+        <span className="text-[13px] font-medium">
+          <Money value={statusAmount(bet)} currency={currency} signed />
+        </span>
+      )}
+      <StatusBadge status={bet.status} size="sm" />
+    </div>
+  );
+}
+
+function LegsDetail({ bet, id }) {
+  const legs = betLegs(bet);
+  return (
+    <div id={id} className="animate-fade-in border-l-2 border-hairline py-1 pl-4">
+      <ol className="divide-y divide-hairline">
+        {legs.map((leg, index) => {
+          const meta = [formatLegKickoff(leg.start_time), leg.league, leg.sport].filter(Boolean).join(' · ');
+          const odds = Number(leg.odds);
+          return (
+            <li
+              // eslint-disable-next-line react/no-array-index-key
+              key={`${leg.match || 'leg'}-${index}`}
+              className="grid grid-cols-[1.5rem_minmax(0,1fr)_auto_auto] items-center gap-3 py-2"
+            >
+              <span className="font-mono text-[10.5px] text-text-muted figure">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[13px] text-text-primary">{leg.match || `Bein ${index + 1}`}</p>
+                <p className="truncate text-xs text-text-muted">
+                  {[leg.market, leg.outcome].filter(Boolean).join(' · ') || '—'}
+                  {meta ? <span className="hidden sm:inline"> · {meta}</span> : null}
+                </p>
+              </div>
+              <span className="text-[13px] text-text-secondary figure">
+                {Number.isFinite(odds) && odds > 0 ? odds.toFixed(2) : ''}
+              </span>
+              {leg.status ? <StatusBadge status={leg.status} size="sm" /> : <span />}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
 function BetCard({ bet, currency, onOpen, onKeyDown }) {
-  const summary = getMatchSummary(bet);
-  const selection = getSelectionSummary(bet);
   return (
     <div
       role="button"
@@ -163,29 +219,74 @@ function BetCard({ bet, currency, onOpen, onKeyDown }) {
       aria-label={`Vis detaljer for ${bet.game}`}
       onClick={() => onOpen(bet)}
       onKeyDown={(event) => onKeyDown(event, bet)}
-      className="rounded-2xl border border-white/8 bg-[#12151c] p-4 text-left cursor-pointer hover:bg-white/[0.04] hover:border-white/15 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-hairline bg-surface p-4 text-left transition-colors duration-150 hover:border-border hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
     >
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <span className="text-[13px] font-medium text-white/90">{formatBetDate(bet.date, bet.time)}</span>
-        <StatusCell bet={bet} currency={currency} />
+      <span
+        className={cn('absolute inset-x-0 top-0 h-[2px] opacity-70', statusDotClass(bet.status))}
+        aria-hidden="true"
+      />
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs text-text-muted figure">{formatBetDate(bet.date, bet.time)}</span>
+        <StatusBadge status={bet.status} size="sm" />
       </div>
-      <SportCell bet={bet} />
-      <div className="mt-2">
-        {summary.prefix ? <p className="text-[12px] text-white/80">{summary.prefix}:</p> : null}
-        <p className="text-sm text-white truncate">{summary.primary || '—'}</p>
-        {summary.extraCount > 0 ? <p className="text-[12px] text-white/60">og {summary.extraCount} mer</p> : null}
+      <div className="mt-3">
+        <SportCell bet={bet} />
+        <BetSummary bet={bet} className="mt-1" />
       </div>
-      <p className="mt-1 text-[13px] text-white/70 truncate">
-        {selection.primary || '—'}
-        {selection.extraCount > 0 ? ' og mer' : ''}
-      </p>
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4 flex items-end justify-between gap-3 border-t border-hairline pt-3">
         <BookmakerLogo name={bet.bookie} />
-        <div className="text-right text-[13px] font-mono text-white/80">
-          <div>{formatCurrency(bet.stake, currency)}</div>
-          <div className="text-text-secondary">{Number(bet.odds || 0).toFixed(2)}</div>
+        <div className="text-right">
+          <p className="text-[13px] font-medium figure">
+            <Money value={bet.stake} currency={currency} />
+            <span className="mx-1.5 text-text-muted">@</span>
+            <span className="text-text-secondary">{Number(bet.odds || 0).toFixed(2)}</span>
+          </p>
+          {bet.status !== 'pending' && bet.status !== 'push' ? (
+            <p className="mt-0.5 text-xs">
+              <Money value={statusAmount(bet)} currency={currency} signed />
+            </p>
+          ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FilterSelect({ value, placeholder, allLabel, options, onChange, testId, renderLabel, icon: Icon }) {
+  const active = Boolean(value);
+  return (
+    <Select value={value || 'all'} onValueChange={(next) => onChange(next === 'all' ? '' : next)}>
+      <SelectTrigger className={filterTriggerClass} data-testid={testId} data-active={active}>
+        <span className="flex min-w-0 items-center gap-2">
+          {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" /> : null}
+          <SelectValue>{active ? renderLabel?.(value) || value : placeholder}</SelectValue>
+        </span>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">{allLabel}</SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option.value ?? option} value={option.value ?? option}>
+            {option.label ?? option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function LedgerSkeleton() {
+  return (
+    <div className="panel overflow-hidden" aria-busy="true" aria-label="Laster spill">
+      <div className="h-10 border-b border-hairline bg-sunken/60" />
+      {Array.from({ length: 8 }, (_, i) => (
+        <div key={i} className="flex items-center gap-6 border-b border-hairline px-5 py-4">
+          <div className="skeleton h-3 w-16" />
+          <div className="skeleton h-3 w-14" />
+          <div className="skeleton h-3 flex-1" />
+          <div className="skeleton h-3 w-20" />
+          <div className="skeleton h-5 w-24 rounded-full" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -200,15 +301,31 @@ export default function BetsPage() {
   const [view, setView] = useState('list');
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [showMoreFilters, setShowMoreFilters] = useState(
+    Boolean(filters.tipster || filters.league || filters.ticketType || filters.oddsRange)
+  );
+  const [expanded, setExpanded] = useState(() => new Set());
+  const searchRef = useRef(null);
   const currency = user?.currency || 'NOK';
   const period = filters.period || 'all';
   const apiSearch = toBetsApiSearch(filters);
-  const { data: bets = [], isPending, isError } = useBets(apiSearch);
+  const { data: bets = [], isPending, isError, isFetching } = useBets(apiSearch);
   const [searchInput, setSearchInput] = useState(filters.q);
   const filteredBets = useMemo(() => filterBets(bets, filters), [bets, filters]);
   const sortedBets = useMemo(() => sortBets(filteredBets, sortKey, sortDir), [filteredBets, sortKey, sortDir]);
   const kpis = useMemo(() => computeActiveKpis(bets), [bets]);
+  const totals = useMemo(
+    () =>
+      filteredBets.reduce(
+        (acc, bet) => {
+          acc.stake += Number(bet.stake) || 0;
+          if (bet.status !== 'pending') acc.result += Number(bet.result) || 0;
+          return acc;
+        },
+        { stake: 0, result: 0 }
+      ),
+    [filteredBets]
+  );
   const availableSports = useMemo(() => uniqueValues(bets, 'sport', filters.sport), [bets, filters.sport]);
   const availableBookies = useMemo(() => uniqueValues(bets, 'bookie', filters.bookie), [bets, filters.bookie]);
   const availableTipsters = useMemo(() => uniqueValues(bets, 'tipster', filters.tipster), [bets, filters.tipster]);
@@ -260,6 +377,19 @@ export default function BetsPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [apiSearch, filters.q, sortKey, sortDir]);
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+      const tag = event.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const closeTicket = () => {
     setTicketOpen(false);
@@ -342,6 +472,15 @@ export default function BetsPage() {
     setSortDir(next.dir);
   };
 
+  const toggleExpanded = (betId) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(betId)) next.delete(betId);
+      else next.add(betId);
+      return next;
+    });
+  };
+
   const totalPages = Math.max(1, Math.ceil(sortedBets.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -353,268 +492,202 @@ export default function BetsPage() {
   };
 
   const periodLabel = PERIODS.find((item) => item.value === (period || 'all'))?.label || 'Dato';
+  const moreCount = [filters.tipster, filters.league, filters.ticketType, filters.oddsRange].filter(Boolean).length;
 
-  if (isPending && bets.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  const periodChipValue = period === 'custom' ? `${filters.from || '…'} – ${filters.to || '…'}` : periodLabel;
+  const chips = [
+    { key: 'period', label: 'Periode', on: period && period !== 'all', value: periodChipValue },
+    { key: 'status', label: 'Status', on: filters.status, value: STATUS_LABELS[filters.status] || filters.status },
+    { key: 'sport', label: 'Sport', on: filters.sport, value: filters.sport },
+    { key: 'bookie', label: 'Bookmaker', on: filters.bookie, value: filters.bookie },
+    { key: 'tipster', label: 'Tipster', on: filters.tipster, value: filters.tipster },
+    { key: 'league', label: 'Liga', on: filters.league, value: filters.league },
+    {
+      key: 'ticketType',
+      label: 'Type',
+      on: filters.ticketType,
+      value: TICKET_TYPE_LABELS[filters.ticketType] || filters.ticketType,
+    },
+    { key: 'oddsRange', label: 'Odds', on: filters.oddsRange, value: filters.oddsRange },
+    { key: 'q', label: 'Søk', on: filters.q, value: `«${filters.q}»` },
+  ]
+    .filter((chip) => chip.on)
+    .map((chip) => ({ ...chip, clear: chip.key === 'period' ? { period: '', from: '', to: '' } : { [chip.key]: '' } }));
+
+  const clearChip = (chip) => {
+    if (chip.key === 'q') setSearchInput('');
+    patchFilters(chip.clear);
+  };
+
+  const clearAll = () => {
+    setSearchInput('');
+    setSearchParams('', { replace: true });
+    setCurrentPage(1);
+  };
+
+  const columnCount = SORT_COLUMNS.length + 1;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Spill" subtitle="Søk, filtrer og rediger kupongene dine" testId="bets-title" />
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Spillogg"
+        title="Spill"
+        subtitle="Søk, filtrer og rediger kupongene dine"
+        testId="bets-title"
+        action={
+          <Button data-testid="add-bet-btn" onClick={openCreateDialog}>
+            <Plus />
+            Nytt spill
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="bets-kpis">
-        <button
-          type="button"
-          data-testid="kpi-active-bets"
-          onClick={() => patchFilters({ status: 'pending' })}
-          className="flex items-center gap-4 rounded-2xl border border-white/5 bg-[#12151c] px-5 py-4 text-left hover:border-white/10 transition-all hover-lift animate-fade-in-up"
-        >
-          <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <ListChecks className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[22px] leading-none font-semibold tracking-tight">{kpis.count}</p>
-            <p className="text-sm text-text-secondary mt-1.5">Aktive spill</p>
-          </div>
-        </button>
-        <button
-          type="button"
-          data-testid="kpi-active-stake"
-          onClick={() => patchFilters({ status: 'pending' })}
-          className="flex items-center gap-4 rounded-2xl border border-white/5 bg-[#12151c] px-5 py-4 text-left hover:border-white/10 transition-all hover-lift animate-fade-in-up animate-stagger-1"
-        >
-          <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[22px] leading-none font-semibold tracking-tight">
-              {formatCurrency(kpis.stake, currency)}
-            </p>
-            <p className="text-sm text-text-secondary mt-1.5">Total aktiv innsats</p>
-          </div>
-        </button>
-        <button
-          type="button"
-          data-testid="kpi-potential"
-          onClick={() => patchFilters({ status: 'pending' })}
-          className="flex items-center gap-4 rounded-2xl border border-white/5 bg-[#12151c] px-5 py-4 text-left hover:border-white/10 transition-all hover-lift animate-fade-in-up animate-stagger-2"
-        >
-          <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[22px] leading-none font-semibold tracking-tight">
-              {formatCurrency(kpis.potential, currency)}
-            </p>
-            <p className="text-sm text-text-secondary mt-1.5">Potensiell gevinst</p>
-          </div>
-        </button>
+      <div data-testid="bets-kpis">
+        <MetricRail columns="sm:grid-cols-3" wideFrom="sm">
+          <Metric
+            label="Aktive spill"
+            testId="kpi-active-bets"
+            onClick={() => patchFilters({ status: 'pending' })}
+            ariaLabel={`${kpis.count} aktive spill. Vis åpne spill.`}
+            value={kpis.count}
+            hint="Venter på oppgjør"
+          />
+          <Metric
+            label="Aktiv innsats"
+            testId="kpi-active-stake"
+            onClick={() => patchFilters({ status: 'pending' })}
+            value={<Money value={kpis.stake} currency={currency} />}
+            hint="Total innsats i åpne spill"
+          />
+          <Metric
+            label="Potensiell gevinst"
+            testId="kpi-potential"
+            onClick={() => patchFilters({ status: 'pending' })}
+            value={<Money value={kpis.potential} currency={currency} signed />}
+            hint={`Utbetaling ${formatCurrency(kpis.stake + kpis.potential, currency, 0)} om alle går inn`}
+          />
+        </MetricRail>
       </div>
 
-      <div className="flex flex-col gap-3">
+      <section aria-label="Filtre" className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={period || 'all'}
-            onValueChange={(value) => patchFilters({ period: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass} data-testid="filter-date">
-              <span className="flex items-center gap-2 min-w-0">
-                <CalendarDays className="w-4 h-4 opacity-60 shrink-0" />
-                <SelectValue>{period && period !== 'all' ? periodLabel : 'Dato'}</SelectValue>
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {PERIODS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative w-full sm:w-[260px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+            <Input
+              ref={searchRef}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Søk kamp, marked, sport…"
+              aria-label="Søk i spill"
+              className="h-9 pl-8 pr-9"
+              data-testid="bets-search"
+            />
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+              <Kbd>/</Kbd>
+            </span>
+          </div>
 
-          <Select
-            value={filters.status || 'all'}
-            onValueChange={(value) => patchFilters({ status: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass} data-testid="filter-status">
-              <SelectValue>{filters.status ? STATUS_LABELS[filters.status] || filters.status : 'Status'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle statuser</SelectItem>
-              <SelectItem value="won">Vunnet</SelectItem>
-              <SelectItem value="lost">Tapt</SelectItem>
-              <SelectItem value="push">Push</SelectItem>
-              <SelectItem value="pending">Åpen</SelectItem>
-              <SelectItem value="cashed">Cashout</SelectItem>
-            </SelectContent>
-          </Select>
+          <FilterSelect
+            value={period && period !== 'all' ? period : ''}
+            placeholder="Dato"
+            allLabel="Alle datoer"
+            icon={CalendarDays}
+            options={PERIODS.filter((item) => item.value !== 'all')}
+            onChange={(value) => patchFilters(value ? { period: value } : { period: '', from: '', to: '' })}
+            testId="filter-date"
+            renderLabel={() => periodLabel}
+          />
+          <FilterSelect
+            value={filters.status}
+            placeholder="Status"
+            allLabel="Alle statuser"
+            options={['won', 'lost', 'push', 'pending', 'cashed'].map((value) => ({
+              value,
+              label: STATUS_LABELS[value],
+            }))}
+            onChange={(value) => patchFilters({ status: value })}
+            testId="filter-status"
+            renderLabel={(value) => STATUS_LABELS[value] || value}
+          />
+          <FilterSelect
+            value={filters.sport}
+            placeholder="Sport"
+            allLabel="Alle sporter"
+            options={availableSports}
+            onChange={(value) => patchFilters({ sport: value })}
+            testId="filter-sport"
+          />
+          <FilterSelect
+            value={filters.bookie}
+            placeholder="Bookmaker"
+            allLabel="Alle bookier"
+            options={availableBookies}
+            onChange={(value) => patchFilters({ bookie: value })}
+            testId="filter-bookie"
+          />
 
-          <Select
-            value={filters.sport || 'all'}
-            onValueChange={(value) => patchFilters({ sport: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass} data-testid="filter-sport">
-              <SelectValue>{filters.sport || 'Sport'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle sporter</SelectItem>
-              {availableSports.map((sport) => (
-                <SelectItem key={sport} value={sport}>
-                  {sport}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.bookie || 'all'}
-            onValueChange={(value) => patchFilters({ bookie: value === 'all' ? '' : value })}
-          >
-            <SelectTrigger className={filterTriggerClass} data-testid="filter-bookie">
-              <SelectValue>{filters.bookie || 'Bookmaker'}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle bookier</SelectItem>
-              {availableBookies.map((bookie) => (
-                <SelectItem key={bookie} value={bookie}>
-                  {bookie}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setShowMoreFilters(!showMoreFilters)}
-            className="h-10 px-3 rounded-xl border border-white/10 bg-[#12151c] text-sm text-text-secondary hover:bg-white/5 hover:text-white transition-colors"
+            aria-expanded={showMoreFilters}
+            aria-controls="more-filters"
+            className="h-9"
           >
+            <SlidersHorizontal className="!size-3.5" />
             {showMoreFilters ? 'Færre filtre' : 'Flere filtre'}
-          </button>
+            {moreCount ? (
+              <span className="rounded-full bg-primary/15 px-1.5 text-[10.5px] font-semibold text-primary figure">
+                {moreCount}
+              </span>
+            ) : null}
+          </Button>
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center rounded-lg border border-white/10 p-0.5 bg-[#12151c]">
-              <button
-                type="button"
-                aria-label="Rutenettvisning"
-                data-testid="view-grid"
-                onClick={() => setView('grid')}
-                className={`p-2 rounded-md transition-colors ${
-                  view === 'grid' ? 'bg-white/10 text-white' : 'text-text-muted hover:text-white'
-                }`}
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Listevisning"
-                data-testid="view-list"
-                onClick={() => setView('list')}
-                className={`p-2 rounded-md transition-colors ${
-                  view === 'list' ? 'bg-white/10 text-white' : 'text-text-muted hover:text-white'
-                }`}
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-            <Button
-              data-testid="add-bet-btn"
-              onClick={openCreateDialog}
-              className="h-10 rounded-xl bg-accent hover:bg-accent/90 text-white font-semibold px-5"
-            >
-              <Plus className="w-4 h-4" />
-              Nytt spill
-            </Button>
+            <Segmented label="Visning" size="sm" options={VIEW_OPTIONS} value={view} onChange={setView} />
           </div>
         </div>
 
-        {showMoreFilters && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] w-full sm:w-auto sm:flex-1 sm:max-w-md">
-              <Search className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Søk kamp, marked, sport..."
-                className="pl-9 h-10 bg-[#12151c] border-white/10 rounded-xl"
-              />
-            </div>
-            <Select
-              value={filters.tipster || 'all'}
-              onValueChange={(value) => patchFilters({ tipster: value === 'all' ? '' : value })}
-            >
-              <SelectTrigger className={`${filterTriggerClass} min-w-[168px]`} data-testid="filter-tipster">
-                <SelectValue>{filters.tipster || 'Tags og tipstere'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle tipstere</SelectItem>
-                {availableTipsters.map((tipster) => (
-                  <SelectItem key={tipster} value={tipster}>
-                    {tipster}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.league || 'all'}
-              onValueChange={(value) => patchFilters({ league: value === 'all' ? '' : value })}
-            >
-              <SelectTrigger className={filterTriggerClass}>
-                <SelectValue>{filters.league || 'Liga'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle ligaer</SelectItem>
-                {availableLeagues.map((league) => (
-                  <SelectItem key={league} value={league}>
-                    {league}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.ticketType || 'all'}
-              onValueChange={(value) => patchFilters({ ticketType: value === 'all' ? '' : value })}
-            >
-              <SelectTrigger className={filterTriggerClass}>
-                <SelectValue>
-                  {filters.ticketType ? TICKET_TYPE_LABELS[filters.ticketType] || filters.ticketType : 'Type'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle typer</SelectItem>
-                {availableTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {TICKET_TYPE_LABELS[type] || type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.oddsRange || 'all'}
-              onValueChange={(value) => patchFilters({ oddsRange: value === 'all' ? '' : value })}
-            >
-              <SelectTrigger className={filterTriggerClass}>
-                <SelectValue>{filters.oddsRange || 'Odds'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alle odds</SelectItem>
-                {ODDS_RANGES.map((range) => (
-                  <SelectItem key={range} value={range}>
-                    {range}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {showMoreFilters ? (
+          <div id="more-filters" className="flex animate-fade-in flex-wrap items-center gap-2">
+            <FilterSelect
+              value={filters.tipster}
+              placeholder="Tags og tipstere"
+              allLabel="Alle tipstere"
+              options={availableTipsters}
+              onChange={(value) => patchFilters({ tipster: value })}
+              testId="filter-tipster"
+            />
+            <FilterSelect
+              value={filters.league}
+              placeholder="Liga"
+              allLabel="Alle ligaer"
+              options={availableLeagues}
+              onChange={(value) => patchFilters({ league: value })}
+            />
+            <FilterSelect
+              value={filters.ticketType}
+              placeholder="Type"
+              allLabel="Alle typer"
+              options={availableTypes.map((type) => ({ value: type, label: TICKET_TYPE_LABELS[type] || type }))}
+              onChange={(value) => patchFilters({ ticketType: value })}
+              renderLabel={(value) => TICKET_TYPE_LABELS[value] || value}
+            />
+            <FilterSelect
+              value={filters.oddsRange}
+              placeholder="Odds"
+              allLabel="Alle odds"
+              options={ODDS_RANGES}
+              onChange={(value) => patchFilters({ oddsRange: value })}
+            />
           </div>
-        )}
+        ) : null}
 
         {period === 'custom' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid max-w-xl animate-fade-in grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label htmlFor="dateFrom" className="text-sm text-text-secondary mb-2 block">
+              <Label htmlFor="dateFrom" className="eyebrow mb-1.5 block">
                 Fra dato
               </Label>
               <Input
@@ -622,11 +695,10 @@ export default function BetsPage() {
                 type="date"
                 value={filters.from}
                 onChange={(e) => patchFilters({ period: 'custom', from: e.target.value })}
-                className="input-enhanced bg-[#12151c] border-white/10 rounded-xl"
               />
             </div>
             <div>
-              <Label htmlFor="dateTo" className="text-sm text-text-secondary mb-2 block">
+              <Label htmlFor="dateTo" className="eyebrow mb-1.5 block">
                 Til dato
               </Label>
               <Input
@@ -634,21 +706,71 @@ export default function BetsPage() {
                 type="date"
                 value={filters.to}
                 onChange={(e) => patchFilters({ period: 'custom', to: e.target.value })}
-                className="input-enhanced bg-[#12151c] border-white/10 rounded-xl"
               />
             </div>
           </div>
         ) : null}
-      </div>
 
-      {view === 'grid' ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-hairline pt-3">
+          {chips.length ? (
+            <ul className="flex flex-wrap items-center gap-1.5" aria-label="Aktive filtre">
+              {chips.map((chip) => (
+                <li key={chip.key}>
+                  <button
+                    type="button"
+                    onClick={() => clearChip(chip)}
+                    aria-label={`Fjern filter ${chip.label}: ${chip.value}`}
+                    className="group inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface-2 pl-2 pr-1.5 text-xs transition-colors hover:border-text-muted/50 hover:bg-elevated"
+                  >
+                    <span className="text-text-muted">{chip.label}</span>
+                    <span className="font-medium text-text-primary">{chip.value}</span>
+                    <X className="h-3 w-3 text-text-muted group-hover:text-text-primary" />
+                  </button>
+                </li>
+              ))}
+              <li>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="h-7 rounded-md px-2 text-xs text-text-secondary transition-colors hover:bg-elevated hover:text-text-primary"
+                >
+                  Nullstill
+                </button>
+              </li>
+            </ul>
+          ) : (
+            <span className="text-xs text-text-muted">Ingen filtre aktive</span>
+          )}
+          <p
+            className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted figure"
+            aria-live="polite"
+          >
+            <span>
+              <span className="font-medium text-text-primary">{sortedBets.length}</span> spill
+              {isFetching ? (
+                <span className="ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+              ) : null}
+            </span>
+            <span>
+              Innsats <Money value={totals.stake} currency={currency} digits={0} className="text-text-secondary" />
+            </span>
+            <span>
+              Resultat <Money value={totals.result} currency={currency} digits={0} signed />
+            </span>
+          </p>
+        </div>
+      </section>
+
+      {isPending && bets.length === 0 ? (
+        <LedgerSkeleton />
+      ) : view === 'grid' ? (
         <div>
           {sortedBets.length === 0 ? (
-            <div className="rounded-2xl border border-white/5 bg-[#12151c] py-16 text-center text-text-muted">
-              Ingen spill treffer filtrene
+            <div className="panel">
+              <EmptyState icon={Inbox} title="Ingen spill treffer filtrene" description="Prøv å fjerne et filter." />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {currentBets.map((bet) => (
                 <BetCard
                   key={bet.bet_id}
@@ -662,12 +784,15 @@ export default function BetsPage() {
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/5 bg-[#0e1117]/80 overflow-hidden">
+        <div className="panel overflow-hidden">
           <div className="overflow-x-auto">
-            <TooltipProvider delayDuration={250}>
-              <table className="w-full min-w-[960px]">
+            <TooltipProvider delayDuration={300}>
+              <table className="w-full min-w-[1000px]">
                 <thead>
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b border-hairline bg-sunken/60">
+                    <th scope="col" className="w-10 pl-4">
+                      <span className="sr-only">Bein</span>
+                    </th>
                     {SORT_COLUMNS.map((column) => (
                       <SortHeader
                         key={column.key}
@@ -682,47 +807,98 @@ export default function BetsPage() {
                 <tbody>
                   {sortedBets.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-16 text-text-muted">
-                        Ingen spill treffer filtrene
+                      <td colSpan={columnCount}>
+                        <EmptyState
+                          icon={Inbox}
+                          title="Ingen spill treffer filtrene"
+                          description="Prøv å fjerne et filter, eller legg inn et nytt spill."
+                        />
                       </td>
                     </tr>
                   ) : (
-                    currentBets.map((bet) => (
-                      <tr
-                        key={bet.bet_id}
-                        data-testid={`bet-row-${bet.bet_id}`}
-                        tabIndex={0}
-                        aria-label={`Vis detaljer for ${bet.game}`}
-                        onClick={() => openBetDetails(bet)}
-                        onKeyDown={(event) => handleRowKeyDown(event, bet)}
-                        className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors cursor-pointer focus-visible:outline-none focus-visible:bg-white/5"
-                      >
-                        <td className="py-3.5 px-3 text-[13px] font-medium whitespace-nowrap text-white/90">
-                          {formatBetDate(bet.date, bet.time)}
-                        </td>
-                        <td className="py-3.5 px-3 whitespace-nowrap">
-                          <SportCell bet={bet} />
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <MatchCell bet={bet} />
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <SelectionCell bet={bet} />
-                        </td>
-                        <td className="py-3.5 px-3">
-                          <BookmakerLogo name={bet.bookie} />
-                        </td>
-                        <td className="py-3.5 px-3 text-[13px] text-white/90 text-right whitespace-nowrap">
-                          {formatCurrency(bet.stake, currency)}
-                        </td>
-                        <td className="py-3.5 px-3 text-[13px] text-white/90 text-right whitespace-nowrap">
-                          {Number(bet.odds || 0).toFixed(2)}
-                        </td>
-                        <td className="py-3.5 px-3 whitespace-nowrap">
-                          <StatusCell bet={bet} currency={currency} />
-                        </td>
-                      </tr>
-                    ))
+                    currentBets.map((bet) => {
+                      const legs = betLegs(bet);
+                      const expandable = legs.length > 1;
+                      const isOpen = expandable && expanded.has(bet.bet_id);
+                      const detailId = `legs-${bet.bet_id}`;
+                      return (
+                        <Fragment key={bet.bet_id}>
+                          <tr
+                            data-testid={`bet-row-${bet.bet_id}`}
+                            tabIndex={0}
+                            aria-label={`Vis detaljer for ${bet.game}`}
+                            onClick={() => openBetDetails(bet)}
+                            onKeyDown={(event) => handleRowKeyDown(event, bet)}
+                            className={cn(
+                              'interactive-row border-b border-hairline',
+                              isOpen && 'border-b-transparent bg-elevated/30'
+                            )}
+                          >
+                            <td className="relative w-10 py-2.5 pl-4">
+                              <span
+                                className={cn(
+                                  'absolute inset-y-0 left-0 w-[2px] opacity-70',
+                                  statusDotClass(bet.status)
+                                )}
+                                aria-hidden="true"
+                              />
+                              {expandable ? (
+                                <button
+                                  type="button"
+                                  aria-expanded={isOpen}
+                                  aria-controls={detailId}
+                                  aria-label={`${isOpen ? 'Skjul' : 'Vis'} ${legs.length} bein`}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    toggleExpanded(bet.bet_id);
+                                  }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-elevated hover:text-text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                                >
+                                  <ChevronRight
+                                    className={cn(
+                                      'h-3.5 w-3.5 transition-transform duration-200 ease-out',
+                                      isOpen && 'rotate-90'
+                                    )}
+                                  />
+                                </button>
+                              ) : null}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-xs text-text-secondary figure">
+                              {formatBetDate(bet.date, bet.time)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5">
+                              <SportCell bet={bet} />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <BetSummary bet={bet} showSelection={false} className="max-w-[260px]" />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <SelectionCell bet={bet} />
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <BookmakerLogo name={bet.bookie} />
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-right text-[13px]">
+                              <Money value={bet.stake} currency={currency} />
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2.5 text-right text-[13px] text-text-secondary figure">
+                              {Number(bet.odds || 0).toFixed(2)}
+                            </td>
+                            <td className="whitespace-nowrap py-2.5 pl-3 pr-5">
+                              <StatusCell bet={bet} currency={currency} />
+                            </td>
+                          </tr>
+                          {isOpen ? (
+                            <tr className="border-b border-hairline bg-elevated/30">
+                              <td />
+                              <td colSpan={columnCount - 1} className="pb-3 pr-5">
+                                <LegsDetail bet={bet} id={detailId} />
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -732,74 +908,72 @@ export default function BetsPage() {
       )}
 
       {sortedBets.length > 0 ? (
-        <div className="px-1 py-1">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-text-secondary">
-              Viser <span className="font-medium text-white">{startIndex + 1}</span>–
-              <span className="font-medium text-white">{Math.min(endIndex, sortedBets.length)}</span> av{' '}
-              <span className="font-medium text-white">{sortedBets.length}</span> spill
-            </div>
+        <nav className="flex flex-wrap items-center justify-between gap-3" aria-label="Sider">
+          <p className="text-xs text-text-muted figure">
+            Viser <span className="font-medium text-text-primary">{startIndex + 1}</span>–
+            <span className="font-medium text-text-primary">{Math.min(endIndex, sortedBets.length)}</span> av{' '}
+            <span className="font-medium text-text-primary">{sortedBets.length}</span> spill
+          </p>
 
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="bg-black/20 border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Forrige
-              </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              aria-label="Forrige side"
+            >
+              <ChevronLeft />
+              <span className="hidden sm:inline">Forrige</span>
+            </Button>
 
-              <div className="flex items-center space-x-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                  const showPage =
-                    page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
-                  const showEllipsisBefore = page === currentPage - 2 && currentPage > 3;
-                  const showEllipsisAfter = page === currentPage + 2 && currentPage < totalPages - 2;
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              const showPage =
+                page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
+              const showEllipsisBefore = page === currentPage - 2 && currentPage > 3;
+              const showEllipsisAfter = page === currentPage + 2 && currentPage < totalPages - 2;
 
-                  if (showEllipsisBefore || showEllipsisAfter) {
-                    return (
-                      <span key={page} className="px-2 text-text-muted">
-                        ...
-                      </span>
-                    );
-                  }
+              if (showEllipsisBefore || showEllipsisAfter) {
+                return (
+                  <span key={page} className="px-1.5 text-xs text-text-muted">
+                    …
+                  </span>
+                );
+              }
 
-                  if (!showPage) return null;
+              if (!showPage) return null;
 
-                  return (
-                    <Button
-                      key={page}
-                      variant={currentPage === page ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => handlePageChange(page)}
-                      className={
-                        currentPage === page
-                          ? 'bg-primary text-black hover:bg-primary/90 min-w-[40px]'
-                          : 'bg-black/20 border-white/10 hover:bg-white/10 min-w-[40px]'
-                      }
-                    >
-                      {page}
-                    </Button>
-                  );
-                })}
-              </div>
+              const active = currentPage === page;
+              return (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => handlePageChange(page)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'h-8 min-w-8 rounded-md px-2 text-xs font-medium transition-colors figure focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70',
+                    active
+                      ? 'bg-elevated text-text-primary shadow-[inset_0_0_0_1px_rgb(var(--border))]'
+                      : 'text-text-secondary hover:bg-elevated/60 hover:text-text-primary'
+                  )}
+                >
+                  {page}
+                </button>
+              );
+            })}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="bg-black/20 border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Neste
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              aria-label="Neste side"
+            >
+              <span className="hidden sm:inline">Neste</span>
+              <ChevronRight />
+            </Button>
           </div>
-        </div>
+        </nav>
       ) : null}
 
       <BetTicketDialog

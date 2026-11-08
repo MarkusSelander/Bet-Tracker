@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { CHART } from '../lib/theme';
 import { ChartExtremeDot, latestExtremeDates } from './ChartExtremeDot';
 
 test('latestExtremeDates keeps the latest high and low', () => {
@@ -47,7 +48,7 @@ test('ChartExtremeDot draws a glow only on the high and low points', () => {
     })
   );
 
-  expect(high).toContain('#34D399');
-  expect(low).toContain('#F87171');
+  expect(high).toContain(CHART.positive);
+  expect(low).toContain(CHART.negative);
   expect(mid).toBe('');
 });

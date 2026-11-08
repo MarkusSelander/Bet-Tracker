@@ -1,3 +1,4 @@
+import { BarChart3 } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   Bar,
@@ -10,39 +11,19 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatAxisAmount, formatCurrency } from '../lib/format';
+import { useReducedMotion } from '../hooks/use-reduced-motion';
+import { formatAxisAmount, formatSignedCurrency } from '../lib/format';
+import { AXIS_TICK, CHART } from '../lib/theme';
+import { cn } from '../lib/utils';
+import { ChartTooltipFrame, formatLongDate, formatShortDate } from './ds/ChartTooltip';
+import Money from './ds/Money';
+import { EmptyState, Panel, SectionHeader } from './ds/Section';
+import { Stat, StatLine } from './ds/StatLine';
 
-function parseDate(isoDate) {
-  if (!isoDate) return null;
-  const date = new Date(`${isoDate}T12:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatShortDate(isoDate) {
-  const date = parseDate(isoDate);
-  if (!date) return isoDate || '';
-  return date.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }).replace(/\.$/, '');
-}
-
-function formatLongDate(isoDate) {
-  const date = parseDate(isoDate);
-  if (!date) return isoDate || '';
-  return date.toLocaleDateString('nb-NO', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
-}
-
-function signedText(value) {
+function toneClass(value) {
   if (value > 0) return 'text-primary';
   if (value < 0) return 'text-destructive';
   return 'text-text-secondary';
-}
-
-function signedMoney(value, currency) {
-  const n = Number(value) || 0;
-  return `${n > 0 ? '+' : ''}${formatCurrency(n, currency)}`;
 }
 
 function DailyBar(props) {
@@ -55,7 +36,7 @@ function DailyBar(props) {
   const isBest = payload?.date && payload.date === bestDate;
   const isWorst = payload?.date && payload.date === worstDate && bestDate !== worstDate;
   const marked = isBest || isWorst;
-  const color = positive ? '#34D399' : '#F87171';
+  const color = positive ? CHART.positive : CHART.negative;
   const cx = x + width / 2;
   const cy = positive ? barY : barY + barH;
 
@@ -66,13 +47,14 @@ function DailyBar(props) {
         y={barY}
         width={width}
         height={barH}
-        radius={positive ? [4, 4, 0, 0] : [0, 0, 4, 4]}
-        fill={positive ? 'url(#dailyGainFill)' : 'url(#dailyLossFill)'}
+        radius={positive ? [3, 3, 0, 0] : [0, 0, 3, 3]}
+        fill={color}
+        fillOpacity={marked ? 1 : 0.78}
       />
       {marked ? (
         <g>
-          <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.28} />
-          <circle cx={cx} cy={cy} r={3.5} fill={color} stroke="#09090B" strokeWidth={1.5} />
+          <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity={0.2} />
+          <circle cx={cx} cy={cy} r={3} fill={color} stroke={CHART.background} strokeWidth={1.5} />
         </g>
       ) : null}
     </g>
@@ -83,34 +65,30 @@ function DailyTooltip({ active, payload, currency }) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
   if (!row) return null;
-
   return (
-    <div className="rounded-lg border border-[#27272A] bg-[#121214]/95 px-3 py-2.5 shadow-xl backdrop-blur-sm min-w-[180px]">
-      <p className="text-[11px] font-medium text-text-secondary mb-1.5 capitalize">{formatLongDate(row.date)}</p>
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-6">
-          <span className="text-xs text-text-secondary">Resultat</span>
-          <span className={`text-xs font-mono font-medium ${signedText(row.daily_pl)}`}>
-            {signedMoney(row.daily_pl, currency)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-6">
-          <span className="text-xs text-text-secondary">Spill</span>
-          <span className="text-xs font-mono">{row.bets || 0}</span>
-        </div>
-        <div className="flex items-center justify-between gap-6 pt-1 border-t border-white/5">
-          <span className="text-xs text-text-secondary">Akkumulert</span>
-          <span className={`text-xs font-mono ${signedText(row.cumulative_pl)}`}>
-            {signedMoney(row.cumulative_pl, currency)}
-          </span>
-        </div>
-      </div>
-    </div>
+    <ChartTooltipFrame
+      title={formatLongDate(row.date)}
+      rows={[
+        {
+          label: 'Resultat',
+          value: formatSignedCurrency(row.daily_pl, currency),
+          className: cn('text-[13px] font-semibold', toneClass(row.daily_pl)),
+        },
+        { label: 'Spill', value: row.bets || 0 },
+        {
+          label: 'Akkumulert',
+          value: formatSignedCurrency(row.cumulative_pl, currency),
+          className: toneClass(row.cumulative_pl),
+          divider: true,
+        },
+      ]}
+    />
   );
 }
 
 export default function DailyResultChart({ data, currency, truncated, onDateSelect }) {
   const rows = useMemo(() => data || [], [data]);
+  const reducedMotion = useReducedMotion();
 
   const summary = useMemo(() => {
     if (!rows.length) {
@@ -128,120 +106,89 @@ export default function DailyResultChart({ data, currency, truncated, onDateSele
     );
   }, [rows]);
 
-  const xInterval = rows.length > 12 ? Math.ceil(rows.length / 7) - 1 : 0;
-
   const openDate = (date) => {
     if (date && onDateSelect) onDateSelect(date);
   };
 
   return (
-    <div className="bg-[#18181B] border border-[#27272A] rounded-xl p-6" data-testid="analytics-daily-chart">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
-        <div>
-          <h2 className="text-base font-bold">Daglig resultat</h2>
-          <p className="text-xs text-text-muted mt-1">
-            {truncated ? 'Siste 40 dager med aktivitet' : 'Resultat per dag i utvalget'}
-            {rows.length ? ` · ${rows.length} dager` : ''}
-          </p>
-        </div>
-        {rows.length ? (
-          <div className="flex items-center gap-3 text-[11px] text-text-muted">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-sm bg-primary" />
-              Pluss
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-sm bg-destructive" />
-              Minus
-            </span>
-          </div>
-        ) : null}
+    <Panel className="flex flex-col overflow-hidden" data-testid="analytics-daily-chart" aria-labelledby="daily-title">
+      <div className="p-5">
+        <SectionHeader
+          id="daily-title"
+          eyebrow="Dag for dag"
+          title="Daglig resultat"
+          description={`${truncated ? 'Siste 40 dager med aktivitet' : 'Resultat per dag i utvalget'}${
+            rows.length ? ` · ${rows.length} dager` : ''
+          }`}
+        />
       </div>
 
       {rows.length ? (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-            <button
-              type="button"
+          <StatLine>
+            <Stat
+              label="Beste dag"
+              value={<Money value={summary.best?.daily_pl} currency={currency} signed />}
+              sub={formatShortDate(summary.best?.date)}
               onClick={() => openDate(summary.best?.date)}
-              className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5 text-left hover:border-white/15 transition-colors"
-            >
-              <p className="text-[11px] text-text-muted mb-0.5">Beste dag</p>
-              <p className={`text-sm font-mono font-medium ${signedText(summary.best?.daily_pl)}`}>
-                {signedMoney(summary.best?.daily_pl, currency)}
-              </p>
-              <p className="text-[11px] text-text-muted mt-0.5">{formatShortDate(summary.best?.date)}</p>
-            </button>
-            <button
-              type="button"
+            />
+            <Stat
+              label="Verste dag"
+              value={<Money value={summary.worst?.daily_pl} currency={currency} signed />}
+              sub={formatShortDate(summary.worst?.date)}
               onClick={() => openDate(summary.worst?.date)}
-              className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5 text-left hover:border-white/15 transition-colors"
-            >
-              <p className="text-[11px] text-text-muted mb-0.5">Verste dag</p>
-              <p className={`text-sm font-mono font-medium ${signedText(summary.worst?.daily_pl)}`}>
-                {signedMoney(summary.worst?.daily_pl, currency)}
-              </p>
-              <p className="text-[11px] text-text-muted mt-0.5">{formatShortDate(summary.worst?.date)}</p>
-            </button>
-            <div className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5">
-              <p className="text-[11px] text-text-muted mb-0.5">I pluss</p>
-              <p className="text-sm font-mono font-medium text-primary">{summary.positive}</p>
-              <p className="text-[11px] text-text-muted mt-0.5">
-                {rows.length ? Math.round((summary.positive / rows.length) * 100) : 0}% av dagene
-              </p>
-            </div>
-            <div className="rounded-lg bg-black/25 border border-white/5 px-3 py-2.5">
-              <p className="text-[11px] text-text-muted mb-0.5">I minus</p>
-              <p className="text-sm font-mono font-medium text-destructive">{summary.negative}</p>
-              <p className="text-[11px] text-text-muted mt-0.5">
-                {rows.length ? Math.round((summary.negative / rows.length) * 100) : 0}% av dagene
-              </p>
-            </div>
-          </div>
+            />
+            <Stat
+              label="I pluss"
+              value={<span className="text-primary">{summary.positive}</span>}
+              sub={`${Math.round((summary.positive / rows.length) * 100)} % av dagene`}
+            />
+            <Stat
+              label="I minus"
+              value={<span className="text-destructive">{summary.negative}</span>}
+              sub={`${Math.round((summary.negative / rows.length) * 100)} % av dagene`}
+            />
+          </StatLine>
 
-          <div className="h-[240px] sm:h-[280px]">
+          <div className="h-[240px] px-2 pb-3 pt-4 sm:h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={rows}
-                barCategoryGap="28%"
+                barCategoryGap="26%"
                 margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
                 onClick={(state) => openDate(state?.activeLabel || state?.activePayload?.[0]?.payload?.date)}
                 style={{ cursor: 'pointer' }}
+                accessibilityLayer
               >
-                <defs>
-                  <linearGradient id="dailyGainFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#34D399" />
-                    <stop offset="100%" stopColor="#059669" stopOpacity={0.85} />
-                  </linearGradient>
-                  <linearGradient id="dailyLossFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#DC2626" stopOpacity={0.85} />
-                    <stop offset="100%" stopColor="#F87171" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="#27272A" strokeOpacity={0.8} />
+                <CartesianGrid vertical={false} stroke={CHART.grid} />
                 <XAxis
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
-                  interval={xInterval}
-                  minTickGap={18}
+                  minTickGap={28}
+                  interval="preserveStartEnd"
                   tickFormatter={formatShortDate}
-                  tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
-                  dy={8}
+                  tick={AXIS_TICK}
+                  dy={6}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  width={42}
+                  width={48}
                   tickFormatter={(value) => formatAxisAmount(value, currency)}
-                  tick={{ fill: '#71717A', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
+                  tick={AXIS_TICK}
                 />
-                <Tooltip cursor={{ fill: 'rgba(255,255,255,0.035)' }} content={<DailyTooltip currency={currency} />} />
-                <ReferenceLine y={0} stroke="#52525B" strokeWidth={1} />
+                <Tooltip
+                  cursor={{ fill: 'rgba(242,245,244,0.04)' }}
+                  content={<DailyTooltip currency={currency} />}
+                  isAnimationActive={false}
+                />
+                <ReferenceLine y={0} stroke={CHART.zero} strokeWidth={1} />
                 <Bar
                   dataKey="daily_pl"
                   name="Resultat"
-                  maxBarSize={36}
+                  maxBarSize={28}
+                  isAnimationActive={!reducedMotion}
                   shape={(barProps) => (
                     <DailyBar {...barProps} bestDate={summary.best?.date} worstDate={summary.worst?.date} />
                   )}
@@ -251,8 +198,8 @@ export default function DailyResultChart({ data, currency, truncated, onDateSele
           </div>
         </>
       ) : (
-        <p className="text-sm text-text-muted py-16 text-center">Ingen daglige resultater i utvalget</p>
+        <EmptyState icon={BarChart3} title="Ingen daglige resultater i utvalget" />
       )}
-    </div>
+    </Panel>
   );
 }

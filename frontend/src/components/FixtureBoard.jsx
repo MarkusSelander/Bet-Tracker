@@ -10,8 +10,9 @@ import {
   tournamentOptions,
   withFocus,
 } from '../lib/fixtureBoard';
+import { Metric, MetricRail } from './ds/Metric';
 
-const cardClass = 'bg-[#18181B] border border-[#27272A] rounded-xl';
+const cardClass = 'panel';
 
 function formatWhen(iso) {
   const date = new Date(iso);
@@ -37,13 +38,7 @@ function ColorDot({ color }) {
 }
 
 function Stat({ label, value, hint, testId }) {
-  return (
-    <div className={`${cardClass} p-4`} data-testid={testId}>
-      <p className="text-xs text-text-secondary mb-1">{label}</p>
-      <p className="text-2xl font-bold font-mono truncate">{value}</p>
-      {hint ? <p className="text-xs text-text-muted mt-1 truncate">{hint}</p> : null}
-    </div>
-  );
+  return <Metric label={label} value={<span className="block truncate">{value}</span>} hint={hint} testId={testId} />;
 }
 
 export default function FixtureBoard() {
@@ -68,7 +63,7 @@ export default function FixtureBoard() {
 
   return (
     <div className="space-y-4" data-testid="fixture-board">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <MetricRail columns="lg:grid-cols-4">
         <Stat label="Kamper" value={visible.length} hint={period} testId="fixture-count" />
         <Stat label="Hjemme" value={counts.home} hint={focus} />
         <Stat label="Borte" value={counts.away} hint={focus} />
@@ -78,7 +73,7 @@ export default function FixtureBoard() {
           hint={next ? untilLabel(next.start) : 'Ingen kamp'}
           testId="fixture-next-name"
         />
-      </div>
+      </MetricRail>
 
       <div className="flex flex-wrap gap-2" data-testid="fixture-filters">
         <button
@@ -86,8 +81,8 @@ export default function FixtureBoard() {
           onClick={() => setTournament('all')}
           className={`rounded-full border px-3 py-1 text-xs ${
             tournament === 'all'
-              ? 'border-white/20 bg-white/15 text-white'
-              : 'border-[#27272A] text-text-secondary hover:text-white'
+              ? 'border-border bg-elevated text-text-primary'
+              : 'border-hairline text-text-secondary hover:border-border hover:text-text-primary'
           }`}
         >
           Alle {fixtures.length}
@@ -99,8 +94,8 @@ export default function FixtureBoard() {
             onClick={() => setTournament(name)}
             className={`rounded-full border px-3 py-1 text-xs ${
               tournament === name
-                ? 'border-white/20 bg-white/15 text-white'
-                : 'border-[#27272A] text-text-secondary hover:text-white'
+                ? 'border-border bg-elevated text-text-primary'
+                : 'border-hairline text-text-secondary hover:border-border hover:text-text-primary'
             }`}
           >
             {name} {count}
@@ -117,7 +112,7 @@ export default function FixtureBoard() {
               <span>{untilLabel(next.start)}</span>
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wide text-text-muted mb-1">Neste kamp</p>
+              <p className="eyebrow mb-1.5">Neste kamp</p>
               <h2 className="text-xl sm:text-2xl font-semibold">
                 {focus}
                 <span className="text-text-muted font-normal"> mot </span>
@@ -129,20 +124,20 @@ export default function FixtureBoard() {
             </div>
             <dl className="grid gap-3 sm:grid-cols-4 text-sm">
               <div>
-                <dt className="text-[11px] uppercase tracking-wide text-text-muted">Når</dt>
+                <dt className="eyebrow">Når</dt>
                 <dd>{nextWhen?.day}</dd>
                 <dd className="text-text-secondary tabular-nums">{nextWhen?.time}</dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-wide text-text-muted">Bane</dt>
+                <dt className="eyebrow">Bane</dt>
                 <dd>{next.side}</dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-wide text-text-muted">Runde</dt>
+                <dt className="eyebrow">Runde</dt>
                 <dd>{roundLabel(next) || '—'}</dd>
               </div>
               <div>
-                <dt className="text-[11px] uppercase tracking-wide text-text-muted">Stadion</dt>
+                <dt className="eyebrow">Stadion</dt>
                 <dd>{next.venue || '—'}</dd>
                 {next.city ? <dd className="text-text-secondary">{next.city}</dd> : null}
               </div>
@@ -155,14 +150,16 @@ export default function FixtureBoard() {
         <div className={`${cardClass} overflow-hidden`}>
           {groups.map((group) => (
             <section key={group.key}>
-              <h3 className="bg-white/5 px-3 py-2 text-sm font-medium">{group.label}</h3>
+              <h3 className="border-b border-hairline bg-sunken/60 px-4 py-2 text-[13px] font-medium capitalize">
+                {group.label}
+              </h3>
               <ul>
                 {group.matches.map((match) => {
                   const when = formatWhen(match.start);
                   return (
                     <li
                       key={match.id}
-                      className="grid grid-cols-1 sm:grid-cols-[7.5rem_4.5rem_minmax(0,1fr)_auto] gap-1 sm:gap-3 items-center border-b border-white/5 px-3 py-2.5 last:border-b-0"
+                      className="grid grid-cols-1 sm:grid-cols-[7.5rem_4.5rem_minmax(0,1fr)_auto] gap-1 sm:gap-3 items-center border-b border-hairline px-4 py-2.5 transition-colors last:border-b-0 hover:bg-elevated/40"
                     >
                       <span className="text-xs text-text-muted">
                         <span className="block">{when?.day}</span>

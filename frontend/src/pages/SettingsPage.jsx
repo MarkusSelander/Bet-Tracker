@@ -192,11 +192,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Innstillinger" subtitle="Valuta og data" testId="settings-title" />
+    <div className="space-y-6">
+      <PageHeader eyebrow="Konto" title="Innstillinger" subtitle="Valuta og data" testId="settings-title" />
 
-      <section className="bg-[#18181B] border border-[#27272A] rounded-lg p-6">
-        <h2 className="text-xl font-bold mb-1">Chrome-utvidelse</h2>
+      <section className="panel p-6">
+        <h2 className="mb-1 text-[15px] font-semibold">Chrome-utvidelse</h2>
         <p className="text-sm text-text-secondary mb-4">
           Utvidelsen bruker samme Google-innlogging. Kopier token hit og lim det inn der, eller logg inn med Google i
           utvidelsen.
@@ -223,12 +223,12 @@ export default function SettingsPage() {
       </section>
 
       {/* Currency Settings */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-1">
-        <h2 className="text-xl font-bold mb-4">Valuta</h2>
+      <div className="panel p-6">
+        <h2 className="mb-4 text-[15px] font-semibold">Valuta</h2>
         <div className="max-w-md">
           <Label htmlFor="currency">Visningsvaluta</Label>
           <Select value={currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger id="currency" className="bg-black/20 border-white/20 mt-2">
+            <SelectTrigger id="currency" className="mt-2">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -253,15 +253,10 @@ export default function SettingsPage() {
                 value={unitSize}
                 onChange={(event) => setUnitSize(event.target.value)}
                 placeholder="500"
-                className="bg-black/20 border-white/20 mt-2"
+                className="mt-2"
                 data-testid="unit-size-input"
               />
-              <Button
-                type="submit"
-                disabled={savingUnit}
-                className="mt-3 bg-primary hover:bg-primary/90 text-black font-bold"
-                data-testid="save-unit-btn"
-              >
+              <Button type="submit" disabled={savingUnit} className="mt-3" data-testid="save-unit-btn">
                 {savingUnit ? 'Lagrer...' : 'Lagre enhet'}
               </Button>
             </form>
@@ -270,18 +265,13 @@ export default function SettingsPage() {
       </div>
 
       {/* Import/Export */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-2">
-        <h2 className="text-xl font-bold mb-4">Data</h2>
+      <div className="panel p-6">
+        <h2 className="mb-4 text-[15px] font-semibold">Data</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <h3 className="font-medium mb-2">Eksporter spill</h3>
             <p className="text-sm text-text-secondary mb-3">Last ned alle spill som CSV</p>
-            <Button
-              data-testid="export-btn"
-              onClick={handleExport}
-              disabled={exporting}
-              className="bg-white/5 hover:bg-white/10 border border-white/10"
-            >
+            <Button data-testid="export-btn" onClick={handleExport} disabled={exporting} variant="secondary">
               <Download className="w-4 h-4 mr-2" />
               {exporting ? 'Eksporterer...' : 'Eksporter CSV'}
             </Button>
@@ -293,12 +283,7 @@ export default function SettingsPage() {
               CSV med semikolon. Kolonner: DATE, TIME, GAME, BET, ODDS, STAKE, STATUS, RESULT, TIPSTER, SPORT, BOOKIE
             </p>
             <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
-            <Button
-              data-testid="import-btn"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="bg-primary hover:bg-primary/90 text-black font-bold"
-            >
+            <Button data-testid="import-btn" onClick={() => fileInputRef.current?.click()} disabled={importing}>
               <Upload className="w-4 h-4 mr-2" />
               {importing ? 'Importerer...' : 'Importer CSV'}
             </Button>
@@ -324,7 +309,6 @@ export default function SettingsPage() {
               data-testid="import-coolbet-btn"
               onClick={() => coolbetInputRef.current?.click()}
               disabled={importingCoolbet}
-              className="bg-primary hover:bg-primary/90 text-black font-bold"
             >
               <Upload className="w-4 h-4 mr-2" />
               {importingCoolbet ? 'Importerer...' : 'Importer Coolbet JSON'}
@@ -334,22 +318,22 @@ export default function SettingsPage() {
       </div>
 
       {/* Account Info */}
-      <div className="bg-[#18181B] border border-[#27272A] rounded-lg p-6 animate-fade-in-up animate-stagger-3">
-        <h2 className="text-xl font-bold mb-4">Konto</h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-            <span className="text-text-secondary">Navn</span>
-            <span className="font-medium">{user?.name}</span>
+      <div className="panel p-6">
+        <h2 className="mb-4 text-[15px] font-semibold">Konto</h2>
+        <dl className="divide-y divide-hairline rounded-lg border border-hairline">
+          <div className="flex items-center justify-between gap-4 px-4 py-3 text-[13px]">
+            <dt className="text-text-secondary">Navn</dt>
+            <dd className="font-medium">{user?.name}</dd>
           </div>
-          <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-            <span className="text-text-secondary">E-post</span>
-            <span className="font-medium">{user?.email}</span>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 text-[13px]">
+            <dt className="text-text-secondary">E-post</dt>
+            <dd className="truncate font-medium">{user?.email}</dd>
           </div>
-          <div className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-            <span className="text-text-secondary">Valuta</span>
-            <span className="font-medium">{currency}</span>
+          <div className="flex items-center justify-between gap-4 px-4 py-3 text-[13px]">
+            <dt className="text-text-secondary">Valuta</dt>
+            <dd className="font-medium">{currency}</dd>
           </div>
-        </div>
+        </dl>
       </div>
     </div>
   );

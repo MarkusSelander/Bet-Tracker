@@ -1,3 +1,5 @@
+import { CHART } from '../lib/theme';
+
 export function latestExtremeDates(data, key) {
   if (!data?.length) return { highDate: null, lowDate: null };
   let high = data[0];
@@ -19,14 +21,14 @@ export function ChartExtremeDot({ cx, cy, payload, value, highDate, lowDate }) {
   const isLow = payload.date === lowDate && highDate !== lowDate;
   if (!isHigh && !isLow) return null;
 
-  const amount = Number(value ?? payload.cumulative_pl);
-  const color = Number.isFinite(amount) && amount < 0 ? '#F87171' : '#34D399';
+  const amount = Number(Array.isArray(value) ? value[1] : (value ?? payload.cumulative_pl));
+  const color = Number.isFinite(amount) && amount < 0 ? CHART.negative : CHART.positive;
 
   return (
     <g>
-      <circle cx={cx} cy={cy} r={9} fill={color} fillOpacity={0.22} />
-      <circle cx={cx} cy={cy} r={4.5} fill="#09090B" />
-      <circle cx={cx} cy={cy} r={3} fill={color} />
+      <circle cx={cx} cy={cy} r={8} fill={color} fillOpacity={0.18} />
+      <circle cx={cx} cy={cy} r={4} fill={CHART.background} />
+      <circle cx={cx} cy={cy} r={2.5} fill={color} />
     </g>
   );
 }

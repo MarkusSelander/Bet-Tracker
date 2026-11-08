@@ -124,15 +124,15 @@ export function sortTooltip(currentKey, currentDir, columnKey) {
 export function statusDotClass(status) {
   if (status === 'won') return 'bg-primary';
   if (status === 'lost') return 'bg-destructive';
-  if (status === 'cashed') return 'bg-amber-400';
-  if (status === 'push') return 'bg-zinc-500';
+  if (status === 'cashed') return 'bg-warning';
+  if (status === 'push') return 'bg-text-muted';
   return 'bg-accent';
 }
 
 export function statusTextClass(status) {
   if (status === 'won') return 'text-primary';
   if (status === 'lost') return 'text-destructive';
-  if (status === 'cashed') return 'text-amber-400';
+  if (status === 'cashed') return 'text-warning';
   if (status === 'push') return 'text-text-secondary';
   return 'text-accent';
 }
