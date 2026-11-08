@@ -132,7 +132,7 @@
     @apply rounded-md bg-elevated/60;
     background-image: linear-gradient(90deg, transparent 0%, rgb(var(--overlay) / 0.6) 50%, transparent 100%);
     background-size: 200% 100%;
-    animation: shimmer 1.6s linear infinite;
+    animation: bt-shimmer 1.6s linear infinite;
   }
 
   .interactive-row {
@@ -157,15 +157,15 @@
 
   /* `backwards`, not `both`: a lingering transform would trap position: fixed descendants. */
   .animate-enter {
-    animation: enter 0.32s var(--ease-out) backwards;
+    animation: bt-rise 0.32s var(--ease-out) backwards;
   }
 
   .animate-fade-in {
-    animation: fadeIn 0.24s var(--ease-out) backwards;
+    animation: bt-fade 0.24s var(--ease-out) backwards;
   }
 
   .animate-fade-in-up {
-    animation: enter 0.32s var(--ease-out) backwards;
+    animation: bt-rise 0.32s var(--ease-out) backwards;
   }
 
   .stagger-1 {
@@ -184,7 +184,8 @@
     animation-delay: 160ms;
   }
 
-  @keyframes enter {
+  /* Prefixed: tailwindcss-animate owns `enter`/`exit`, and Radix popups rely on them for centering. */
+  @keyframes bt-rise {
     from {
       opacity: 0;
       transform: translateY(6px);
@@ -195,7 +196,7 @@
     }
   }
 
-  @keyframes fadeIn {
+  @keyframes bt-fade {
     from {
       opacity: 0;
     }
@@ -204,7 +205,7 @@
     }
   }
 
-  @keyframes shimmer {
+  @keyframes bt-shimmer {
     0% {
       background-position: 200% 0;
     }
