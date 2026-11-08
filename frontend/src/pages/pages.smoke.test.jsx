@@ -206,6 +206,8 @@ test('overview renders hero, metrics, exposure and recent bets', async () => {
   expect(chart.querySelector('svg.recharts-surface')).not.toBeNull();
   expect(chart.querySelectorAll('linearGradient').length).toBeGreaterThanOrEqual(2);
   expect(chart.querySelector('pattern')).not.toBeNull();
+  expect(chart.querySelector('.recharts-area-curve')).not.toBeNull();
+  expect(chart.querySelector('.recharts-bar-rectangle')).toBeNull();
   expect(chart.textContent).toContain('+670');
   view.cleanup();
   expect(errors).toEqual([]);
