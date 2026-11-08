@@ -107,7 +107,7 @@ function ActiveDot({ cx, cy, payload }) {
   );
 }
 
-export function PerformanceLegend({ showDaily = true, showDrawdown = true }) {
+export function PerformanceLegend({ showDaily = false, showDrawdown = true }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted" aria-label="Forklaring">
       <li className="flex items-center gap-1.5">
@@ -143,7 +143,7 @@ export default function PerformanceChart({
   currency = 'NOK',
   height = 300,
   mode = 'line',
-  showDaily = true,
+  showDaily = false,
   onDateSelect,
   testId,
   className,
@@ -287,53 +287,54 @@ export default function PerformanceChart({
                 <Cell key={row.date} fill={toneColor(row.cumulative_pl)} fillOpacity={0.85} />
               ))}
             </Bar>
-          ) : (
-            <>
-              {drawdownOn ? (
-                <Area
-                  yAxisId="main"
-                  type="monotone"
-                  dataKey={(row) => [row.cumulative_pl, row.peak]}
-                  stroke="none"
-                  fill={`url(#${uid}-hatch)`}
-                  isAnimationActive={false}
-                  activeDot={false}
-                  name="Fra toppen"
-                />
-              ) : null}
-              {drawdownOn ? (
-                <Line
-                  yAxisId="main"
-                  type="stepAfter"
-                  dataKey="peak"
-                  stroke={CHART.axis}
-                  strokeOpacity={0.55}
-                  strokeWidth={1}
-                  strokeDasharray="2 3"
-                  dot={false}
-                  activeDot={false}
-                  isAnimationActive={false}
-                  name="Topp"
-                />
-              ) : null}
-              <Area
-                yAxisId="main"
-                type="monotone"
-                dataKey="cumulative_pl"
-                baseValue={0}
-                stroke={flatLine ? toneColor(dataMax) : `url(#${uid}-stroke)`}
-                strokeWidth={2}
-                fill={`url(#${uid}-fill)`}
-                name="Akkumulert"
-                dot={({ key, ...props }) => (
-                  <ChartExtremeDot key={key} {...props} highDate={extremes.highDate} lowDate={extremes.lowDate} />
-                )}
-                activeDot={({ key, ...props }) => <ActiveDot key={key} {...props} />}
-                isAnimationActive={animate}
-                animationDuration={700}
-                animationEasing="ease-out"
-              />
-            </>
+          ) : null}
+
+          {/* No fragments here: Recharts' react-is 18 does not recognise React 19 fragments and drops their children. */}
+          {drawdownOn ? (
+            <Area
+              yAxisId="main"
+              type="monotone"
+              dataKey={(row) => [row.cumulative_pl, row.peak]}
+              stroke="none"
+              fill={`url(#${uid}-hatch)`}
+              isAnimationActive={false}
+              activeDot={false}
+              name="Fra toppen"
+            />
+          ) : null}
+          {drawdownOn ? (
+            <Line
+              yAxisId="main"
+              type="stepAfter"
+              dataKey="peak"
+              stroke={CHART.axis}
+              strokeOpacity={0.55}
+              strokeWidth={1}
+              strokeDasharray="2 3"
+              dot={false}
+              activeDot={false}
+              isAnimationActive={false}
+              name="Topp"
+            />
+          ) : null}
+          {mode === 'bar' ? null : (
+            <Area
+              yAxisId="main"
+              type="monotone"
+              dataKey="cumulative_pl"
+              baseValue={0}
+              stroke={flatLine ? toneColor(dataMax) : `url(#${uid}-stroke)`}
+              strokeWidth={2}
+              fill={`url(#${uid}-fill)`}
+              name="Akkumulert"
+              dot={({ key, ...props }) => (
+                <ChartExtremeDot key={key} {...props} highDate={extremes.highDate} lowDate={extremes.lowDate} />
+              )}
+              activeDot={({ key, ...props }) => <ActiveDot key={key} {...props} />}
+              isAnimationActive={animate}
+              animationDuration={700}
+              animationEasing="ease-out"
+            />
           )}
 
           <ReferenceLine
