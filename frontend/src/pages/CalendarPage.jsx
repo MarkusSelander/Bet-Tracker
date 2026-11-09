@@ -123,7 +123,7 @@ function DayCell({ cell, max, isToday, isSelected, isFuture, currency, onSelect,
       onKeyDown={(event) => onKeyDown(event, cell.date)}
       style={style}
       className={cn(
-        'group relative flex min-h-[64px] flex-col justify-between rounded-lg border p-1.5 text-left transition-[box-shadow,transform,background-color] duration-150 ease-out sm:min-h-[88px] sm:p-2',
+        'group relative flex h-[64px] shrink-0 flex-col justify-between overflow-hidden rounded-lg border p-1.5 text-left transition-[box-shadow,transform,background-color] duration-150 ease-out sm:h-[88px] sm:p-2',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70',
         !style && (pendingOnly ? 'border-accent/30 bg-accent/[0.06]' : 'border-hairline bg-sunken/50'),
         !hasData && isFuture && 'opacity-50',
@@ -175,7 +175,7 @@ function WeekCell({ week, weekNumber, max, currency }) {
     <div
       style={style}
       className={cn(
-        'hidden min-h-[88px] flex-col justify-between rounded-lg border p-2 md:flex',
+        'hidden h-[88px] shrink-0 flex-col justify-between overflow-hidden rounded-lg border p-2 md:flex',
         !style && 'border-dashed border-hairline'
       )}
     >
@@ -399,8 +399,8 @@ export default function CalendarPage() {
         />
       </MetricRail>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <Panel aria-labelledby="calendar-month-title" className="p-3 sm:p-5 lg:col-span-8">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+        <Panel aria-labelledby="calendar-month-title" className="h-fit self-start p-3 sm:p-5 lg:col-span-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-1">
               <Button
@@ -448,7 +448,7 @@ export default function CalendarPage() {
               <div
                 // eslint-disable-next-line react/no-array-index-key
                 key={`week-${rowIndex}`}
-                className="grid grid-cols-7 gap-1 sm:gap-1.5 md:grid-cols-[repeat(7,minmax(0,1fr))_92px]"
+                className="grid grid-cols-7 items-start gap-1 sm:gap-1.5 md:grid-cols-[repeat(7,minmax(0,1fr))_92px]"
               >
                 {row.cells.map((cell, index) =>
                   cell.empty ? (
@@ -477,7 +477,7 @@ export default function CalendarPage() {
           </p>
         </Panel>
 
-        <aside className="lg:col-span-4" aria-labelledby="calendar-day-heading">
+        <aside className="self-start lg:col-span-4" aria-labelledby="calendar-day-heading">
           <Panel
             as="div"
             className="flex max-h-[34rem] flex-col overflow-hidden lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)]"
